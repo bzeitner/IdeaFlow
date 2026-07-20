@@ -1,0 +1,13 @@
+{% extends "ideas/base.html" %}
+{% block title %}Archive · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Archive</h2>
+  <p class="lede">Ideas and efforts that have been shelved or finished.</p>
+  <div class="grid muted">
+    {% for idea in ideas %}
+      {% include "ideas/_card.html" %}
+    {% empty %}
+      <p class="empty">The archive is empty.</p>
+    {% endfor %}
+  </div>
+{% endblock %}

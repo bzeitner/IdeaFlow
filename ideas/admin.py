@@ -1,0 +1,61 @@
+from django.contrib import admin
+from django.db.models import Count
+from django.utils.html import format_html
+
+from .models import Category, Idea, Resource, Stage
+
+admin.site.site_header = "IdeaFlow Administration"
+admin.site.site_title = "IdeaFlow"
+admin.site.index_title = "Manage ideas and dropdown options"
+
+
+class LookupAdmin(admin.ModelAdmin):
+    """Shared admin for the editable dropdown lists (Category, Stage)."""
+
+    list_display = ("name", "swatch", "order", "is_active", "idea_count")
+    list_editable = ("order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
+    prepopulated_fields = {"slug": ("name",)}
+    fields = ("name", "slug", "color", "order", "is_active")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(_ideas=Count("ideas"))
+
+    @admin.display(description="Color")
+    def swatch(self, obj):
+        return format_html(
+            '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;'
+            'vertical-align:middle;border:1px solid #0002;background:{}"></span> {}',
+            obj.color,
+            obj.color,
+        )
+
+    @admin.display(description="Ideas", ordering="_ideas")
+    def idea_count(self, obj):
+        return obj._ideas
+
+
+@admin.register(Category)
+class CategoryAdmin(LookupAdmin):
+    pass
+
+
+@admin.register(Stage)
+class StageAdmin(LookupAdmin):
+    pass
+
+
+class ResourceInline(admin.TabularInline):
+    model = Resource
+    extra = 1
+
+
+@admin.register(Idea)
+class IdeaAdmin(admin.ModelAdmin):
+    list_display = ("title", "category", "status", "stage", "interest_level", "rank")
+    list_editable = ("status", "rank")
+    list_filter = ("status", "category", "stage", "interest_level")
+    search_fields = ("title", "summary", "notes")
+    list_select_related = ("category", "stage")
+    inlines = [ResourceInline]

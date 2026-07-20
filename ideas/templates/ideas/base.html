@@ -1,0 +1,36 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}IdeaFlow{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'ideas/app.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{% url 'ideas:current' %}">Idea<span>Flow</span></a>
+    <span class="topbar-actions">
+      <a class="btn" href="{% url 'admin:index' %}">Manage</a>
+      <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
+    </span>
+  </header>
+
+  <nav class="tabs">
+    {% for tab in tabs %}
+      <a href="{% url tab.route %}" class="tab {% if active == tab.value %}active{% endif %}">
+        {{ tab.label }} <span class="count">{{ tab.count }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

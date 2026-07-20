@@ -1,0 +1,39 @@
+{% extends "ideas/base.html" %}
+{% block title %}{% if idea %}Edit{% else %}New{% endif %} Idea · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>{% if idea %}Edit Idea{% else %}Capture an Idea{% endif %}</h2>
+
+  <form method="post" class="idea-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    {% for field in form %}
+      <div class="field {% if field.name == 'interest_level' %}stars-field{% endif %}">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+
+    <fieldset class="resource-list">
+      <legend>Resource List</legend>
+      {{ formset.management_form }}
+      {% for f in formset %}
+        <div class="resource-row">
+          {{ f.id }}
+          {{ f.label }}
+          {{ f.url }}
+          {% if f.instance.pk %}<label class="del">{{ f.DELETE }} remove</label>{% endif %}
+          {{ f.errors }}
+        </div>
+      {% endfor %}
+      <small class="dim">Blank rows are ignored. Save and reopen to add more.</small>
+    </fieldset>
+
+    <div class="card-actions">
+      <button class="btn primary" type="submit">Save Idea</button>
+      <a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

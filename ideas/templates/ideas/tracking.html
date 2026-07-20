@@ -1,0 +1,35 @@
+{% extends "ideas/base.html" %}
+{% block title %}Tracking · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Tracking</h2>
+  <p class="lede">A snapshot of every idea on the radar — state and ranking at a glance.</p>
+  {% if ideas %}
+    <table class="tracking">
+      <thead>
+        <tr>
+          <th>Rank</th><th>Idea</th><th>Category</th><th>Stage</th>
+          <th>Interest</th><th>Resources</th><th>Updated</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for idea in ideas %}
+          <tr>
+            <td class="rank">{{ idea.rank }}</td>
+            <td><a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></td>
+            <td>{% include "ideas/_pill.html" with obj=idea.category %}</td>
+            <td>{% include "ideas/_pill.html" with obj=idea.stage %}</td>
+            <td class="stars">{{ idea.stars }}</td>
+            <td>{{ idea.resources.all|length }}</td>
+            <td class="dim">{{ idea.updated_at|date:"M j, Y" }}</td>
+            <td class="row-actions">
+              {% include "ideas/_move.html" with target='current' label='→ Current' %}
+              {% include "ideas/_move.html" with target='archived' label='Archive' %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">Nothing being tracked yet.</p>
+  {% endif %}
+{% endblock %}

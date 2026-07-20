@@ -1,0 +1,13 @@
+{% extends "ideas/base.html" %}
+{% block title %}Current Ideas · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Current Focus</h2>
+  <p class="lede">The efforts you're actively putting time into right now.</p>
+  <div class="grid">
+    {% for idea in ideas %}
+      {% include "ideas/_card.html" %}
+    {% empty %}
+      <p class="empty">Nothing in focus yet. <a href="{% url 'ideas:create' %}">Add an idea →</a></p>
+    {% endfor %}
+  </div>
+{% endblock %}

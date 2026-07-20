@@ -1,0 +1,24 @@
+<article class="card">
+  <div class="card-head">
+    <h3><a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></h3>
+    <span class="stars" title="Interest {{ idea.interest_level }}/5">{{ idea.stars }}</span>
+  </div>
+  <div class="meta">
+    {% include "ideas/_pill.html" with obj=idea.category %}
+    {% include "ideas/_pill.html" with obj=idea.stage %}
+  </div>
+  {% if idea.summary %}<p class="summary">{{ idea.summary }}</p>{% endif %}
+  {% if idea.resources.all %}
+    <ul class="resources">
+      {% for r in idea.resources.all %}
+        <li><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.display }}</a></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <div class="card-actions">
+    <a class="btn small" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+    {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
+    {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
+    {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
+  </div>
+</article>

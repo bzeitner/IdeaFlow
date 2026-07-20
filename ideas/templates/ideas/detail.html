@@ -1,0 +1,41 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ idea.title }} · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail">
+    <div class="card-head">
+      <h2>{{ idea.title }}</h2>
+      <span class="stars">{{ idea.stars }}</span>
+    </div>
+    <div class="meta">
+      {% include "ideas/_pill.html" with obj=idea.category %}
+      {% include "ideas/_pill.html" with obj=idea.stage %}
+      <span class="pill">{{ idea.get_status_display }}</span>
+      <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
+    </div>
+
+    {% if idea.summary %}<p class="summary">{{ idea.summary|linebreaksbr }}</p>{% endif %}
+
+    <h4>Resources</h4>
+    {% if idea.resources.all %}
+      <ul class="resources">
+        {% for r in idea.resources.all %}
+          <li><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.display }}</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="dim">No resources linked yet.</p>
+    {% endif %}
+
+    {% if idea.notes %}
+      <h4>Notes</h4>
+      <p class="summary">{{ idea.notes|linebreaksbr }}</p>
+    {% endif %}
+
+    <div class="card-actions">
+      <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+      {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
+      {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
+      {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
+    </div>
+  </article>
+{% endblock %}

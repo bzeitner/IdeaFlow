@@ -1,0 +1,5 @@
+<form method="post" action="{% url 'ideas:set_status' idea.pk target %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.path }}">
+  <button class="btn small" type="submit">{{ label }}</button>
+</form>
