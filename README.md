@@ -45,12 +45,31 @@ fresh `migrate` starts with them already in place.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install django
+.venv/bin/pip install -r requirements.txt
+
+cp .env.example .env
+.venv/bin/python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
+# paste that into DJANGO_SECRET_KEY in .env, and set DJANGO_DEBUG=true for local work
+
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py runserver
 ```
 
 Then open http://127.0.0.1:8000/.
+
+## Configuration
+
+Settings that shouldn't be in version control live in `.env`, which is gitignored. Real
+environment variables take precedence over the file, so a deploy can set these without one.
+
+| Variable | Notes |
+| --- | --- |
+| `DJANGO_SECRET_KEY` | Required. No default — startup fails loudly if it's missing, rather than falling back to a value that could ship to production. |
+| `DJANGO_DEBUG` | `true`/`false`, defaults to **false**. Never true in production. |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated, defaults to `localhost,127.0.0.1`. |
+
+`.env.example` is the committed template — add any new variable there (with an empty or
+safe value) when you introduce one.
 
 For the Django admin: `.venv/bin/python manage.py createsuperuser`, then `/admin/`.
 
