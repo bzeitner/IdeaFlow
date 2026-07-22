@@ -170,6 +170,12 @@ ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*']
 ACCOUNT_UNIQUE_EMAIL = True
 
+# Removes the local login/signup/password URLs entirely — Google is the only
+# way in. (AccountAdapter/SocialAccountAdapter below are belt-and-suspenders:
+# is_open_for_signup still gets consulted internally regardless of routing.)
+SOCIALACCOUNT_ONLY = True
+
+SOCIALACCOUNT_ADAPTER = 'ideas.adapters.SocialAccountAdapter'
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
