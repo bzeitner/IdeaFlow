@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 
-from .models import AIModel, Category, Idea, Resource, ResearchEntry, Stage
+from .models import AIModel, Category, Idea, Profile, Resource, ResearchEntry, Stage
 
 admin.site.site_header = "IdeaFlow Administration"
 admin.site.site_title = "IdeaFlow"
@@ -79,3 +79,27 @@ class ResearchEntryAdmin(admin.ModelAdmin):
     search_fields = ("topic", "focus", "context", "idea__title")
     list_select_related = ("idea", "model")
     date_hierarchy = "occurred_at"
+
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    """Read-mostly view of roles — the /users/ page is the primary place to edit these."""
+
+    list_display = (
+        "user",
+        "role_admin",
+        "role_current",
+        "role_tracking",
+        "role_archive",
+        "role_add_ideas",
+    )
+    list_editable = (
+        "role_admin",
+        "role_current",
+        "role_tracking",
+        "role_archive",
+        "role_add_ideas",
+    )
+    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas")
+    search_fields = ("user__email", "user__username")
+    list_select_related = ("user",)

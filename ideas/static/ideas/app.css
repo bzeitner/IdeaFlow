@@ -26,7 +26,8 @@ main { max-width: 1000px; margin: 0 auto; padding: 24px 20px 60px; }
 }
 .brand { font-size: 20px; font-weight: 700; text-decoration: none; color: var(--ink); letter-spacing: -.02em; }
 .brand span { color: var(--accent); }
-.topbar-actions { display: flex; gap: 8px; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.logout-form { display: inline; margin: 0; }
 
 .tabs {
   display: flex; gap: 4px; max-width: 1000px; margin: 0 auto;
@@ -127,4 +128,9 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .messages { list-style: none; max-width: 1000px; margin: 14px auto 0; padding: 0 20px; }
 .messages li { background: #e8f5ec; border: 1px solid #bfe3cb; color: #216c40;
   padding: 9px 12px; border-radius: 6px; font-size: 14px; }
+.messages li.error { background: #fbeaea; border-color: #f0c4c4; color: #b02a2a; }
 .errorlist { color: #b02a2a; font-size: 12px; list-style: none; padding: 0; margin: 4px 0 0; }
+
+/* User management */
+.tracking td input[type=checkbox] { width: 16px; height: 16px; }
+.landing .grid { margin: 10px 0 20px; }

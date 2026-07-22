@@ -7,7 +7,12 @@
     {% for idea in ideas %}
       {% include "ideas/_card.html" %}
     {% empty %}
-      <p class="empty">Nothing in focus yet. <a href="{% url 'ideas:create' %}">Add an idea →</a></p>
+      <p class="empty">
+        Nothing in focus yet.
+        {% if user.profile.role_admin or user.profile.role_add_ideas %}
+          <a href="{% url 'ideas:create' %}">Add an idea →</a>
+        {% endif %}
+      </p>
     {% endfor %}
   </div>
 {% endblock %}

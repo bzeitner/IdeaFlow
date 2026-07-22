@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static socialaccount %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,20 +8,36 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{% url 'ideas:current' %}">Idea<span>Flow</span></a>
+    <a class="brand" href="{% url 'ideas:home' %}">Idea<span>Flow</span></a>
     <span class="topbar-actions">
-      <a class="btn" href="{% url 'admin:index' %}">Manage</a>
-      <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
+      {% if user.is_authenticated %}
+        {% if user.profile.role_admin %}
+          <a class="btn" href="{% url 'ideas:user_management' %}">Users</a>
+          <a class="btn" href="{% url 'admin:index' %}">Manage</a>
+        {% endif %}
+        {% if user.profile.role_admin or user.profile.role_add_ideas %}
+          <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
+        {% endif %}
+        <span class="dim">{{ user.email }}</span>
+        <form method="post" action="{% url 'account_logout' %}" class="logout-form">
+          {% csrf_token %}
+          <button class="btn small" type="submit">Log out</button>
+        </form>
+      {% else %}
+        <a class="btn primary" href="{% provider_login_url 'google' %}">Sign in with Google</a>
+      {% endif %}
     </span>
   </header>
 
-  <nav class="tabs">
-    {% for tab in tabs %}
-      <a href="{% url tab.route %}" class="tab {% if active == tab.value %}active{% endif %}">
-        {{ tab.label }} <span class="count">{{ tab.count }}</span>
-      </a>
-    {% endfor %}
-  </nav>
+  {% if user.is_authenticated and tabs %}
+    <nav class="tabs">
+      {% for tab in tabs %}
+        <a href="{% url tab.route %}" class="tab {% if active == tab.value %}active{% endif %}">
+          {{ tab.label }} <span class="count">{{ tab.count }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+  {% endif %}
 
   {% if messages %}
     <ul class="messages">

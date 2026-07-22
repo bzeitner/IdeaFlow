@@ -1,0 +1,11 @@
+{% extends "ideas/base.html" %}
+{% block title %}No access yet · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail">
+    <h2>No access yet</h2>
+    <p class="summary">
+      You're signed in as {{ user.email }}, but an administrator hasn't assigned you
+      to any tab yet. Ask an admin to grant you access in User Management.
+    </p>
+  </article>
+{% endblock %}

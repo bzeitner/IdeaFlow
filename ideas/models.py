@@ -1,9 +1,16 @@
+from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.urls import reverse
 from django.utils import timezone
 
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
+
+# The one email that's always fully provisioned — everyone else starts with no roles.
+STANDING_ADMIN_EMAIL = "bzeitner@gmail.com"
 
 hex_color = RegexValidator(
     r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
@@ -163,3 +170,73 @@ class ResearchEntry(models.Model):
     @property
     def quality_stars(self):
         return "★" * self.quality + "☆" * (5 - self.quality)
+
+
+class Profile(models.Model):
+    """Per-user role flags. One tab role + admin + add-ideas, all independent."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, related_name="profile", on_delete=models.CASCADE
+    )
+    role_admin = models.BooleanField(
+        default=False,
+        help_text="Full access: Django admin, user management, and every tab.",
+    )
+    role_current = models.BooleanField(
+        default=False, help_text="View and manage ideas in the Current tab."
+    )
+    role_tracking = models.BooleanField(
+        default=False, help_text="View and manage ideas in the Tracking tab."
+    )
+    role_archive = models.BooleanField(
+        default=False, help_text="View and manage ideas in the Archive tab."
+    )
+    role_add_ideas = models.BooleanField(
+        default=False, help_text="Create new ideas."
+    )
+
+    STATUS_ROLE = {
+        Status.CURRENT: "role_current",
+        Status.TRACKING: "role_tracking",
+        Status.ARCHIVED: "role_archive",
+    }
+
+    def __str__(self):
+        return self.user.get_username()
+
+    def has_role(self, *names):
+        return self.role_admin or any(getattr(self, name) for name in names)
+
+    def can_manage_status(self, status):
+        return self.has_role(self.STATUS_ROLE[status])
+
+    def save(self, *args, **kwargs):
+        # role_admin is the only role with Django-admin implications, so keep
+        # is_staff/is_superuser mirroring it instead of managing them separately.
+        if self.user.is_staff != self.role_admin or self.user.is_superuser != self.role_admin:
+            self.user.is_staff = self.role_admin
+            self.user.is_superuser = self.role_admin
+            self.user.save(update_fields=["is_staff", "is_superuser"])
+        super().save(*args, **kwargs)
+
+
+@receiver(post_save, sender=User)
+def provision_profile(sender, instance, created, **kwargs):
+    if not created:
+        return
+    # `manage.py createsuperuser` already set is_superuser — respect that as
+    # admin intent too, so Profile.save()'s sync doesn't immediately undo it.
+    is_admin = (
+        instance.is_superuser
+        or instance.email.strip().lower() == STANDING_ADMIN_EMAIL
+    )
+    Profile.objects.get_or_create(
+        user=instance,
+        defaults={
+            "role_admin": is_admin,
+            "role_current": is_admin,
+            "role_tracking": is_admin,
+            "role_archive": is_admin,
+            "role_add_ideas": is_admin,
+        },
+    )

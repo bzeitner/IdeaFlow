@@ -1,0 +1,36 @@
+{% extends "ideas/base.html" %}
+{% block title %}User Management · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>User Management</h2>
+  <p class="lede">Assign roles per user. Admin grants every tab and permission automatically.</p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table class="tracking">
+      <thead>
+        <tr>
+          <th>User</th>
+          {% for field, label in role_columns %}<th>{{ label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ row.profile.user.email|default:row.profile.user.username }}</td>
+            {% for field, checked in row.cells %}
+              <td>
+                <input type="checkbox" name="role-{{ row.profile.user_id }}-{{ field }}" {% if checked %}checked{% endif %}>
+              </td>
+            {% endfor %}
+          </tr>
+        {% empty %}
+          <tr><td colspan="{{ role_columns|length|add:1 }}">No users yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="card-actions">
+      <button class="btn primary" type="submit">Save Roles</button>
+    </div>
+  </form>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "ideas/base.html" %}
+{% load socialaccount %}
+{% block title %}IdeaFlow — track what you're building{% endblock %}
+{% block content %}
+  <article class="detail landing">
+    <h2>Track every idea, from spark to shelf</h2>
+    <p class="lede">
+      IdeaFlow is a private tracker for the work efforts that could become projects,
+      businesses, or side projects — one place to capture an idea, rank it, and watch
+      it move as it matures.
+    </p>
+
+    <div class="card-actions">
+      <a class="btn primary" href="{% provider_login_url 'google' %}">Sign in with Google</a>
+    </div>
+
+    <h4>Three tabs, one lifecycle</h4>
+    <div class="grid">
+      <article class="card">
+        <div class="card-head"><h3>Current</h3></div>
+        <p class="summary">The efforts actively being worked on right now.</p>
+      </article>
+      <article class="card">
+        <div class="card-head"><h3>Tracking</h3></div>
+        <p class="summary">Everything on the radar, with state and ranking at a glance.</p>
+      </article>
+      <article class="card">
+        <div class="card-head"><h3>Archive</h3></div>
+        <p class="summary">Shelved or finished efforts, kept for reference.</p>
+      </article>
+    </div>
+
+    <h4>What each idea holds</h4>
+    <p class="summary">
+      A title, summary, and notes; a category and stage with their own color-coded
+      pills; a 1–5 interest rating; a manual rank within its tab; a list of linked
+      resources; and a running log of research entries — topic, focus, context,
+      when it happened, the AI model used, effort and quality ratings, and tokens
+      spent — so the thinking behind an idea isn't lost.
+    </p>
+
+    <h4>Access is by invitation</h4>
+    <p class="summary">
+      Sign in with Google to request access. An administrator assigns which tabs
+      you can see and manage, and whether you can add new ideas.
+    </p>
+  </article>
+{% endblock %}
