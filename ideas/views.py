@@ -136,6 +136,12 @@ def idea_form(request, pk=None):
         formset = ResourceFormSet(request.POST, instance=idea)
         research_formset = ResearchEntryFormSet(request.POST, instance=idea)
         if form.is_valid() and formset.is_valid() and research_formset.is_valid():
+            if idea is None:
+                # role_add_ideas only grants creating ideas, not a target tab —
+                # force new ideas into Current regardless of what "status" was
+                # submitted, so a role_add_ideas-only user can't write directly
+                # into a tab (e.g. archived) they have no role to manage.
+                form.instance.status = Status.CURRENT
             saved = form.save()
             formset.instance = saved
             formset.save()

@@ -181,6 +181,19 @@ class IdeaCreateViewTests(TestCase):
         response = self.client.post(reverse("ideas:create"), self._post_data(category))
         self.assertTrue(Idea.objects.filter(title="A brand new idea").exists())
 
+    def test_tampered_status_cannot_land_a_new_idea_outside_current(self):
+        """A role_add_ideas-only user can't write straight into a tab (e.g.
+        archived) they hold no role to view or manage, by submitting a
+        non-default `status` on the create form."""
+        user = make_user(roles=["role_add_ideas"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        category = make_category()
+        self.client.post(
+            reverse("ideas:create"), self._post_data(category, status="archived")
+        )
+        idea = Idea.objects.get(title="A brand new idea")
+        self.assertEqual(idea.status, Status.CURRENT)
+
 
 class IdeaEditViewTests(TestCase):
     def test_matching_status_role_can_edit(self):
