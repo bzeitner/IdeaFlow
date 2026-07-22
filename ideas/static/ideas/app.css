@@ -27,7 +27,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 24px 20px 60px; }
 .brand { font-size: 20px; font-weight: 700; text-decoration: none; color: var(--ink); letter-spacing: -.02em; }
 .brand span { color: var(--accent); }
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
-.logout-form { display: inline; margin: 0; }
+.logout-form, .google-signin-form { display: inline; margin: 0; }
 
 .tabs {
   display: flex; gap: 4px; max-width: 1000px; margin: 0 auto;

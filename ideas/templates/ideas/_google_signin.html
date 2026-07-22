@@ -1,0 +1,5 @@
+{% load socialaccount %}
+<form method="post" action="{% provider_login_url 'google' %}" class="google-signin-form">
+  {% csrf_token %}
+  <button class="btn primary" type="submit">{{ label|default:"Sign in with Google" }}</button>
+</form>

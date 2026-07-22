@@ -1,5 +1,4 @@
 {% extends "ideas/base.html" %}
-{% load socialaccount %}
 {% block title %}IdeaFlow — track what you're building{% endblock %}
 {% block content %}
   <article class="detail landing">
@@ -11,7 +10,7 @@
     </p>
 
     <div class="card-actions">
-      <a class="btn primary" href="{% provider_login_url 'google' %}">Sign in with Google</a>
+      {% include "ideas/_google_signin.html" %}
     </div>
 
     <h4>Three tabs, one lifecycle</h4>

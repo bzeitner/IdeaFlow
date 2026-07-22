@@ -56,12 +56,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # 'ideas' must come before the allauth apps: Django's template loader
+    # returns the first match across INSTALLED_APPS, and ideas/templates/account/
+    # overrides allauth's default (unstyled) account templates.
+    'ideas',
     'django.contrib.sites',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'ideas',
 ]
 
 MIDDLEWARE = [

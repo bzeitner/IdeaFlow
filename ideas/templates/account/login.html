@@ -1,0 +1,11 @@
+{% extends "ideas/base.html" %}
+{% block title %}Sign In · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail">
+    <h2>Sign In</h2>
+    <p class="summary">IdeaFlow only supports signing in with a Google account.</p>
+    <div class="card-actions">
+      {% include "ideas/_google_signin.html" %}
+    </div>
+  </article>
+{% endblock %}

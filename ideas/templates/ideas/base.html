@@ -1,4 +1,4 @@
-{% load static socialaccount %}<!doctype html>
+{% load static %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -24,7 +24,7 @@
           <button class="btn small" type="submit">Log out</button>
         </form>
       {% else %}
-        <a class="btn primary" href="{% provider_login_url 'google' %}">Sign in with Google</a>
+        {% include "ideas/_google_signin.html" %}
       {% endif %}
     </span>
   </header>
