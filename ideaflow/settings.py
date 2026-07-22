@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -100,12 +101,19 @@ WSGI_APPLICATION = 'ideaflow.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+#
+# DATABASE_URL, e.g. postgres://user:password@localhost:5432/ideaflow — see
+# README.md "Using Postgres". Unset, this falls back to the sqlite3 file it
+# always used, so existing local setups don't need to change anything.
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.parse(
+        # dj_database_url.config()'s own `default=` only applies when the env
+        # var is absent, not when it's present-but-empty (e.g. `DATABASE_URL=`
+        # left blank in .env) — so resolve that fallback explicitly instead.
+        os.getenv('DATABASE_URL') or f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+    )
 }
 
 

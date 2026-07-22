@@ -102,11 +102,38 @@ environment variables take precedence over the file, so a deploy can set these w
 | `DJANGO_SECRET_KEY` | Required. No default — startup fails loudly if it's missing, rather than falling back to a value that could ship to production. |
 | `DJANGO_DEBUG` | `true`/`false`, defaults to **false**. Never true in production. |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated, defaults to `localhost,127.0.0.1`. |
+| `DATABASE_URL` | Optional. Unset uses a local sqlite3 file. See "Using Postgres" below. |
 
 `.env.example` is the committed template — add any new variable there (with an empty or
 safe value) when you introduce one.
 
 For the Django admin: `.venv/bin/python manage.py createsuperuser`, then `/admin/`.
+
+## Using Postgres
+
+By default the app uses a local `db.sqlite3` file — nothing to configure. To use Postgres
+instead (recommended for any real deployment), set `DATABASE_URL` in `.env`:
+
+```
+DATABASE_URL=postgres://USER:PASSWORD@HOST:PORT/DBNAME
+```
+
+For local Postgres via Homebrew:
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+createdb ideaflow
+```
+
+then in `.env`:
+
+```
+DATABASE_URL=postgres://YOUR_MAC_USERNAME@localhost:5432/ideaflow
+```
+
+Run `migrate` as usual afterward — `DATABASE_URL` is read at startup, so it applies to
+`runserver`, `migrate`, `test`, everything.
 
 ## Layout
 
