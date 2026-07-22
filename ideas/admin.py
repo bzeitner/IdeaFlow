@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 
-from .models import Category, Idea, Resource, Stage
+from .models import AIModel, Category, Idea, Resource, ResearchEntry, Stage
 
 admin.site.site_header = "IdeaFlow Administration"
 admin.site.site_title = "IdeaFlow"
@@ -46,9 +46,20 @@ class StageAdmin(LookupAdmin):
     pass
 
 
+@admin.register(AIModel)
+class AIModelAdmin(LookupAdmin):
+    pass
+
+
 class ResourceInline(admin.TabularInline):
     model = Resource
     extra = 1
+
+
+class ResearchEntryInline(admin.TabularInline):
+    model = ResearchEntry
+    extra = 1
+    fields = ("topic", "focus", "occurred_at", "model", "effort", "quality", "tokens_used")
 
 
 @admin.register(Idea)
@@ -58,4 +69,13 @@ class IdeaAdmin(admin.ModelAdmin):
     list_filter = ("status", "category", "stage", "interest_level")
     search_fields = ("title", "summary", "notes")
     list_select_related = ("category", "stage")
-    inlines = [ResourceInline]
+    inlines = [ResourceInline, ResearchEntryInline]
+
+
+@admin.register(ResearchEntry)
+class ResearchEntryAdmin(admin.ModelAdmin):
+    list_display = ("topic", "idea", "model", "occurred_at", "effort", "quality", "tokens_used")
+    list_filter = ("model", "effort", "quality")
+    search_fields = ("topic", "focus", "context", "idea__title")
+    list_select_related = ("idea", "model")
+    date_hierarchy = "occurred_at"

@@ -31,6 +31,51 @@
       <small class="dim">Blank rows are ignored. Save and reopen to add more.</small>
     </fieldset>
 
+    <fieldset class="resource-list">
+      <legend>Research Entries</legend>
+      {{ research_formset.management_form }}
+      {% for f in research_formset %}
+        <div class="research-row">
+          {{ f.id }}
+          <div class="field">
+            <label for="{{ f.topic.id_for_label }}">{{ f.topic.label }}</label>
+            {{ f.topic }}
+          </div>
+          <div class="field">
+            <label for="{{ f.focus.id_for_label }}">{{ f.focus.label }}</label>
+            {{ f.focus }}
+          </div>
+          <div class="field">
+            <label for="{{ f.context.id_for_label }}">{{ f.context.label }}</label>
+            {{ f.context }}
+          </div>
+          <div class="field">
+            <label for="{{ f.occurred_at.id_for_label }}">{{ f.occurred_at.label }}</label>
+            {{ f.occurred_at }}
+          </div>
+          <div class="field">
+            <label for="{{ f.model.id_for_label }}">{{ f.model.label }}</label>
+            {{ f.model }}
+          </div>
+          <div class="field stars-field">
+            <label>{{ f.effort.label }}</label>
+            {{ f.effort }}
+          </div>
+          <div class="field stars-field">
+            <label>{{ f.quality.label }}</label>
+            {{ f.quality }}
+          </div>
+          <div class="field">
+            <label for="{{ f.tokens_used.id_for_label }}">{{ f.tokens_used.label }}</label>
+            {{ f.tokens_used }}
+          </div>
+          {% if f.instance.pk %}<label class="del">{{ f.DELETE }} remove</label>{% endif %}
+          {{ f.errors }}
+        </div>
+      {% endfor %}
+      <small class="dim">Blank rows are ignored. Save and reopen to add more.</small>
+    </fieldset>
+
     <div class="card-actions">
       <button class="btn primary" type="submit">Save Idea</button>
       <a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a>

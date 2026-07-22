@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import IdeaForm, ResourceFormSet
+from .forms import IdeaForm, ResearchEntryFormSet, ResourceFormSet
 from .models import Idea, Status
 
 TAB_SPEC = [
@@ -47,7 +47,12 @@ def archive(request):
 
 
 def detail(request, pk):
-    idea = get_object_or_404(Idea.objects.prefetch_related("resources"), pk=pk)
+    idea = get_object_or_404(
+        Idea.objects.prefetch_related(
+            "resources", "research_entries", "research_entries__model"
+        ),
+        pk=pk,
+    )
     return render(
         request,
         "ideas/detail.html",
@@ -60,21 +65,26 @@ def idea_form(request, pk=None):
     if request.method == "POST":
         form = IdeaForm(request.POST, instance=idea)
         formset = ResourceFormSet(request.POST, instance=idea)
-        if form.is_valid() and formset.is_valid():
+        research_formset = ResearchEntryFormSet(request.POST, instance=idea)
+        if form.is_valid() and formset.is_valid() and research_formset.is_valid():
             saved = form.save()
             formset.instance = saved
             formset.save()
+            research_formset.instance = saved
+            research_formset.save()
             messages.success(request, f"Saved “{saved.title}”.")
             return redirect(saved)
     else:
         form = IdeaForm(instance=idea)
         formset = ResourceFormSet(instance=idea)
+        research_formset = ResearchEntryFormSet(instance=idea)
     return render(
         request,
         "ideas/idea_form.html",
         {
             "form": form,
             "formset": formset,
+            "research_formset": research_formset,
             "idea": idea,
             "tabs": _tabs(),
             "active": idea.status if idea else None,

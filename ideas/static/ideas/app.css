@@ -73,6 +73,9 @@ h4 { margin: 20px 0 6px; }
 .resources { margin: 10px 0 0; padding-left: 18px; }
 .resources a { color: var(--accent); }
 
+.research-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.research-list li { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+
 .card-actions, .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; }
 .row-actions { margin-top: 0; }
 
@@ -112,6 +115,14 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .resource-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
 .resource-row input { flex: 1; }
 .del { font-size: 12px; color: var(--dim); white-space: nowrap; }
+
+.research-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;
+  border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px;
+}
+.research-row:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.research-row .field { margin-bottom: 0; }
+.research-row .field:has(textarea) { grid-column: 1 / -1; }
 
 .messages { list-style: none; max-width: 1000px; margin: 14px auto 0; padding: 0 20px; }
 .messages li { background: #e8f5ec; border: 1px solid #bfe3cb; color: #216c40;

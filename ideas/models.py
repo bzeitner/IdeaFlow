@@ -1,6 +1,9 @@
 from django.core.validators import RegexValidator
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
+
+STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
 
 hex_color = RegexValidator(
     r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
@@ -74,10 +77,7 @@ class Idea(models.Model):
     category = models.ForeignKey(
         Category, on_delete=models.PROTECT, related_name="ideas"
     )
-    interest_level = models.PositiveSmallIntegerField(
-        choices=[(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)],
-        default=3,
-    )
+    interest_level = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=3)
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.CURRENT
     )
@@ -120,3 +120,46 @@ class Resource(models.Model):
     @property
     def display(self):
         return self.label or self.url
+
+
+class AIModel(LookupBase):
+    """The AI model used for a research entry — editable in admin."""
+
+    class Meta(LookupBase.Meta):
+        verbose_name = "AI model"
+
+
+class ResearchEntry(models.Model):
+    idea = models.ForeignKey(
+        Idea, related_name="research_entries", on_delete=models.CASCADE
+    )
+    topic = models.CharField(max_length=200)
+    focus = models.CharField(max_length=200, blank=True)
+    context = models.TextField(blank=True)
+    occurred_at = models.DateTimeField(
+        default=timezone.now, help_text="When the research happened."
+    )
+    effort = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=3)
+    model = models.ForeignKey(
+        AIModel, related_name="research_entries", on_delete=models.PROTECT
+    )
+    quality = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=3)
+    tokens_used = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Approximate tokens used, if known."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-occurred_at"]
+        verbose_name_plural = "research entries"
+
+    def __str__(self):
+        return self.topic
+
+    @property
+    def effort_stars(self):
+        return "★" * self.effort + "☆" * (5 - self.effort)
+
+    @property
+    def quality_stars(self):
+        return "★" * self.quality + "☆" * (5 - self.quality)
