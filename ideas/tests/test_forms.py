@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from ideas.forms import IdeaForm, ResearchEntryForm
+from ideas.forms import IdeaForm, ResearchEntryForm, ResearchEntryFormSet
 from ideas.models import Idea
 
 from .helpers import make_ai_model, make_category, make_idea
@@ -72,3 +72,48 @@ class ResearchEntryFormTests(TestCase):
         form = ResearchEntryForm(data=self._data(topic=""))
         self.assertFalse(form.is_valid())
         self.assertIn("topic", form.errors)
+
+    def test_blank_occurred_at_defaults_to_now_on_a_filled_row(self):
+        form = ResearchEntryForm(data=self._data(occurred_at=""))
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNotNone(form.cleaned_data["occurred_at"])
+
+
+class ResearchEntryFormSetEmptyRowTests(TestCase):
+    """The add-idea form ships one empty research row; submitting it untouched
+    must save the idea with no research entry, not raise required-field errors."""
+
+    def _post(self, idea, **row):
+        prefix = ResearchEntryFormSet().prefix
+        data = {
+            f"{prefix}-TOTAL_FORMS": "1",
+            f"{prefix}-INITIAL_FORMS": "0",
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+        # The RadioSelect star fields render pre-selected (model default 3), so a
+        # real browser submits them even when the row is otherwise blank.
+        row.setdefault("effort", "3")
+        row.setdefault("quality", "3")
+        for name, value in row.items():
+            data[f"{prefix}-0-{name}"] = value
+        return data
+
+    def test_untouched_empty_row_saves_no_entry(self):
+        idea = make_idea()
+        formset = ResearchEntryFormSet(self._post(idea), instance=idea)
+        self.assertTrue(formset.is_valid(), formset.errors)
+        formset.save()
+        self.assertEqual(idea.research_entries.count(), 0)
+
+    def test_filled_row_still_saves(self):
+        idea = make_idea()
+        model = make_ai_model()
+        formset = ResearchEntryFormSet(
+            self._post(idea, topic="Scan", model=model.id), instance=idea
+        )
+        self.assertTrue(formset.is_valid(), formset.errors)
+        formset.save()
+        entry = idea.research_entries.get()
+        self.assertEqual(entry.topic, "Scan")
+        self.assertIsNotNone(entry.occurred_at)
