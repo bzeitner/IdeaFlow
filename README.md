@@ -135,6 +135,70 @@ DATABASE_URL=postgres://YOUR_MAC_USERNAME@localhost:5432/ideaflow
 Run `migrate` as usual afterward — `DATABASE_URL` is read at startup, so it applies to
 `runserver`, `migrate`, `test`, everything.
 
+## Agent access (read an idea, report effort)
+
+An agent can pull an idea, act on it (research it, spin up a repo, write code), then
+report back. "Reporting" means creating a **research entry** — topic, a free-text write-up,
+effort/quality (1–5), tokens used, and which AI model — and optionally attaching a result
+link and moving the idea's stage/tab. Two ways in, sharing the same read/write core:
+
+### Local: management commands
+
+For an agent running in this repo — it talks straight to the DB, no auth needed.
+
+```bash
+# Read
+.venv/bin/python manage.py dump_idea 12            # one idea, full detail, as JSON
+.venv/bin/python manage.py dump_idea               # all ideas (summary rows)
+.venv/bin/python manage.py dump_idea --status current
+
+# Report effort (--context-file hands off a long write-up without shell-quoting)
+.venv/bin/python manage.py log_effort 12 \
+    --topic "Prototyped the CSV importer" \
+    --model claude-opus-4-8 \
+    --context-file report.md \
+    --effort 4 --quality 5 --tokens 180000 \
+    --repo-url https://github.com/you/csv-importer --repo-label "Repo" \
+    --stage prototyping --status tracking
+```
+
+`--model` takes an AI-model slug or name (see the seeded list in the admin; default `other`).
+`--stage`/`--status` are optional idea moves. Both commands print JSON.
+
+### Remote: JSON HTTP API
+
+For an agent that can't reach the DB directly. Set a token to enable it (empty = disabled):
+
+```
+# in .env — generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+IDEAFLOW_API_TOKEN=your-long-random-token
+```
+
+Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
+
+| Method & path | Does |
+| --- | --- |
+| `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
+| `GET /api/ideas/<id>/` | One idea with resources + research entries |
+| `POST /api/ideas/<id>/effort/` | Record an effort report |
+
+```bash
+curl -H "Authorization: Bearer $IDEAFLOW_API_TOKEN" \
+  http://127.0.0.1:8000/api/ideas/12/
+
+curl -X POST -H "Authorization: Bearer $IDEAFLOW_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"topic":"Prototyped it","model":"claude-opus-4-8","context":"...",
+       "effort":4,"quality":5,"tokens_used":180000,
+       "resource":{"label":"Repo","url":"https://github.com/you/csv-importer"},
+       "stage":"prototyping","status":"tracking"}' \
+  http://127.0.0.1:8000/api/ideas/12/effort/
+```
+
+The POST body's only required field is `topic`; everything else is optional. It returns the
+created entry plus the refreshed idea (`201`). The token is a single shared secret with no
+per-user roles — treat it like a password and only enable the API when you need it.
+
 ## Layout
 
 ```
