@@ -1,0 +1,12 @@
+# Runs refresh_feeds hourly. refresh_feeds is idempotent (conditional GET +
+# guid dedup), so a missed run just catches up on the next tick.
+
+[Unit]
+Description=IdeaFlow: refresh feeds hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

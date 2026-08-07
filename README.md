@@ -241,6 +241,14 @@ manage.py summarize_feed_item 42 \
 Run `refresh_feeds` on a schedule (cron / systemd timer / `/loop`); it's
 idempotent, so re-running only picks up genuinely new entries.
 
+## Deploying
+
+To put IdeaFlow on a DigitalOcean droplet (gunicorn + nginx + Postgres, fronted
+by Cloudflare for DNS/TLS on **bitesoftheweek.com**), follow the step-by-step
+runbook in [`deploy/README.md`](deploy/README.md). The `deploy/` folder also
+holds the systemd units, nginx config, env template, and the `update.sh` /
+`backup_db.sh` helper scripts it references.
+
 ## Layout
 
 ```

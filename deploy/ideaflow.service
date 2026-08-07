@@ -1,0 +1,29 @@
+# systemd unit for the IdeaFlow app server (gunicorn).
+# Install to /etc/systemd/system/ideaflow.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ideaflow
+#
+# Reads config from the project's .env (settings.py calls load_dotenv), so no
+# EnvironmentFile is needed here.
+
+[Unit]
+Description=IdeaFlow (gunicorn)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/gunicorn ideaflow.wsgi:application \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile -
+Restart=on-failure
+RestartSec=3
+# Light hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

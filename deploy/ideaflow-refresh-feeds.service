@@ -1,0 +1,16 @@
+# Oneshot unit that refreshes all active feeds. Paired with the .timer.
+# Install both to /etc/systemd/system/, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ideaflow-refresh-feeds.timer
+
+[Unit]
+Description=IdeaFlow: refresh feeds
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python manage.py refresh_feeds

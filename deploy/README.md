@@ -1,0 +1,304 @@
+# Deploying IdeaFlow to DigitalOcean (bitesoftheweek.com)
+
+A start-to-finish runbook: one $12 droplet running Django (gunicorn) + nginx +
+Postgres, fronted by Cloudflare for DNS and TLS. Follow the steps in order.
+Config files referenced here live in this `deploy/` folder.
+
+Conventions: the server app user is **`ideaflow`**, code lives at
+**`/home/ideaflow/IdeaFlow`**, the virtualenv at **`.venv`** inside it.
+Commands prefixed `#` run as root/sudo; `$` run as the `ideaflow` user.
+
+---
+
+## 0. Before you start
+
+- A DigitalOcean account and an SSH key you can use.
+- The domain **bitesoftheweek.com** registered (any registrar).
+- A **Cloudflare** account (free plan is fine).
+- A **Google OAuth client** — you'll create/point it at the prod domain in step 9.
+
+---
+
+## 1. Create the droplet
+
+1. DigitalOcean → **Create → Droplets**.
+2. Image: **Ubuntu 24.04 LTS**. Plan: **Basic → Regular → $12/mo (2 GB / 1 vCPU)**.
+3. Choose a region near you, add your **SSH key**, name it `ideaflow`.
+4. Create, then note the **public IPv4** (call it `SERVER_IP`).
+
+SSH in as root:
+
+```bash
+ssh root@SERVER_IP
+```
+
+Base hardening + firewall:
+
+```bash
+# as root
+apt update && apt -y upgrade
+ufw allow OpenSSH
+ufw allow 'Nginx Full'
+ufw --force enable
+timedatectl set-timezone UTC
+```
+
+---
+
+## 2. Create the app user
+
+```bash
+# as root
+adduser --disabled-password --gecos "" ideaflow
+usermod -aG sudo ideaflow
+# copy your SSH key so you can log in as ideaflow
+rsync --archive --chown=ideaflow:ideaflow ~/.ssh /home/ideaflow/
+```
+
+From now on, log in as the app user: `ssh ideaflow@SERVER_IP`.
+
+---
+
+## 3. Install system packages
+
+```bash
+# as root (or with sudo)
+apt -y install python3-venv python3-dev build-essential \
+    postgresql postgresql-contrib \
+    nginx git curl
+```
+
+---
+
+## 4. Postgres: database + user
+
+```bash
+# as root
+sudo -u postgres psql <<'SQL'
+CREATE DATABASE ideaflow;
+CREATE USER ideaflow WITH PASSWORD 'CHANGE_ME_STRONG';
+ALTER ROLE ideaflow SET client_encoding TO 'utf8';
+ALTER ROLE ideaflow SET default_transaction_isolation TO 'read committed';
+ALTER ROLE ideaflow SET timezone TO 'UTC';
+GRANT ALL PRIVILEGES ON DATABASE ideaflow TO ideaflow;
+\c ideaflow
+GRANT ALL ON SCHEMA public TO ideaflow;
+SQL
+```
+
+Use a strong password and remember it — it goes in `DATABASE_URL`. The app user
+also gets **peer auth** to the local DB, which is what `backup_db.sh` relies on:
+
+```bash
+# as root — let OS user "ideaflow" connect to DB "ideaflow" without a password
+echo "local   ideaflow   ideaflow   peer" > /etc/postgresql/*/main/conf.d/ideaflow-peer.conf
+systemctl restart postgresql
+```
+
+---
+
+## 5. Clone the code and build the environment
+
+```bash
+# as ideaflow
+cd ~
+git clone https://github.com/bzeitner/IdeaFlow.git
+cd IdeaFlow
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+Create the production `.env` from the template and fill it in:
+
+```bash
+cp deploy/env.production.example .env
+.venv/bin/python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
+# paste that into DJANGO_SECRET_KEY, set DATABASE_URL's password, etc.
+nano .env
+```
+
+`.env` must have at least: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
+`DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, and `DATABASE_URL`.
+Google keys come in step 9.
+
+---
+
+## 6. Initialize the app
+
+```bash
+# as ideaflow, in ~/IdeaFlow
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py collectstatic --noinput
+.venv/bin/python manage.py createsuperuser   # optional; Google login also works
+
+# Set the Sites-framework domain so callbacks/emails use the real host
+.venv/bin/python manage.py shell --no-imports -c \
+  "from django.contrib.sites.models import Site; s=Site.objects.get(id=1); s.domain='bitesoftheweek.com'; s.name='IdeaFlow'; s.save()"
+```
+
+Quick smoke test (bind to localhost, Ctrl-C when done):
+
+```bash
+.venv/bin/gunicorn ideaflow.wsgi:application --bind 127.0.0.1:8000
+# in another shell: curl -I http://127.0.0.1:8000/  → expect 200
+```
+
+---
+
+## 7. Run it as a service (gunicorn + systemd)
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow
+systemctl status ideaflow --no-pager      # should be active (running)
+```
+
+If it fails, `journalctl -u ideaflow -n 50 --no-pager` shows why (almost always
+a `.env` value or DB password).
+
+---
+
+## 8. nginx reverse proxy + Cloudflare origin cert
+
+First get an origin certificate from Cloudflare (valid 15 years, no renewals):
+
+1. Cloudflare dashboard → your site → **SSL/TLS → Origin Server → Create
+   Certificate**. Accept defaults (covers `bitesoftheweek.com` and
+   `*.bitesoftheweek.com`).
+2. Copy the **certificate** and **private key** onto the server:
+
+```bash
+# as root
+mkdir -p /etc/ssl/cloudflare
+nano /etc/ssl/cloudflare/bitesoftheweek.com.pem   # paste the certificate
+nano /etc/ssl/cloudflare/bitesoftheweek.com.key   # paste the private key
+chmod 600 /etc/ssl/cloudflare/bitesoftheweek.com.key
+```
+
+Install the site config:
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/nginx.conf /etc/nginx/sites-available/ideaflow
+ln -sf /etc/nginx/sites-available/ideaflow /etc/nginx/sites-enabled/ideaflow
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+```
+
+> **Alternative (no Cloudflare proxy):** if you'd rather use Let's Encrypt, grey-cloud
+> the DNS record first, run `apt install certbot python3-certbot-nginx && certbot --nginx`,
+> then set Cloudflare SSL mode to Full (strict). The Cloudflare origin cert path above is
+> simpler and avoids renewals.
+
+---
+
+## 9. Cloudflare DNS + TLS mode ("cloudify")
+
+1. Cloudflare → **Add a site** → `bitesoftheweek.com` → Free plan.
+2. Cloudflare gives you two **nameservers**. At your **domain registrar**, replace
+   the registrar's nameservers with Cloudflare's. (Propagation: minutes to a few hours.)
+3. Back in Cloudflare → **DNS → Records**, add:
+   | Type | Name | Content | Proxy |
+   |------|------|---------|-------|
+   | A | `bitesoftheweek.com` (`@`) | `SERVER_IP` | Proxied (orange) |
+   | CNAME | `www` | `bitesoftheweek.com` | Proxied (orange) |
+4. **SSL/TLS → Overview → Full (strict)** — this validates the origin cert from step 8.
+5. **SSL/TLS → Edge Certificates → Always Use HTTPS: On.**
+
+Verify once DNS propagates:
+
+```bash
+curl -I https://bitesoftheweek.com/     # 200, and the landing page
+```
+
+---
+
+## 10. Google OAuth for the production domain
+
+In [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services
+→ Credentials → your OAuth client** (or create a new Web application):
+
+- **Authorized redirect URI:**
+  `https://bitesoftheweek.com/accounts/google/login/callback/`
+- (Add the `www` variant too if you'll use it.)
+
+Put the client ID/secret in `.env`, then restart:
+
+```bash
+# as ideaflow
+nano ~/IdeaFlow/.env         # GOOGLE_OAUTH_CLIENT_ID / _SECRET
+sudo systemctl restart ideaflow
+```
+
+Sign in at https://bitesoftheweek.com/ — `bzeitner@gmail.com` is auto-granted
+every role on first sign-in.
+
+---
+
+## 11. Scheduled feeds + database backups
+
+Feeds (hourly, idempotent):
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-refresh-feeds.service /etc/systemd/system/
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-refresh-feeds.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-refresh-feeds.timer
+systemctl list-timers ideaflow-refresh-feeds.timer --no-pager
+```
+
+Nightly DB backup (kept 14 days):
+
+```bash
+# as ideaflow
+chmod +x ~/IdeaFlow/deploy/backup_db.sh
+( crontab -l 2>/dev/null; echo "15 3 * * * /home/ideaflow/IdeaFlow/deploy/backup_db.sh" ) | crontab -
+~/IdeaFlow/deploy/backup_db.sh    # test it now; look in ~/backups
+```
+
+DigitalOcean weekly droplet backups (in the DO panel) are a good extra layer.
+
+---
+
+## 12. Day-to-day: deploying updates
+
+Everything is a git pull away. From the server:
+
+```bash
+# as ideaflow
+~/IdeaFlow/deploy/update.sh
+```
+
+That pulls, installs deps, migrates, rebuilds static, and restarts the service.
+Make it executable once: `chmod +x ~/IdeaFlow/deploy/update.sh`.
+
+Management commands run through the venv, e.g.:
+
+```bash
+cd ~/IdeaFlow
+.venv/bin/python manage.py add_feed --url https://example.com/feed.xml
+.venv/bin/python manage.py refresh_feeds
+.venv/bin/python manage.py dump_idea 3
+```
+
+The research agents (`research_idea.sh`, `/research-idea`) are meant to run from
+your **laptop**, not the droplet — keep the server sized for app + DB only. Point
+them at the server's HTTP API by setting `IDEAFLOW_API_TOKEN` on both ends.
+
+---
+
+## 13. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| 502 Bad Gateway | `systemctl status ideaflow`, `journalctl -u ideaflow -n 50` — app not running |
+| 400 Bad Request | `DJANGO_ALLOWED_HOSTS` missing the domain |
+| CSRF "origin doesn't match" on login | `DJANGO_CSRF_TRUSTED_ORIGINS` must list `https://bitesoftheweek.com` |
+| Admin/CSS unstyled | re-run `collectstatic`; confirm WhiteNoise middleware present |
+| Redirect loop | Cloudflare SSL mode must be **Full (strict)**, not Flexible |
+| Google login "redirect_uri_mismatch" | the callback URL in Google must match exactly, https + trailing slash |
+
+Logs: `journalctl -u ideaflow -f` (app), `/var/log/nginx/error.log` (proxy).
