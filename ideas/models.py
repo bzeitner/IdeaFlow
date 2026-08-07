@@ -172,6 +172,91 @@ class ResearchEntry(models.Model):
         return "★" * self.quality + "☆" * (5 - self.quality)
 
 
+class Feed(models.Model):
+    """An RSS/Atom feed tracked once and shared across ideas, so it's downloaded
+    and its entries summarized a single time regardless of how many ideas
+    reference it or how often the ingesting agent runs."""
+
+    url = models.URLField(max_length=500, unique=True)
+    title = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(
+        default=True, help_text="Inactive feeds are skipped by refresh_feeds."
+    )
+    ideas = models.ManyToManyField(Idea, related_name="feeds", blank=True)
+    # Conditional-GET bookkeeping so an unchanged feed isn't re-downloaded.
+    etag = models.CharField(max_length=300, blank=True)
+    last_modified = models.CharField(max_length=100, blank=True)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["title", "url"]
+
+    def __str__(self):
+        return self.title or self.url
+
+
+class FeedItem(models.Model):
+    """One entry in a feed. (feed, guid) is unique, so each entry is ingested —
+    and summarized — exactly once."""
+
+    feed = models.ForeignKey(Feed, related_name="items", on_delete=models.CASCADE)
+    guid = models.CharField(
+        max_length=500, help_text="Stable per-entry id (feed guid/id, else link)."
+    )
+    link = models.URLField(max_length=500, blank=True)
+    title = models.CharField(max_length=300, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+
+    # Filled once, by the ingesting agent.
+    summary = models.TextField(blank=True)
+    summary_model = models.ForeignKey(
+        AIModel,
+        related_name="feed_items",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    summarized_at = models.DateTimeField(null=True, blank=True)
+    usefulness = models.PositiveSmallIntegerField(
+        choices=STAR_CHOICES,
+        null=True,
+        blank=True,
+        help_text="The ingesting agent's 1-5 usefulness rating.",
+    )
+
+    # Your personal ratings, set from the admin (or the feed UI).
+    interest = models.PositiveSmallIntegerField(
+        choices=STAR_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Your 1-5 personal-interest rating.",
+    )
+    info_value = models.PositiveSmallIntegerField(
+        choices=STAR_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Your 1-5 information-value rating.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-published_at", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["feed", "guid"], name="unique_feed_guid")
+        ]
+
+    def __str__(self):
+        return self.title or self.guid
+
+    @property
+    def is_summarized(self):
+        return self.summarized_at is not None
+
+
 class Profile(models.Model):
     """Per-user role flags. One tab role + admin + add-ideas, all independent."""
 

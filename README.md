@@ -199,6 +199,48 @@ The POST body's only required field is `topic`; everything else is optional. It 
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no
 per-user roles — treat it like a password and only enable the API when you need it.
 
+## Feeds (fetch + summarize once)
+
+Research often turns up RSS/Atom feeds. Feeds are tracked centrally so each is
+downloaded only when it changes and each entry is summarized exactly once, no
+matter how many ideas point at it or how often the agent runs.
+
+- **`Feed`** — one row per URL (unique), optionally linked to ideas. Stores
+  ETag/Last-Modified for conditional GETs.
+- **`FeedItem`** — one row per entry, unique on `(feed, guid)`. That constraint
+  is what makes ingest + summary happen once.
+
+Ratings per item:
+
+| Rating | Range | Who sets it |
+| --- | --- | --- |
+| `usefulness` | 1–5 | the ingesting agent, when it summarizes |
+| `interest` | 1–5 | you (personal interest) |
+| `info_value` | 1–5 | you (information value) |
+
+Set your two ratings from the Django admin (`/admin/` → Feed items — editable
+right in the list), or wherever a feed UI is added later.
+
+Workflow (mirrors the idea commands):
+
+```bash
+# Register a feed (idempotent by URL), optionally tied to an idea
+manage.py add_feed --url https://example.com/feed.xml --idea 12
+
+# Fetch active feeds and ingest new entries (deduped, conditional GET)
+manage.py refresh_feeds
+
+# The agent's work queue: entries with no summary yet
+manage.py dump_feed_items --unsummarized
+
+# Agent write-back: summary + a 1-5 usefulness rating (stamps it "done")
+manage.py summarize_feed_item 42 \
+    --summary-file summary.md --model claude-opus-4-8 --usefulness 4
+```
+
+Run `refresh_feeds` on a schedule (cron / systemd timer / `/loop`); it's
+idempotent, so re-running only picks up genuinely new entries.
+
 ## Layout
 
 ```

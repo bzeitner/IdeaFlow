@@ -33,6 +33,38 @@ def research_entry_to_dict(entry):
     }
 
 
+def feed_item_to_dict(item):
+    return {
+        "id": item.id,
+        "feed_id": item.feed_id,
+        "guid": item.guid,
+        "title": item.title,
+        "link": item.link,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+        "summary": item.summary,
+        "summary_model": _lookup(item.summary_model),
+        "summarized_at": item.summarized_at.isoformat() if item.summarized_at else None,
+        "usefulness": item.usefulness,
+        "interest": item.interest,
+        "info_value": item.info_value,
+    }
+
+
+def feed_to_dict(feed, *, detail=False):
+    data = {
+        "id": feed.id,
+        "url": feed.url,
+        "title": feed.title,
+        "is_active": feed.is_active,
+        "last_fetched_at": feed.last_fetched_at.isoformat()
+        if feed.last_fetched_at
+        else None,
+    }
+    if detail:
+        data["items"] = [feed_item_to_dict(i) for i in feed.items.all()]
+    return data
+
+
 def idea_to_dict(idea, *, detail=True):
     """Serialize an idea. `detail=False` omits the heavy related collections
     (notes, resources, research entries) for list responses."""
