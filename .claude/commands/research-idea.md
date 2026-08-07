@@ -1,7 +1,6 @@
 ---
 description: Research one IdeaFlow idea and log the effort back into the app
-argument-hint: <idea-id>
-allowed-tools: Bash, Read, Write, WebSearch, WebFetch
+argument-hint: "idea-id (e.g. 3)"
 ---
 
 Research IdeaFlow idea **$ARGUMENTS**. Work in this repo. Steps:
