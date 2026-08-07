@@ -1,6 +1,7 @@
 from django import forms
 from django.db.models import Q
 from django.forms import inlineformset_factory
+from django.utils import timezone
 
 from .models import AIModel, Category, Idea, ResearchEntry, Resource, Stage
 
@@ -56,7 +57,10 @@ ResourceFormSet = inlineformset_factory(
 class ResearchEntryForm(forms.ModelForm):
     # Declared explicitly (rather than via Meta.widgets) because the datetime-local
     # input submits "YYYY-MM-DDTHH:MM", which isn't in Django's default input_formats.
+    # Optional: a blank row defaults to "now" on save (see clean), so users aren't
+    # forced to fill a timestamp on every entry.
     occurred_at = forms.DateTimeField(
+        required=False,
         input_formats=["%Y-%m-%dT%H:%M"],
         widget=forms.DateTimeInput(
             attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
@@ -71,6 +75,21 @@ class ResearchEntryForm(forms.ModelForm):
         self.fields["model"].queryset = AIModel.objects.filter(
             Q(is_active=True) | Q(pk=current)
         )
+        # A new ResearchEntry() carries a full-precision `occurred_at` default from
+        # the model, but the datetime-local widget only round-trips to the minute.
+        # That mismatch makes an untouched extra row look "changed", so the formset
+        # stops treating it as empty and demands topic/model — the add-idea bug.
+        # Blank the initial for unsaved rows so an empty one stays genuinely empty.
+        if self.instance.pk is None:
+            self.initial["occurred_at"] = None
+
+    def clean(self):
+        cleaned = super().clean()
+        # Optional field, but the model column is NOT NULL — supply the default
+        # here (only reached for rows the formset considers non-empty).
+        if not cleaned.get("occurred_at"):
+            cleaned["occurred_at"] = timezone.now()
+        return cleaned
 
     class Meta:
         model = ResearchEntry
