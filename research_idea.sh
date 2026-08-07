@@ -35,8 +35,12 @@ Research IdeaFlow idea ${ID}. Work in this repo. Steps:
    research_entries — do not guess what the idea is.
 2. Research it thoroughly. Use web search/fetch for market, competitors,
    feasibility, and concrete next steps as appropriate to the idea.
-3. Write a clear findings report (markdown) to: ${REPORT}
-4. Log the effort back into IdeaFlow — you are NOT done until this succeeds:
+3. Register any RSS/Atom feeds you come across (blogs, news, release feeds) so
+   they're tracked centrally and summarized once — don't fetch/summarize them
+   inline, just register each distinct feed (idempotent by URL):
+     ${PY} manage.py add_feed --url <feed-url> --idea ${ID}
+4. Write a clear findings report (markdown) to: ${REPORT}
+5. Log the effort back into IdeaFlow — you are NOT done until this succeeds:
      ${PY} manage.py log_effort ${ID} \\
        --topic '<short title of what you did>' \\
        --model claude-opus-4-8 \\
@@ -46,7 +50,8 @@ Research IdeaFlow idea ${ID}. Work in this repo. Steps:
        --tokens <approx tokens used> \\
        --status tracking
    If the idea already has a natural stage, add --stage <slug> too.
-5. Print the new ResearchEntry id and a two-line summary.
+6. Print the new ResearchEntry id, how many feeds you registered, and a
+   two-line summary.
 PROMPT
 
 echo "→ Researching idea ${ID}; report scratch file: ${REPORT}" >&2
