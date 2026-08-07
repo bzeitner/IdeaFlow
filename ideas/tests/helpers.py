@@ -2,7 +2,7 @@
 
 from django.contrib.auth.models import User
 
-from ideas.models import AIModel, Category, Idea, Stage, Status
+from ideas.models import AIModel, Category, Feed, FeedItem, Idea, Stage, Status
 
 MODEL_BACKEND = "django.contrib.auth.backends.ModelBackend"
 
@@ -29,6 +29,16 @@ def make_idea(category=None, status=Status.CURRENT, **kwargs):
     return Idea.objects.create(
         category=category or make_category(), status=status, **kwargs
     )
+
+
+def make_feed(**kwargs):
+    kwargs.setdefault("url", f"https://example.com/feed-{next(_counter)}.xml")
+    return Feed.objects.create(**kwargs)
+
+
+def make_feed_item(feed=None, **kwargs):
+    kwargs.setdefault("guid", f"guid-{next(_counter)}")
+    return FeedItem.objects.create(feed=feed or make_feed(), **kwargs)
 
 
 def make_user(email="user@example.com", roles=(), **extra):

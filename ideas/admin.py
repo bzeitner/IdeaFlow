@@ -2,7 +2,17 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 
-from .models import AIModel, Category, Idea, Profile, Resource, ResearchEntry, Stage
+from .models import (
+    AIModel,
+    Category,
+    Feed,
+    FeedItem,
+    Idea,
+    Profile,
+    Resource,
+    ResearchEntry,
+    Stage,
+)
 
 admin.site.site_header = "IdeaFlow Administration"
 admin.site.site_title = "IdeaFlow"
@@ -79,6 +89,47 @@ class ResearchEntryAdmin(admin.ModelAdmin):
     search_fields = ("topic", "focus", "context", "idea__title")
     list_select_related = ("idea", "model")
     date_hierarchy = "occurred_at"
+
+
+@admin.register(Feed)
+class FeedAdmin(admin.ModelAdmin):
+    list_display = ("title", "url", "is_active", "item_count", "last_fetched_at")
+    list_editable = ("is_active",)
+    list_filter = ("is_active",)
+    search_fields = ("title", "url")
+    filter_horizontal = ("ideas",)
+    readonly_fields = ("etag", "last_modified", "last_fetched_at", "created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(_items=Count("items"))
+
+    @admin.display(description="Items", ordering="_items")
+    def item_count(self, obj):
+        return obj._items
+
+
+@admin.register(FeedItem)
+class FeedItemAdmin(admin.ModelAdmin):
+    # interest / info_value are yours to set, right from the list.
+    list_display = (
+        "title",
+        "feed",
+        "published_at",
+        "usefulness",
+        "interest",
+        "info_value",
+        "is_summarized",
+    )
+    list_editable = ("interest", "info_value")
+    list_filter = ("feed", "usefulness", "interest", "info_value", "summary_model")
+    search_fields = ("title", "summary", "guid", "link")
+    list_select_related = ("feed", "summary_model")
+    date_hierarchy = "published_at"
+    readonly_fields = ("guid", "content_hash", "summarized_at", "created_at")
+
+    @admin.display(boolean=True, description="Summarized")
+    def is_summarized(self, obj):
+        return obj.is_summarized
 
 
 @admin.register(Profile)
