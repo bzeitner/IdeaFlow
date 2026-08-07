@@ -1,10 +1,17 @@
 {% extends "ideas/base.html" %}
 {% block title %}{% if idea %}Edit{% else %}New{% endif %} Idea · IdeaFlow{% endblock %}
 {% block content %}
-  <h2>{% if idea %}Edit Idea{% else %}Capture an Idea{% endif %}</h2>
-
   <form method="post" class="idea-form">
     {% csrf_token %}
+
+    <div class="form-topbar">
+      <h2>{% if idea %}Edit Idea{% else %}Capture an Idea{% endif %}</h2>
+      <div class="form-topbar-actions">
+        <a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a>
+        <button class="btn primary" type="submit">Save Idea</button>
+      </div>
+    </div>
+
     {{ form.non_field_errors }}
 
     {% for field in form %}
