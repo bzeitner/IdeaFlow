@@ -198,3 +198,11 @@ SOCIALACCOUNT_PROVIDERS = {
         'SCOPE': ['profile', 'email'],
     },
 }
+
+
+# Agent API (ideas/api.py)
+#
+# Shared bearer token for the machine-readable /api/ endpoints an external agent
+# uses to read ideas and report effort. Empty (the default) disables the API
+# entirely, so it stays off until you deliberately set a token.
+IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
