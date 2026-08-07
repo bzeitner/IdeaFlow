@@ -155,3 +155,71 @@ class ApiEffortTests(TestCase):
         idea = make_idea()
         response = self.client.get(f"/api/ideas/{idea.pk}/effort/", **AUTH)
         self.assertEqual(response.status_code, 405)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiFeedTests(TestCase):
+    def _post(self, path, payload):
+        return self.client.post(
+            path, data=json.dumps(payload), content_type="application/json", **AUTH
+        )
+
+    def test_add_feed_creates_and_links_idea(self):
+        from .helpers import make_idea as _mk
+
+        idea = _mk()
+        r = self._post(
+            "/api/feeds/", {"url": "https://ex.com/f.xml", "title": "F", "idea_id": idea.pk}
+        )
+        self.assertEqual(r.status_code, 201)
+        from ideas.models import Feed
+
+        feed = Feed.objects.get(url="https://ex.com/f.xml")
+        self.assertIn(idea, feed.ideas.all())
+
+    def test_add_feed_is_idempotent(self):
+        self._post("/api/feeds/", {"url": "https://ex.com/f.xml"})
+        r = self._post("/api/feeds/", {"url": "https://ex.com/f.xml"})
+        self.assertEqual(r.status_code, 200)  # reused, not created
+        from ideas.models import Feed
+
+        self.assertEqual(Feed.objects.filter(url="https://ex.com/f.xml").count(), 1)
+
+    def test_add_feed_requires_url(self):
+        r = self._post("/api/feeds/", {"title": "no url"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_feed_items_unsummarized_filter(self):
+        from .helpers import make_feed, make_feed_item
+
+        feed = make_feed()
+        make_feed_item(feed=feed, guid="a")
+        done = make_feed_item(feed=feed, guid="b")
+        from ideas.feeds import record_feed_item_summary
+
+        record_feed_item_summary(done, summary="s", usefulness=3)
+        r = self.client.get("/api/feed-items/?unsummarized=1", **AUTH)
+        guids = {i["guid"] for i in r.json()["items"]}
+        self.assertEqual(guids, {"a"})
+
+    def test_summarize_feed_item(self):
+        from .helpers import make_feed_item
+
+        item = make_feed_item()
+        r = self._post(
+            f"/api/feed-items/{item.pk}/summarize/",
+            {"summary": "Gist.", "model": "other", "usefulness": 4},
+        )
+        self.assertEqual(r.status_code, 201)
+        item.refresh_from_db()
+        self.assertEqual(item.usefulness, 4)
+        self.assertTrue(item.is_summarized)
+
+    def test_summarize_bad_usefulness_is_400(self):
+        from .helpers import make_feed_item
+
+        item = make_feed_item()
+        r = self._post(
+            f"/api/feed-items/{item.pk}/summarize/", {"summary": "x", "usefulness": 9}
+        )
+        self.assertEqual(r.status_code, 400)

@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Remote client for a deployed IdeaFlow.
+
+Lets an agent on ANY machine drive the read/report loop over the HTTP API — no
+repo checkout or database access needed. Pure standard library, so there's
+nothing to pip install; you just need python3.
+
+Configure via environment:
+  IDEAFLOW_API_BASE    default https://ideaflow.bitesoftheweek.com
+  IDEAFLOW_API_TOKEN   the shared bearer token (required)
+
+Commands:
+  ideaflow list-ideas [--status current|tracking|archived]
+  ideaflow dump-idea <id>
+  ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
+                      [--focus F] [--effort N] [--quality N] [--tokens N]
+                      [--repo-url U --repo-label L] [--stage S] [--status S]
+  ideaflow add-feed --url URL [--idea <id>] [--title T]
+  ideaflow feed-items [--unsummarized] [--feed <id>]
+  ideaflow summarize-item <id> [--summary-file F | --summary S]
+                      [--model M] [--usefulness N]
+
+Every command prints the JSON the server returned.
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+DEFAULT_BASE = "https://ideaflow.bitesoftheweek.com"
+
+
+def _request(method, path, *, params=None, body=None):
+    base = os.environ.get("IDEAFLOW_API_BASE", DEFAULT_BASE).rstrip("/")
+    token = os.environ.get("IDEAFLOW_API_TOKEN", "").strip()
+    if not token:
+        sys.exit("error: IDEAFLOW_API_TOKEN is not set.")
+
+    url = f"{base}/api{path}"
+    if params:
+        query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+        if query:
+            url = f"{url}?{query}"
+
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        sys.exit(f"error: HTTP {exc.code} from {url}\n{detail}")
+    except urllib.error.URLError as exc:
+        sys.exit(f"error: could not reach {url}: {exc.reason}")
+
+
+def _read_text(inline, path):
+    if path:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    return inline or ""
+
+
+def cmd_list_ideas(a):
+    return _request("GET", "/ideas/", params={"status": a.status})
+
+
+def cmd_dump_idea(a):
+    return _request("GET", f"/ideas/{a.id}/")
+
+
+def cmd_log_effort(a):
+    body = {
+        "topic": a.topic,
+        "model": a.model,
+        "context": _read_text(a.context, a.context_file),
+        "focus": a.focus,
+        "effort": a.effort,
+        "quality": a.quality,
+        "tokens_used": a.tokens,
+        "stage": a.stage,
+        "status": a.status,
+    }
+    if a.repo_url:
+        body["resource"] = {"url": a.repo_url, "label": a.repo_label or ""}
+    return _request("POST", f"/ideas/{a.id}/effort/", body=body)
+
+
+def cmd_add_feed(a):
+    body = {"url": a.url, "title": a.title or ""}
+    if a.idea:
+        body["idea_id"] = a.idea
+    return _request("POST", "/feeds/", body=body)
+
+
+def cmd_feed_items(a):
+    params = {"feed": a.feed}
+    if a.unsummarized:
+        params["unsummarized"] = "1"
+    return _request("GET", "/feed-items/", params=params)
+
+
+def cmd_summarize_item(a):
+    body = {
+        "summary": _read_text(a.summary, a.summary_file),
+        "model": a.model,
+        "usefulness": a.usefulness,
+    }
+    return _request("POST", f"/feed-items/{a.id}/summarize/", body=body)
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="ideaflow", description="Remote IdeaFlow client.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("list-ideas")
+    s.add_argument("--status")
+    s.set_defaults(func=cmd_list_ideas)
+
+    s = sub.add_parser("dump-idea")
+    s.add_argument("id", type=int)
+    s.set_defaults(func=cmd_dump_idea)
+
+    s = sub.add_parser("log-effort")
+    s.add_argument("id", type=int)
+    s.add_argument("--topic", required=True)
+    s.add_argument("--model", default="other")
+    s.add_argument("--context", default="")
+    s.add_argument("--context-file")
+    s.add_argument("--focus", default="")
+    s.add_argument("--effort", type=int, default=3)
+    s.add_argument("--quality", type=int, default=3)
+    s.add_argument("--tokens", type=int)
+    s.add_argument("--repo-url")
+    s.add_argument("--repo-label", default="")
+    s.add_argument("--stage")
+    s.add_argument("--status")
+    s.set_defaults(func=cmd_log_effort)
+
+    s = sub.add_parser("add-feed")
+    s.add_argument("--url", required=True)
+    s.add_argument("--idea", type=int)
+    s.add_argument("--title", default="")
+    s.set_defaults(func=cmd_add_feed)
+
+    s = sub.add_parser("feed-items")
+    s.add_argument("--unsummarized", action="store_true")
+    s.add_argument("--feed", type=int)
+    s.set_defaults(func=cmd_feed_items)
+
+    s = sub.add_parser("summarize-item")
+    s.add_argument("id", type=int)
+    s.add_argument("--summary", default="")
+    s.add_argument("--summary-file")
+    s.add_argument("--model", default="other")
+    s.add_argument("--usefulness", type=int)
+    s.set_defaults(func=cmd_summarize_item)
+
+    return p
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    print(json.dumps(args.func(args), indent=2))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,8 +1,10 @@
-# Deploying IdeaFlow to DigitalOcean (bitesoftheweek.com)
+# Deploying IdeaFlow to DigitalOcean (ideaflow.bitesoftheweek.com)
 
 A start-to-finish runbook: one $12 droplet running Django (gunicorn) + nginx +
-Postgres, fronted by Cloudflare for DNS and TLS. Follow the steps in order.
-Config files referenced here live in this `deploy/` folder.
+Postgres, fronted by Cloudflare for DNS and TLS. The app is served at
+**ideaflow.bitesoftheweek.com** (a subdomain of your base bitesoftheweek.com).
+Follow the steps in order. Config files referenced here live in this `deploy/`
+folder.
 
 Conventions: the server app user is **`ideaflow`**, code lives at
 **`/home/ideaflow/IdeaFlow`**, the virtualenv at **`.venv`** inside it.
@@ -15,7 +17,7 @@ Commands prefixed `#` run as root/sudo; `$` run as the `ideaflow` user.
 - A DigitalOcean account and an SSH key you can use.
 - The domain **bitesoftheweek.com** registered (any registrar).
 - A **Cloudflare** account (free plan is fine).
-- A **Google OAuth client** — you'll create/point it at the prod domain in step 9.
+- A **Google OAuth client** — you'll create/point it at the prod domain in step 11.
 
 ---
 
@@ -97,12 +99,39 @@ systemctl restart postgresql
 
 ---
 
-## 5. Clone the code and build the environment
+## 5. Give the server read-only access to the repo (deploy key)
+
+So `git pull` works on the server without your personal credentials, add a
+**read-only deploy key** — an SSH key whose public half is registered on just
+this one GitHub repo.
+
+```bash
+# as ideaflow
+ssh-keygen -t ed25519 -C "ideaflow-deploy" -f ~/.ssh/ideaflow_deploy -N ""
+cat ~/.ssh/ideaflow_deploy.pub
+```
+
+Copy that public key, then in GitHub: **repo → Settings → Deploy keys → Add
+deploy key** — paste it, title it `droplet`, leave **Allow write access
+unchecked**. Tell SSH to use this key for GitHub, and trust the host:
+
+```bash
+# as ideaflow
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/ideaflow_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+ssh -T git@github.com   # expect "Hi bzeitner/IdeaFlow! You've successfully authenticated"
+```
+
+## 6. Clone the code and build the environment
 
 ```bash
 # as ideaflow
 cd ~
-git clone https://github.com/bzeitner/IdeaFlow.git
+git clone git@github.com:bzeitner/IdeaFlow.git   # SSH URL — uses the deploy key
 cd IdeaFlow
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -119,11 +148,11 @@ nano .env
 
 `.env` must have at least: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
 `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, and `DATABASE_URL`.
-Google keys come in step 9.
+Google keys come in step 11.
 
 ---
 
-## 6. Initialize the app
+## 7. Initialize the app
 
 ```bash
 # as ideaflow, in ~/IdeaFlow
@@ -133,7 +162,7 @@ Google keys come in step 9.
 
 # Set the Sites-framework domain so callbacks/emails use the real host
 .venv/bin/python manage.py shell --no-imports -c \
-  "from django.contrib.sites.models import Site; s=Site.objects.get(id=1); s.domain='bitesoftheweek.com'; s.name='IdeaFlow'; s.save()"
+  "from django.contrib.sites.models import Site; s=Site.objects.get(id=1); s.domain='ideaflow.bitesoftheweek.com'; s.name='IdeaFlow'; s.save()"
 ```
 
 Quick smoke test (bind to localhost, Ctrl-C when done):
@@ -145,7 +174,7 @@ Quick smoke test (bind to localhost, Ctrl-C when done):
 
 ---
 
-## 7. Run it as a service (gunicorn + systemd)
+## 8. Run it as a service (gunicorn + systemd)
 
 ```bash
 # as root
@@ -160,7 +189,7 @@ a `.env` value or DB password).
 
 ---
 
-## 8. nginx reverse proxy + Cloudflare origin cert
+## 9. nginx reverse proxy + Cloudflare origin cert
 
 First get an origin certificate from Cloudflare (valid 15 years, no renewals):
 
@@ -194,7 +223,7 @@ nginx -t && systemctl reload nginx
 
 ---
 
-## 9. Cloudflare DNS + TLS mode ("cloudify")
+## 10. Cloudflare DNS + TLS mode ("cloudify")
 
 1. Cloudflare → **Add a site** → `bitesoftheweek.com` → Free plan.
 2. Cloudflare gives you two **nameservers**. At your **domain registrar**, replace
@@ -202,26 +231,25 @@ nginx -t && systemctl reload nginx
 3. Back in Cloudflare → **DNS → Records**, add:
    | Type | Name | Content | Proxy |
    |------|------|---------|-------|
-   | A | `bitesoftheweek.com` (`@`) | `SERVER_IP` | Proxied (orange) |
-   | CNAME | `www` | `bitesoftheweek.com` | Proxied (orange) |
-4. **SSL/TLS → Overview → Full (strict)** — this validates the origin cert from step 8.
+   | A | `ideaflow` | `SERVER_IP` | Proxied (orange) |
+4. **SSL/TLS → Overview → Full (strict)** — this validates the origin cert from step 9.
 5. **SSL/TLS → Edge Certificates → Always Use HTTPS: On.**
 
 Verify once DNS propagates:
 
 ```bash
-curl -I https://bitesoftheweek.com/     # 200, and the landing page
+curl -I https://ideaflow.bitesoftheweek.com/     # 200, and the landing page
 ```
 
 ---
 
-## 10. Google OAuth for the production domain
+## 11. Google OAuth for the production domain
 
 In [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services
 → Credentials → your OAuth client** (or create a new Web application):
 
 - **Authorized redirect URI:**
-  `https://bitesoftheweek.com/accounts/google/login/callback/`
+  `https://ideaflow.bitesoftheweek.com/accounts/google/login/callback/`
 - (Add the `www` variant too if you'll use it.)
 
 Put the client ID/secret in `.env`, then restart:
@@ -232,12 +260,12 @@ nano ~/IdeaFlow/.env         # GOOGLE_OAUTH_CLIENT_ID / _SECRET
 sudo systemctl restart ideaflow
 ```
 
-Sign in at https://bitesoftheweek.com/ — `bzeitner@gmail.com` is auto-granted
+Sign in at https://ideaflow.bitesoftheweek.com/ — `bzeitner@gmail.com` is auto-granted
 every role on first sign-in.
 
 ---
 
-## 11. Scheduled feeds + database backups
+## 12. Scheduled feeds + database backups
 
 Feeds (hourly, idempotent):
 
@@ -263,7 +291,7 @@ DigitalOcean weekly droplet backups (in the DO panel) are a good extra layer.
 
 ---
 
-## 12. Day-to-day: deploying updates
+## 13. Day-to-day: deploying updates
 
 Everything is a git pull away. From the server:
 
@@ -290,13 +318,52 @@ them at the server's HTTP API by setting `IDEAFLOW_API_TOKEN` on both ends.
 
 ---
 
-## 13. Troubleshooting
+## 14. Running agents from another machine
+
+The research agents (`research_idea.sh`, `research_all.sh`, `/research-idea`)
+run on your laptop or any box — not the droplet. They talk to the deployed hub
+over its HTTP API through `tools/ideaflow`, so a remote machine needs two things:
+
+**1. The agent files.** Clone the repo (a read-only clone is fine):
+
+```bash
+git clone git@github.com:bzeitner/IdeaFlow.git   # or the https URL, if you have access
+cd IdeaFlow
+```
+
+That gives you `tools/ideaflow` (a standalone, dependency-free Python client),
+`research_idea.sh`, `research_all.sh`, and the `/research-idea` command. Only
+`python3` and the `claude` CLI are needed on that machine — no venv, no database.
+
+**2. API access.** Turn the API on by setting `IDEAFLOW_API_TOKEN` in the
+server's `.env` (step 6), then give the same token to the remote agent:
+
+```bash
+export IDEAFLOW_API_BASE=https://ideaflow.bitesoftheweek.com   # already the default
+export IDEAFLOW_API_TOKEN=<the token from the server .env>
+```
+
+Then the whole loop works remotely:
+
+```bash
+./tools/ideaflow list-ideas
+./tools/ideaflow dump-idea 3
+./research_idea.sh 3                       # research + report an idea
+./tools/ideaflow feed-items --unsummarized # the ingest agent's work queue
+```
+
+`IDEAFLOW_API_BASE` defaults to the production URL, so in practice you only need
+to export the token.
+
+---
+
+## 15. Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | 502 Bad Gateway | `systemctl status ideaflow`, `journalctl -u ideaflow -n 50` — app not running |
 | 400 Bad Request | `DJANGO_ALLOWED_HOSTS` missing the domain |
-| CSRF "origin doesn't match" on login | `DJANGO_CSRF_TRUSTED_ORIGINS` must list `https://bitesoftheweek.com` |
+| CSRF "origin doesn't match" on login | `DJANGO_CSRF_TRUSTED_ORIGINS` must list `https://ideaflow.bitesoftheweek.com` |
 | Admin/CSS unstyled | re-run `collectstatic`; confirm WhiteNoise middleware present |
 | Redirect loop | Cloudflare SSL mode must be **Full (strict)**, not Flexible |
 | Google login "redirect_uri_mismatch" | the callback URL in Google must match exactly, https + trailing slash |
