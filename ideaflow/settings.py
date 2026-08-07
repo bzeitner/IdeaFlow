@@ -31,6 +31,13 @@ def env_list(name, default=""):
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def env_int(name, default=0):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
 # No fallback on purpose — a default here would ship as a real deployment's key.
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -70,6 +77,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serves collected static files in production (right after
+    # SecurityMiddleware, per its docs). Harmless in local dev.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -152,6 +162,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# collectstatic gathers everything here for WhiteNoise to serve in production.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -206,3 +224,23 @@ SOCIALACCOUNT_PROVIDERS = {
 # uses to read ideas and report effort. Empty (the default) disables the API
 # entirely, so it stays off until you deliberately set a token.
 IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
+
+
+# Production hardening (behind nginx + Cloudflare)
+#
+# nginx terminates TLS and forwards X-Forwarded-Proto, so Django knows the
+# original request was HTTPS. CSRF_TRUSTED_ORIGINS must list the real https
+# origins (Django 4+ requires the scheme). All env-driven, so local dev over
+# http is unaffected.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Cloudflare + nginx already redirect http->https; leave SECURE_SSL_REDIRECT
+    # off here to avoid redirect loops with a proxy in front.
+    SECURE_HSTS_SECONDS = env_int('DJANGO_HSTS_SECONDS', 0)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+    SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
