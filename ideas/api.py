@@ -21,9 +21,15 @@ from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Idea
+from .feeds import record_feed_item_summary
+from .models import Feed, FeedItem, Idea
 from .reporting import record_effort
-from .serialize import idea_to_dict, research_entry_to_dict
+from .serialize import (
+    feed_item_to_dict,
+    feed_to_dict,
+    idea_to_dict,
+    research_entry_to_dict,
+)
 
 _DETAIL_PREFETCH = (
     "resources",
@@ -137,8 +143,78 @@ def idea_effort(request, pk):
     )
 
 
+@require_api_token
+def feed_list(request):
+    if request.method == "GET":
+        feeds = Feed.objects.select_related().all()
+        return JsonResponse({"feeds": [feed_to_dict(f) for f in feeds]})
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body or b"{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+        url = (payload.get("url") or "").strip()
+        if not url:
+            return JsonResponse({"error": "url is required."}, status=400)
+        feed, created = Feed.objects.get_or_create(
+            url=url, defaults={"title": payload.get("title", "")}
+        )
+        if payload.get("title") and not feed.title:
+            feed.title = payload["title"]
+            feed.save(update_fields=["title"])
+        idea_id = payload.get("idea_id")
+        if idea_id:
+            idea = Idea.objects.filter(pk=idea_id).first()
+            if idea is None:
+                return JsonResponse({"error": f"No idea with id {idea_id}."}, status=400)
+            feed.ideas.add(idea)
+        return JsonResponse(feed_to_dict(feed), status=201 if created else 200)
+    return HttpResponseNotAllowed(["GET", "POST"])
+
+
+@require_api_token
+def feed_item_list(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    items = FeedItem.objects.select_related("feed", "summary_model")
+    if request.GET.get("feed"):
+        items = items.filter(feed_id=request.GET["feed"])
+    if request.GET.get("unsummarized"):
+        items = items.filter(summarized_at__isnull=True)
+    return JsonResponse({"items": [feed_item_to_dict(i) for i in items]})
+
+
+@require_api_token
+def feed_item_summarize(request, pk):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    item = get_object_or_404(FeedItem, pk=pk)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    try:
+        record_feed_item_summary(
+            item,
+            summary=payload.get("summary", ""),
+            model=payload.get("model", "other"),
+            usefulness=payload.get("usefulness"),
+        )
+    except (ValueError, LookupError) as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    item = FeedItem.objects.select_related("feed", "summary_model").get(pk=item.pk)
+    return JsonResponse(feed_item_to_dict(item), status=201)
+
+
 urlpatterns = [
     path("ideas/", idea_list, name="api_idea_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
     path("ideas/<int:pk>/effort/", idea_effort, name="api_idea_effort"),
+    path("feeds/", feed_list, name="api_feed_list"),
+    path("feed-items/", feed_item_list, name="api_feed_item_list"),
+    path(
+        "feed-items/<int:pk>/summarize/",
+        feed_item_summarize,
+        name="api_feed_item_summarize",
+    ),
 ]

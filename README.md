@@ -176,24 +176,44 @@ IDEAFLOW_API_TOKEN=your-long-random-token
 
 Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 
+Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
+
 | Method & path | Does |
 | --- | --- |
 | `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
+| `GET /api/feeds/` · `POST /api/feeds/` | List feeds · register one (`{url, title?, idea_id?}`) |
+| `GET /api/feed-items/` | Feed items (`?unsummarized=1`, `?feed=<id>`) |
+| `POST /api/feed-items/<id>/summarize/` | Agent summary + usefulness (`{summary, model, usefulness}`) |
 
 ```bash
 curl -H "Authorization: Bearer $IDEAFLOW_API_TOKEN" \
-  http://127.0.0.1:8000/api/ideas/12/
-
-curl -X POST -H "Authorization: Bearer $IDEAFLOW_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"topic":"Prototyped it","model":"claude-opus-4-8","context":"...",
-       "effort":4,"quality":5,"tokens_used":180000,
-       "resource":{"label":"Repo","url":"https://github.com/you/csv-importer"},
-       "stage":"prototyping","status":"tracking"}' \
-  http://127.0.0.1:8000/api/ideas/12/effort/
+  https://ideaflow.bitesoftheweek.com/api/ideas/12/
 ```
+
+### From another machine: the `tools/ideaflow` client
+
+`tools/ideaflow` is a standalone, dependency-free (stdlib-only) client that
+wraps the API, so an agent on any box drives the whole loop without a repo/DB.
+Point it at the deployed hub and give it the token:
+
+```bash
+export IDEAFLOW_API_BASE=https://ideaflow.bitesoftheweek.com   # already the default
+export IDEAFLOW_API_TOKEN=<the token from the server .env>
+
+./tools/ideaflow list-ideas
+./tools/ideaflow dump-idea 12
+./tools/ideaflow log-effort 12 --topic "Prototyped it" --model claude-opus-4-8 \
+  --context-file report.md --effort 4 --quality 5 --tokens 180000 --status tracking
+./tools/ideaflow add-feed --url https://example.com/feed.xml --idea 12
+./tools/ideaflow feed-items --unsummarized
+./tools/ideaflow summarize-item 42 --summary-file s.md --model claude-opus-4-8 --usefulness 4
+```
+
+The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
+command all drive this client, so they run from any machine — see
+[`deploy/README.md`](deploy/README.md) §14 for the "clone + set token" bootstrap.
 
 The POST body's only required field is `topic`; everything else is optional. It returns the
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no
