@@ -295,6 +295,11 @@ class Profile(models.Model):
     def can_manage_status(self, status):
         return self.has_role(self.STATUS_ROLE[status])
 
+    @property
+    def can_read_feeds(self):
+        """Anyone who manages ideas can read + rate the shared feed items."""
+        return self.has_role("role_current", "role_tracking", "role_archive")
+
     def save(self, *args, **kwargs):
         # role_admin is the only role with Django-admin implications, so keep
         # is_staff/is_superuser mirroring it instead of managing them separately.

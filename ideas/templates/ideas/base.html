@@ -15,6 +15,9 @@
           <a class="btn" href="{% url 'ideas:user_management' %}">Users</a>
           <a class="btn" href="{% url 'admin:index' %}">Manage</a>
         {% endif %}
+        {% if user.profile.can_read_feeds %}
+          <a class="btn" href="{% url 'ideas:feeds' %}">Feeds</a>
+        {% endif %}
         {% if user.profile.role_admin or user.profile.role_add_ideas %}
           <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
         {% endif %}

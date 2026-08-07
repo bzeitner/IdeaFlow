@@ -1,0 +1,73 @@
+{% extends "ideas/base.html" %}
+{% block title %}Feeds · IdeaFlow{% endblock %}
+{% block content %}
+  <div class="feeds-head">
+    <h2>Feeds</h2>
+    <div class="feeds-filter">
+      <a class="btn small {% if not unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}">All</a>
+      <a class="btn small {% if unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}?unrated=1">Unrated</a>
+    </div>
+  </div>
+
+  {% for row in rows %}
+    {% with item=row.item %}
+      <article class="feed-item" id="item-{{ item.id }}">
+        <h3>
+          {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title|default:"(untitled)" }}</a>
+          {% else %}{{ item.title|default:"(untitled)" }}{% endif %}
+        </h3>
+        <p class="feed-meta dim">
+          {{ item.feed.title|default:item.feed.url }}
+          {% if item.published_at %} · {{ item.published_at|date:"M j, Y" }}{% endif %}
+        </p>
+
+        {% if item.summary %}<p class="feed-summary">{{ item.summary }}</p>
+        {% else %}<p class="feed-summary dim">Not summarized yet.</p>{% endif %}
+
+        <div class="feed-ratings">
+          <form method="post" action="{% url 'ideas:rate_feed_item' item.id %}" class="rate-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ querystring }}">
+            <div class="rate-row">
+              <span class="rate-label">Interest</span>
+              {% for n, filled in row.interest_stars %}
+                <button type="submit" name="interest" value="{{ n }}"
+                        class="star-btn {% if filled %}on{% endif %}" title="{{ n }} / 5">
+                  {% if filled %}★{% else %}☆{% endif %}</button>
+              {% endfor %}
+            </div>
+            <div class="rate-row">
+              <span class="rate-label">Info value</span>
+              {% for n, filled in row.info_value_stars %}
+                <button type="submit" name="info_value" value="{{ n }}"
+                        class="star-btn {% if filled %}on{% endif %}" title="{{ n }} / 5">
+                  {% if filled %}★{% else %}☆{% endif %}</button>
+              {% endfor %}
+            </div>
+          </form>
+          <div class="rate-row muted">
+            <span class="rate-label">Usefulness{% if item.summary_model %} · {{ item.summary_model.name }}{% endif %}</span>
+            {% for n, filled in row.usefulness_stars %}
+              <span class="star {% if filled %}on{% endif %}">{% if filled %}★{% else %}☆{% endif %}</span>
+            {% endfor %}
+            <span class="dim rate-agent-note">(agent)</span>
+          </div>
+        </div>
+      </article>
+    {% endwith %}
+  {% empty %}
+    <p class="dim">No feed items{% if unrated %} left to rate{% endif %}. Run <code>refresh_feeds</code> to pull some in.</p>
+  {% endfor %}
+
+  {% if page.has_other_pages %}
+    <nav class="pager">
+      {% if page.has_previous %}
+        <a class="btn small" href="?page={{ page.previous_page_number }}{% if unrated %}&unrated=1{% endif %}">← Prev</a>
+      {% endif %}
+      <span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="btn small" href="?page={{ page.next_page_number }}{% if unrated %}&unrated=1{% endif %}">Next →</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

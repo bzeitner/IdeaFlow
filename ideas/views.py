@@ -2,11 +2,21 @@ from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from .forms import IdeaForm, ResearchEntryFormSet, ResourceFormSet
-from .models import Idea, Profile, Status
+from .models import FeedItem, Idea, Profile, Status
+
+STAR_RANGE = [1, 2, 3, 4, 5]
+
+
+def _stars(value):
+    """[(n, filled), ...] for rendering a 1-5 star row from an optional value."""
+    filled_to = value or 0
+    return [(n, n <= filled_to) for n in STAR_RANGE]
 
 TAB_SPEC = [
     (Status.CURRENT, "Current", "ideas:current"),
@@ -183,6 +193,58 @@ def set_status(request, pk, status):
             request, f"Moved “{idea.title}” to {idea.get_status_display()}."
         )
     return redirect(request.POST.get("next") or "ideas:home")
+
+
+@role_required("role_current", "role_tracking", "role_archive")
+def feeds(request):
+    """Read the shared feed items and rate them (interest + info value)."""
+    items = FeedItem.objects.select_related("feed", "summary_model")
+    unrated = bool(request.GET.get("unrated"))
+    if unrated:
+        items = items.filter(interest__isnull=True)
+    page = Paginator(items, 25).get_page(request.GET.get("page"))
+    rows = [
+        {
+            "item": item,
+            "interest_stars": _stars(item.interest),
+            "info_value_stars": _stars(item.info_value),
+            "usefulness_stars": _stars(item.usefulness),
+        }
+        for item in page
+    ]
+    querystring = f"?{request.GET.urlencode()}" if request.GET else ""
+    return render(
+        request,
+        "ideas/feeds.html",
+        {
+            "rows": rows,
+            "page": page,
+            "unrated": unrated,
+            "querystring": querystring,
+            "tabs": _tabs(request.user.profile),
+        },
+    )
+
+
+@role_required("role_current", "role_tracking", "role_archive")
+def rate_feed_item(request, pk):
+    """Set one of the personal ratings (interest / info_value) from the feed page."""
+    if request.method != "POST":
+        return redirect("ideas:feeds")
+    item = get_object_or_404(FeedItem, pk=pk)
+    for field in ("interest", "info_value"):
+        if field in request.POST:
+            try:
+                value = int(request.POST[field])
+            except (TypeError, ValueError):
+                break
+            if 1 <= value <= 5:
+                setattr(item, field, value)
+                item.save(update_fields=[field])
+            break
+    # Return the user to the same page/filter, scrolled to the item they rated.
+    back = request.POST.get("next", "")
+    return redirect(f"{reverse('ideas:feeds')}{back}#item-{pk}")
 
 
 @role_required()

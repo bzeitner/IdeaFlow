@@ -3,7 +3,13 @@ from django.urls import reverse
 
 from ideas.models import Idea, Profile, Status
 
-from .helpers import MODEL_BACKEND, make_category, make_idea, make_user
+from .helpers import (
+    MODEL_BACKEND,
+    make_category,
+    make_feed_item,
+    make_idea,
+    make_user,
+)
 
 
 class HomeViewTests(TestCase):
@@ -321,3 +327,60 @@ class GoogleOnlySignInTests(TestCase):
         self.assertContains(
             response, '<form method="post" action="/accounts/google/login/"'
         )
+
+
+class FeedPageTests(TestCase):
+    def _login(self, roles=("role_current",)):
+        user = make_user(roles=list(roles))
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        return user
+
+    def test_no_role_user_is_denied(self):
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:feeds"))
+        self.assertRedirects(response, reverse("ideas:home"))
+
+    def test_manager_sees_feed_items(self):
+        self._login()
+        item = make_feed_item(title="Hello World", summary="A summary.")
+        response = self.client.get(reverse("ideas:feeds"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hello World")
+        self.assertContains(response, "A summary.")
+
+    def test_rate_sets_interest(self):
+        self._login()
+        item = make_feed_item()
+        response = self.client.post(
+            reverse("ideas:rate_feed_item", args=[item.pk]), {"interest": "4"}
+        )
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.interest, 4)
+
+    def test_rate_sets_info_value(self):
+        self._login()
+        item = make_feed_item()
+        self.client.post(
+            reverse("ideas:rate_feed_item", args=[item.pk]), {"info_value": "2"}
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.info_value, 2)
+
+    def test_out_of_range_rating_is_ignored(self):
+        self._login()
+        item = make_feed_item()
+        self.client.post(
+            reverse("ideas:rate_feed_item", args=[item.pk]), {"interest": "9"}
+        )
+        item.refresh_from_db()
+        self.assertIsNone(item.interest)
+
+    def test_unrated_filter_hides_rated_items(self):
+        self._login()
+        make_feed_item(title="Rated one", interest=3)
+        make_feed_item(title="Unrated one")
+        response = self.client.get(reverse("ideas:feeds"), {"unrated": "1"})
+        self.assertNotContains(response, "Rated one")
+        self.assertContains(response, "Unrated one")
