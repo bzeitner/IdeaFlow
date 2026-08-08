@@ -88,14 +88,20 @@ GRANT ALL ON SCHEMA public TO ideaflow;
 SQL
 ```
 
-Use a strong password and remember it — it goes in `DATABASE_URL`. The app user
-also gets **peer auth** to the local DB, which is what `backup_db.sh` relies on:
+Use a strong password and remember it — it goes in `DATABASE_URL`.
+
+Ubuntu's default `pg_hba.conf` already ships `local all all peer`, so the OS user
+`ideaflow` can connect to the `ideaflow` database as the `ideaflow` role with no
+password — which is what `backup_db.sh` relies on. Nothing to configure; just
+confirm it works:
 
 ```bash
-# as root — let OS user "ideaflow" connect to DB "ideaflow" without a password
-echo "local   ideaflow   ideaflow   peer" > /etc/postgresql/*/main/conf.d/ideaflow-peer.conf
-systemctl restart postgresql
+# as ideaflow — connects via peer auth, no password prompt
+psql -d ideaflow -c '\conninfo'
 ```
+
+The app itself connects over TCP with the password (via `DATABASE_URL`), which
+Ubuntu's default `host ... 127.0.0.1/32 scram-sha-256` rule already allows.
 
 ---
 
