@@ -123,6 +123,12 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .rate-agent-note { font-size: 11px; margin-left: 4px; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 
+/* Next action on cards */
+.next-line { margin: 8px 0 0; font-size: 13.5px; color: var(--ink); }
+.next-tag { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: middle; }
+
 /* Next action (idea detail) */
 .next-action { background: color-mix(in srgb, var(--accent) 7%, var(--panel));
   border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));

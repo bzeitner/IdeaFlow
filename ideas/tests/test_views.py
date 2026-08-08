@@ -455,3 +455,13 @@ class PublicDetailAccessTests(TestCase):
         self.client.force_login(user, backend=MODEL_BACKEND)
         r = self.client.get(reverse("ideas:edit", args=[idea.pk]))
         self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
+
+
+class CardNextActionTests(TestCase):
+    def test_next_action_shows_on_the_current_tab_card(self):
+        make_idea(title="Has Next", status=Status.CURRENT, next_action="Call the vendor")
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:current"))
+        self.assertContains(response, "Call the vendor")
+        self.assertContains(response, "next-line")
