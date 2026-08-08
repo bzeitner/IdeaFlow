@@ -21,7 +21,7 @@ from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
-from .feeds import record_feed_item_summary
+from .feeds import is_acceptable_feed_url, record_feed_item_summary
 from .models import Feed, FeedItem, Idea
 from .reporting import record_effort
 from .serialize import (
@@ -156,6 +156,10 @@ def feed_list(request):
         url = (payload.get("url") or "").strip()
         if not url:
             return JsonResponse({"error": "url is required."}, status=400)
+        if not is_acceptable_feed_url(url):
+            return JsonResponse(
+                {"error": "url must be http(s) and not a private address."}, status=400
+            )
         feed, created = Feed.objects.get_or_create(
             url=url, defaults={"title": payload.get("title", "")}
         )

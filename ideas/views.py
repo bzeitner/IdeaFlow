@@ -7,6 +7,7 @@ from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from .feeds import is_http_url
 from .forms import IdeaForm, ResearchEntryFormSet, ResourceFormSet
 from .models import FeedItem, Idea, Profile, Status
 
@@ -206,6 +207,9 @@ def feeds(request):
     rows = [
         {
             "item": item,
+            # Only surface http(s) links as clickable — a feed could carry a
+            # javascript:/data: link, which would be stored XSS if rendered.
+            "link": item.link if is_http_url(item.link) else "",
             "interest_stars": _stars(item.interest),
             "info_value_stars": _stars(item.info_value),
             "usefulness_stars": _stars(item.usefulness),

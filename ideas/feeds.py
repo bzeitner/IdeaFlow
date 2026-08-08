@@ -7,13 +7,72 @@ pointing several ideas at the same feed never re-does that work.
 """
 
 import hashlib
+import ipaddress
+import socket
 from datetime import datetime, timezone as dt_timezone
+from urllib.parse import urlsplit
 
 from django.db import transaction
 from django.utils import timezone
 
 from .models import FeedItem
 from .reporting import resolve_ai_model
+
+# Only ever fetch/store web feeds — no file://, ftp://, javascript:, data:, etc.
+ALLOWED_SCHEMES = {"http", "https"}
+
+
+def _ip_or_none(host):
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        return None
+
+
+def _is_public_ip(ip):
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def is_http_url(url):
+    """True for an http/https URL — used to keep rendered links from carrying a
+    javascript:/data: scheme (stored-XSS guard)."""
+    return urlsplit(url or "").scheme in ALLOWED_SCHEMES
+
+
+def is_acceptable_feed_url(url):
+    """Cheap, no-DNS check for *accepting* a feed: http/https, and if the host is
+    a literal IP it must be public. Hostnames are resolved and re-checked at
+    fetch time by is_fetchable_url()."""
+    parts = urlsplit(url or "")
+    if parts.scheme not in ALLOWED_SCHEMES or not parts.hostname:
+        return False
+    ip = _ip_or_none(parts.hostname)
+    return ip is None or _is_public_ip(ip)
+
+
+def is_fetchable_url(url):
+    """Full SSRF guard applied right before fetching: http/https and every
+    resolved address is public. Blocks internal/loopback/link-local targets
+    such as cloud metadata (169.254.169.254) and localhost services."""
+    parts = urlsplit(url or "")
+    if parts.scheme not in ALLOWED_SCHEMES or not parts.hostname:
+        return False
+    ip = _ip_or_none(parts.hostname)
+    if ip is not None:
+        return _is_public_ip(ip)
+    try:
+        infos = socket.getaddrinfo(parts.hostname, None, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return False
+    ips = [ipaddress.ip_address(info[4][0]) for info in infos]
+    return bool(ips) and all(_is_public_ip(ip) for ip in ips)
 
 
 def _guid(entry):
@@ -72,6 +131,11 @@ def fetch_and_ingest(feed):
     """Conditional-GET a feed and ingest new entries. Returns
     (status, new_items). feedparser handles ETag/Last-Modified, so an unchanged
     feed comes back 304 with nothing to do."""
+    # SSRF guard: never let a stored URL point the server at an internal address
+    # (metadata endpoints, localhost services) or a non-web scheme.
+    if not is_fetchable_url(feed.url):
+        raise ValueError(f"Refusing to fetch unsafe or non-public feed URL: {feed.url}")
+
     import feedparser  # lazy: keeps ingest_entries importable/testable without it
 
     parsed = feedparser.parse(

@@ -223,3 +223,18 @@ class ApiFeedTests(TestCase):
             f"/api/feed-items/{item.pk}/summarize/", {"summary": "x", "usefulness": 9}
         )
         self.assertEqual(r.status_code, 400)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiFeedSafetyTests(TestCase):
+    def test_add_feed_rejects_unsafe_url(self):
+        from ideas.models import Feed
+
+        r = self.client.post(
+            "/api/feeds/",
+            data=json.dumps({"url": "http://169.254.169.254/"}),
+            content_type="application/json",
+            **AUTH,
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(Feed.objects.count(), 0)

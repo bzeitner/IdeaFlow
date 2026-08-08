@@ -384,3 +384,14 @@ class FeedPageTests(TestCase):
         response = self.client.get(reverse("ideas:feeds"), {"unrated": "1"})
         self.assertNotContains(response, "Rated one")
         self.assertContains(response, "Unrated one")
+
+
+class FeedLinkXssTests(TestCase):
+    def test_javascript_link_is_not_rendered_as_href(self):
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        make_feed_item(title="Sneaky", link="javascript:alert(document.cookie)")
+        response = self.client.get(reverse("ideas:feeds"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sneaky")          # title still shown
+        self.assertNotContains(response, "javascript:")   # but not as a link
