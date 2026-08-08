@@ -174,3 +174,13 @@ class AddFeedSafetyTests(TestCase):
         with self.assertRaises(CommandError):
             run("add_feed", "--url", "http://169.254.169.254/")
         self.assertEqual(Feed.objects.count(), 0)
+
+
+class NextActionEffortTests(TestCase):
+    def test_record_effort_sets_next_action(self):
+        from ideas.reporting import record_effort
+
+        idea = make_idea()
+        record_effort(idea, topic="Review", model="other", next_action="Ship an MVP")
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Ship an MVP")

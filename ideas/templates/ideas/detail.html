@@ -31,6 +31,18 @@
       <p class="summary">{{ idea.notes|linebreaksbr }}</p>
     {% endif %}
 
+    {% if idea.research_entries.all %}
+      <div class="next-action">
+        <h4>Next action</h4>
+        <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
+          {% csrf_token %}
+          <textarea name="next_action" rows="2"
+                    placeholder="Research is in — what's the single next action?">{{ idea.next_action }}</textarea>
+          <button class="btn primary" type="submit">Save next action</button>
+        </form>
+      </div>
+    {% endif %}
+
     <h4>Research</h4>
     {% if idea.research_entries.all %}
       <ul class="research-list">

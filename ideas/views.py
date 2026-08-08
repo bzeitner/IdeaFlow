@@ -196,6 +196,21 @@ def set_status(request, pk, status):
     return redirect(request.POST.get("next") or "ideas:home")
 
 
+@login_required
+def set_next_action(request, pk):
+    """Set the idea's next action from its detail page (once research exists)."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    idea.next_action = request.POST.get("next_action", "").strip()
+    idea.save(update_fields=["next_action", "updated_at"])
+    messages.success(request, "Next action saved.")
+    return redirect("ideas:detail", pk=pk)
+
+
 @role_required("role_current", "role_tracking", "role_archive")
 def feeds(request):
     """Read the shared feed items and rate them (interest + info value)."""

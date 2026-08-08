@@ -125,6 +125,7 @@ def idea_effort(request, pk):
             resource_label=resource.get("label", ""),
             stage=payload.get("stage"),
             status=payload.get("status"),
+            next_action=payload.get("next_action"),
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

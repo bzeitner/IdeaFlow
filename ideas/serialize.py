@@ -83,6 +83,7 @@ def idea_to_dict(idea, *, detail=True):
     }
     if detail:
         data["notes"] = idea.notes
+        data["next_action"] = idea.next_action
         data["resources"] = [resource_to_dict(r) for r in idea.resources.all()]
         data["research_entries"] = [
             research_entry_to_dict(e) for e in idea.research_entries.all()

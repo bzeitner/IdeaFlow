@@ -70,9 +70,11 @@ def record_effort(
     resource_label="",
     stage=None,
     status=None,
+    next_action=None,
 ):
     """Create a ResearchEntry for `idea`, plus an optional result Resource and an
-    optional stage/status move. Returns (research_entry, resource_or_None).
+    optional stage/status move / next-action update. Returns
+    (research_entry, resource_or_None).
 
     Raises ValueError for bad input and LookupError for an unknown model/stage;
     the transaction means a late failure (e.g. bad status) rolls the entry back.
@@ -104,6 +106,9 @@ def record_effort(
             raise ValueError(f"status must be one of {sorted(VALID_STATUS)}.")
         idea.status = status
         changed.append("status")
+    if next_action is not None:
+        idea.next_action = next_action
+        changed.append("next_action")
     if changed:
         changed.append("updated_at")
         idea.save(update_fields=changed)

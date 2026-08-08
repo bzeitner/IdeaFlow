@@ -52,6 +52,9 @@ class Command(BaseCommand):
             choices=[s.value for s in Status],
             help="Move the idea to this tab.",
         )
+        parser.add_argument(
+            "--next-action", dest="next_action", help="Set the idea's next action."
+        )
 
     def handle(self, *args, **options):
         try:
@@ -81,6 +84,7 @@ class Command(BaseCommand):
                 resource_label=options["resource_label"],
                 stage=options["stage"],
                 status=options["status"],
+                next_action=options["next_action"],
             )
         except (ValueError, LookupError) as exc:
             raise CommandError(str(exc))

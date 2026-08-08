@@ -215,6 +215,15 @@ The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
 command all drive this client, so they run from any machine — see
 [`deploy/README.md`](deploy/README.md) §14 for the "clone + set token" bootstrap.
 
+`research_all.sh` is tiered so an agent always has useful work: it researches
+ideas with no research yet, and when there are none it **reviews** the
+already-researched ones (`research_idea.sh <id> review` — synthesize progress,
+update stage/status, and set each idea's **next action**), and if there are no
+ideas at all it reflects on the project. Flags: `--review`, `--force`,
+`--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
+detail page prompts for that single next action (also settable by the review
+agent via `log-effort --next-action`).
+
 The POST body's only required field is `topic`; everything else is optional. It returns the
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no
 per-user roles — treat it like a password and only enable the API when you need it.
