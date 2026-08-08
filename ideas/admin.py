@@ -74,9 +74,9 @@ class ResearchEntryInline(admin.TabularInline):
 
 @admin.register(Idea)
 class IdeaAdmin(admin.ModelAdmin):
-    list_display = ("title", "category", "status", "stage", "interest_level", "rank")
-    list_editable = ("status", "rank")
-    list_filter = ("status", "category", "stage", "interest_level")
+    list_display = ("title", "category", "status", "stage", "interest_level", "is_public", "rank")
+    list_editable = ("status", "is_public", "rank")
+    list_filter = ("status", "is_public", "category", "stage", "interest_level")
     search_fields = ("title", "summary", "notes")
     list_select_related = ("category", "stage")
     inlines = [ResourceInline, ResearchEntryInline]

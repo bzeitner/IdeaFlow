@@ -6,6 +6,7 @@
   <div class="meta">
     {% include "ideas/_pill.html" with obj=idea.category %}
     {% include "ideas/_pill.html" with obj=idea.stage %}
+    {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
   </div>
   {% if idea.summary %}<p class="summary">{{ idea.summary }}</p>{% endif %}
   {% if idea.resources.all %}
@@ -15,10 +16,12 @@
       {% endfor %}
     </ul>
   {% endif %}
-  <div class="card-actions">
-    <a class="btn small" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
-    {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
-    {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
-    {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
-  </div>
+  {% if can_manage %}
+    <div class="card-actions">
+      <a class="btn small" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+      {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
+      {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
+      {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
+    </div>
+  {% endif %}
 </article>

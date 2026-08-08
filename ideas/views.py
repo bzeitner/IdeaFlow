@@ -76,14 +76,25 @@ def _tabs(profile):
 
 
 def home(request):
-    """Public landing page, or a dispatch to the first tab this user can see."""
+    """Public marketing page for anonymous visitors; for anyone signed in, the
+    home page lists the public projects (viewable by all, editable by none from
+    here). Tab links in the top bar take role-holders to their workspace."""
     if not request.user.is_authenticated:
         return render(request, "ideas/landing.html")
     profile = request.user.profile
-    for status, _label, route in TAB_SPEC:
-        if profile.can_manage_status(status):
-            return redirect(route)
-    return render(request, "ideas/no_access.html")
+    public = Idea.objects.filter(is_public=True).prefetch_related("resources")
+    return render(
+        request,
+        "ideas/home.html",
+        {
+            "ideas": public,
+            "tabs": _tabs(profile),
+            "can_manage": False,
+            "has_any_role": profile.has_role(
+                "role_current", "role_tracking", "role_archive", "role_add_ideas"
+            ),
+        },
+    )
 
 
 def _tab_view(request, status, template):
@@ -91,7 +102,12 @@ def _tab_view(request, status, template):
     return render(
         request,
         template,
-        {"ideas": ideas, "tabs": _tabs(request.user.profile), "active": status},
+        {
+            "ideas": ideas,
+            "tabs": _tabs(request.user.profile),
+            "active": status,
+            "can_manage": True,
+        },
     )
 
 
@@ -118,13 +134,21 @@ def detail(request, pk):
         ),
         pk=pk,
     )
-    denied = _require_status_role(request, idea.status)
-    if denied:
-        return denied
+    can_manage = request.user.profile.can_manage_status(idea.status)
+    # Public ideas are readable by any signed-in user; non-public ones still
+    # require the tab's role. Editing stays gated on can_manage either way.
+    if not (idea.is_public or can_manage):
+        messages.error(request, "You don't have access to that.")
+        return redirect("ideas:home")
     return render(
         request,
         "ideas/detail.html",
-        {"idea": idea, "tabs": _tabs(request.user.profile), "active": idea.status},
+        {
+            "idea": idea,
+            "tabs": _tabs(request.user.profile),
+            "active": idea.status,
+            "can_manage": can_manage,
+        },
     )
 
 

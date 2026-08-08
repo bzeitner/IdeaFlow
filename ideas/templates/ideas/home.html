@@ -1,0 +1,20 @@
+{% extends "ideas/base.html" %}
+{% block title %}Public projects · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Public projects</h2>
+  <p class="lede">Projects shared with everyone signed in. Open one to read it — editing needs the right role.</p>
+  <div class="grid">
+    {% for idea in ideas %}
+      {% include "ideas/_card.html" %}
+    {% empty %}
+      <p class="empty">No public projects yet.</p>
+    {% endfor %}
+  </div>
+
+  {% if not has_any_role %}
+    <p class="dim" style="margin-top:18px">
+      You're signed in as {{ user.email }}. An admin hasn't given you a tab yet — you can
+      still browse the public projects above.
+    </p>
+  {% endif %}
+{% endblock %}

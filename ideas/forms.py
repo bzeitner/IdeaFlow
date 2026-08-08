@@ -29,12 +29,14 @@ class IdeaForm(forms.ModelForm):
             "rank",
             "notes",
             "next_action",
+            "is_public",
         ]
         labels = {
             "title": "Idea Title",
             "summary": "Idea Summary",
             "interest_level": "Interest Level",
             "next_action": "Next Action",
+            "is_public": "Public (visible to everyone signed in)",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),

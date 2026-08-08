@@ -19,36 +19,23 @@ class HomeViewTests(TestCase):
         self.assertTemplateUsed(response, "ideas/landing.html")
         self.assertContains(response, "Sign in with Google")
 
-    def test_user_with_only_current_role_is_sent_to_current(self):
-        user = make_user(roles=["role_current"])
-        self.client.force_login(user, backend=MODEL_BACKEND)
-        response = self.client.get("/")
-        self.assertRedirects(response, reverse("ideas:current"))
-
-    def test_user_with_only_tracking_role_is_sent_to_tracking(self):
-        user = make_user(roles=["role_tracking"])
-        self.client.force_login(user, backend=MODEL_BACKEND)
-        response = self.client.get("/")
-        self.assertRedirects(response, reverse("ideas:tracking"))
-
-    def test_user_with_only_archive_role_is_sent_to_archive(self):
-        user = make_user(roles=["role_archive"])
-        self.client.force_login(user, backend=MODEL_BACKEND)
-        response = self.client.get("/")
-        self.assertRedirects(response, reverse("ideas:archive"))
-
-    def test_user_with_no_roles_sees_no_access_page(self):
-        user = make_user(roles=[])
+    def test_home_lists_public_projects_to_any_signed_in_user(self):
+        make_idea(title="Shared One", is_public=True)
+        make_idea(title="Secret One", is_public=False)
+        user = make_user(roles=[])  # even a roleless user
         self.client.force_login(user, backend=MODEL_BACKEND)
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "ideas/no_access.html")
+        self.assertTemplateUsed(response, "ideas/home.html")
+        self.assertContains(response, "Shared One")
+        self.assertNotContains(response, "Secret One")
 
-    def test_admin_role_is_sent_to_current(self):
-        user = make_user(roles=["role_admin"])
+    def test_home_public_cards_have_no_edit_action(self):
+        make_idea(title="Shared One", is_public=True)
+        user = make_user(roles=[])
         self.client.force_login(user, backend=MODEL_BACKEND)
         response = self.client.get("/")
-        self.assertRedirects(response, reverse("ideas:current"))
+        self.assertNotContains(response, "Edit")
 
 
 class TabAccessTests(TestCase):
@@ -437,3 +424,34 @@ class NextActionTests(TestCase):
         self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
         idea.refresh_from_db()
         self.assertEqual(idea.next_action, "")
+
+
+class PublicDetailAccessTests(TestCase):
+    def test_roleless_user_can_view_public_idea(self):
+        idea = make_idea(title="Open Book", status=Status.CURRENT, is_public=True)
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Open Book")
+
+    def test_roleless_user_cannot_view_private_idea(self):
+        idea = make_idea(status=Status.CURRENT, is_public=False)
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
+
+    def test_public_viewer_sees_no_edit_button(self):
+        idea = make_idea(status=Status.CURRENT, is_public=True)
+        user = make_user(roles=[])  # can view, can't manage
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertNotContains(r, "Edit")
+
+    def test_public_viewer_cannot_edit(self):
+        idea = make_idea(status=Status.CURRENT, is_public=True)
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:edit", args=[idea.pk]))
+        self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
