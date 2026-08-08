@@ -49,6 +49,10 @@ def _request(method, path, *, params=None, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", f"Bearer {token}")
+    # Identify ourselves and accept JSON — a default urllib User-Agent trips
+    # Cloudflare's Browser Integrity Check (HTTP 403, error 1010).
+    req.add_header("User-Agent", "IdeaFlow-Agent/1.0 (+https://ideaflow.bitesoftheweek.com)")
+    req.add_header("Accept", "application/json")
     if data is not None:
         req.add_header("Content-Type", "application/json")
 
