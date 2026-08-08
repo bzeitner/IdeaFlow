@@ -88,6 +88,11 @@ class Idea(models.Model):
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.CURRENT
     )
+    is_public = models.BooleanField(
+        default=False,
+        help_text="Public ideas are listed on the home page and readable by any "
+        "signed-in user (they still can't edit without the tab's role).",
+    )
     stage = models.ForeignKey(
         Stage, on_delete=models.PROTECT, related_name="ideas", null=True, blank=True
     )

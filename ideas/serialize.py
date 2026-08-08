@@ -75,6 +75,7 @@ def idea_to_dict(idea, *, detail=True):
         "category": _lookup(idea.category),
         "interest_level": idea.interest_level,
         "status": idea.status,
+        "is_public": idea.is_public,
         "stage": _lookup(idea.stage),
         "rank": idea.rank,
         "url": idea.get_absolute_url(),

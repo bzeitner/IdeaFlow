@@ -10,6 +10,7 @@
       {% include "ideas/_pill.html" with obj=idea.category %}
       {% include "ideas/_pill.html" with obj=idea.stage %}
       <span class="pill">{{ idea.get_status_display }}</span>
+      {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
     </div>
 
@@ -34,12 +35,18 @@
     {% if idea.research_entries.all %}
       <div class="next-action">
         <h4>Next action</h4>
-        <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
-          {% csrf_token %}
-          <textarea name="next_action" rows="2"
-                    placeholder="Research is in — what's the single next action?">{{ idea.next_action }}</textarea>
-          <button class="btn primary" type="submit">Save next action</button>
-        </form>
+        {% if can_manage %}
+          <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
+            {% csrf_token %}
+            <textarea name="next_action" rows="2"
+                      placeholder="Research is in — what's the single next action?">{{ idea.next_action }}</textarea>
+            <button class="btn primary" type="submit">Save next action</button>
+          </form>
+        {% elif idea.next_action %}
+          <p class="summary">{{ idea.next_action|linebreaksbr }}</p>
+        {% else %}
+          <p class="dim">No next action set yet.</p>
+        {% endif %}
       </div>
     {% endif %}
 
@@ -67,11 +74,13 @@
       <p class="dim">No research logged yet.</p>
     {% endif %}
 
-    <div class="card-actions">
-      <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
-      {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
-      {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
-      {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
-    </div>
+    {% if can_manage %}
+      <div class="card-actions">
+        <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+        {% if idea.status != 'current' %}{% include "ideas/_move.html" with target='current' label='→ Current' %}{% endif %}
+        {% if idea.status != 'tracking' %}{% include "ideas/_move.html" with target='tracking' label='→ Tracking' %}{% endif %}
+        {% if idea.status != 'archived' %}{% include "ideas/_move.html" with target='archived' label='→ Archive' %}{% endif %}
+      </div>
+    {% endif %}
   </article>
 {% endblock %}

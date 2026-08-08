@@ -92,6 +92,11 @@ the top bar as "Users" for admins). The one exception: `bzeitner@gmail.com` alwa
 role automatically on first sign-in. Moving an idea between tabs only requires the role for
 the tab it's currently in, not the destination tab.
 
+An idea marked **Public** (`is_public`) is listed on the home page and readable by *any*
+signed-in user, including those with no tab roles — but editing it still requires the tab's
+role, so public means view-only for everyone else. The home page shows these public projects
+to everyone signed in; role-holders reach their tabs from the top nav.
+
 ## Configuration
 
 Settings that shouldn't be in version control live in `.env`, which is gitignored. Real
