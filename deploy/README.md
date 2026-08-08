@@ -150,6 +150,7 @@ cp deploy/env.production.example .env
 .venv/bin/python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
 # paste that into DJANGO_SECRET_KEY, set DATABASE_URL's password, etc.
 nano .env
+chmod 600 .env   # it holds the secret key, DB password, Google secret, API token
 ```
 
 `.env` must have at least: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
@@ -246,6 +247,23 @@ Verify once DNS propagates:
 ```bash
 curl -I https://ideaflow.bitesoftheweek.com/     # 200, and the landing page
 ```
+
+**Lock the origin to Cloudflare (recommended).** Until you do this, the droplet
+IP still serves the app directly, letting anyone who finds it bypass
+Cloudflare's WAF, rate-limiting, and bot protection. Restrict the web ports to
+Cloudflare's edge ranges (SSH stays open):
+
+```bash
+# as root
+ufw delete allow 'Nginx Full'
+for ip in $(curl -s https://www.cloudflare.com/ips-v4) $(curl -s https://www.cloudflare.com/ips-v6); do
+  ufw allow from "$ip" to any port 80,443 proto tcp
+done
+ufw reload
+```
+
+Keep the DNS records **Proxied** (orange) so traffic actually arrives via
+Cloudflare, and re-run the loop if Cloudflare ever updates its ranges (rare).
 
 ---
 

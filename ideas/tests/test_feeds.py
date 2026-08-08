@@ -124,3 +124,53 @@ class FeedCommandTests(TestCase):
     def test_summarize_unknown_item_raises(self):
         with self.assertRaises(CommandError):
             run("summarize_feed_item", "999999", "--summary", "x")
+
+
+class UrlSafetyTests(TestCase):
+    def test_scheme_check(self):
+        from ideas.feeds import is_http_url
+
+        self.assertTrue(is_http_url("https://example.com/x"))
+        self.assertTrue(is_http_url("http://example.com/x"))
+        for bad in ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", ""]:
+            self.assertFalse(is_http_url(bad))
+
+    def test_acceptable_feed_url_blocks_bad_scheme_and_private_ip_literals(self):
+        from ideas.feeds import is_acceptable_feed_url
+
+        self.assertTrue(is_acceptable_feed_url("https://example.com/feed.xml"))
+        self.assertTrue(is_acceptable_feed_url("https://93.184.216.34/feed"))  # public IP
+        for bad in [
+            "file:///etc/passwd",
+            "http://127.0.0.1/feed",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.1.2.3/feed",
+            "http://[::1]/feed",
+        ]:
+            self.assertFalse(is_acceptable_feed_url(bad), bad)
+
+    def test_is_fetchable_url_blocks_internal_ip_literals(self):
+        from ideas.feeds import is_fetchable_url
+
+        self.assertFalse(is_fetchable_url("http://169.254.169.254/"))
+        self.assertFalse(is_fetchable_url("http://127.0.0.1:5432/"))
+        self.assertFalse(is_fetchable_url("ftp://example.com/"))
+
+    def test_fetch_and_ingest_refuses_internal_url(self):
+        # IP literal → no DNS needed; the guard raises before any network call.
+        from ideas.feeds import fetch_and_ingest
+
+        feed = make_feed(url="http://169.254.169.254/latest/")
+        with self.assertRaises(ValueError):
+            fetch_and_ingest(feed)
+
+
+class AddFeedSafetyTests(TestCase):
+    def test_add_feed_command_rejects_unsafe_url(self):
+        from ideas.models import Feed
+
+        with self.assertRaises(CommandError):
+            run("add_feed", "--url", "file:///etc/passwd")
+        with self.assertRaises(CommandError):
+            run("add_feed", "--url", "http://169.254.169.254/")
+        self.assertEqual(Feed.objects.count(), 0)

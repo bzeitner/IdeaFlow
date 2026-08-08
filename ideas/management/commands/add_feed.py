@@ -8,6 +8,7 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
+from ideas.feeds import is_acceptable_feed_url
 from ideas.models import Feed, Idea
 from ideas.serialize import feed_to_dict
 
@@ -23,6 +24,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if not is_acceptable_feed_url(options["url"]):
+            raise CommandError(
+                "Feed URL must be http(s) and must not point at a private address."
+            )
         feed, created = Feed.objects.get_or_create(
             url=options["url"], defaults={"title": options["title"]}
         )
