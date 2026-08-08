@@ -123,6 +123,15 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .rate-agent-note { font-size: 11px; margin-left: 4px; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 
+/* Next action (idea detail) */
+.next-action { background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-radius: 10px; padding: 12px 14px; margin: 6px 0 18px; }
+.next-action h4 { margin: 0 0 8px; }
+.next-action-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.next-action-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; font: inherit; background: #fff; }
+
 /* Forms */
 .idea-form { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   padding: 20px; max-width: 640px; }

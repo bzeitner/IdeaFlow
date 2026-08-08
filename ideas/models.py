@@ -95,6 +95,10 @@ class Idea(models.Model):
         default=0, help_text="Manual ordering within a tab. Lower sorts first."
     )
     notes = models.TextField(blank=True)
+    next_action = models.TextField(
+        blank=True,
+        help_text="The single next step to take, once the idea has been researched.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

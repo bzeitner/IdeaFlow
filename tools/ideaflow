@@ -92,6 +92,7 @@ def cmd_log_effort(a):
         "tokens_used": a.tokens,
         "stage": a.stage,
         "status": a.status,
+        "next_action": a.next_action,
     }
     if a.repo_url:
         body["resource"] = {"url": a.repo_url, "label": a.repo_label or ""}
@@ -147,6 +148,7 @@ def build_parser():
     s.add_argument("--repo-label", default="")
     s.add_argument("--stage")
     s.add_argument("--status")
+    s.add_argument("--next-action", dest="next_action")
     s.set_defaults(func=cmd_log_effort)
 
     s = sub.add_parser("add-feed")

@@ -395,3 +395,45 @@ class FeedLinkXssTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sneaky")          # title still shown
         self.assertNotContains(response, "javascript:")   # but not as a link
+
+
+class NextActionTests(TestCase):
+    def test_block_shows_only_when_research_exists(self):
+        from .helpers import make_ai_model
+        from ideas.models import ResearchEntry
+
+        idea = make_idea(status=Status.CURRENT)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        # No research yet → no next-action prompt.
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertNotContains(r, "next-action-form")
+
+        ResearchEntry.objects.create(idea=idea, topic="t", model=make_ai_model())
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(r, "next-action-form")
+        self.assertContains(r, "single next action")
+
+    def test_set_next_action(self):
+        idea = make_idea(status=Status.CURRENT)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.post(
+            reverse("ideas:set_next_action", args=[idea.pk]),
+            {"next_action": "Email three prospects"},
+        )
+        self.assertRedirects(r, reverse("ideas:detail", args=[idea.pk]))
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Email three prospects")
+
+    def test_set_next_action_denied_without_status_role(self):
+        idea = make_idea(status=Status.CURRENT)
+        user = make_user(roles=["role_tracking"])  # wrong tab
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.post(
+            reverse("ideas:set_next_action", args=[idea.pk]), {"next_action": "x"}
+        )
+        self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "")

@@ -28,15 +28,18 @@ class IdeaForm(forms.ModelForm):
             "stage",
             "rank",
             "notes",
+            "next_action",
         ]
         labels = {
             "title": "Idea Title",
             "summary": "Idea Summary",
             "interest_level": "Interest Level",
+            "next_action": "Next Action",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),
             "notes": forms.Textarea(attrs={"rows": 3}),
+            "next_action": forms.Textarea(attrs={"rows": 2}),
             "interest_level": forms.RadioSelect,
         }
 

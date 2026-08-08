@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 #
-# Launch a headless Claude Code agent to research one IdeaFlow idea and report
-# the effort back into the DEPLOYED app over its HTTP API.
+# Launch a headless Claude Code agent to research OR review one IdeaFlow idea,
+# reporting back to the DEPLOYED app over its HTTP API.
 #
-#   IDEAFLOW_API_TOKEN=... ./research_idea.sh <idea-id>
+#   IDEAFLOW_API_TOKEN=... ./research_idea.sh <idea-id> [research|review]
 #
-# The agent reads the idea, researches it, registers any feeds it finds, writes
-# a report, and logs a ResearchEntry — all through tools/ideaflow, so it works
-# from any machine without a database checkout. It isn't done until log-effort
-# succeeds.
+# Modes:
+#   research (default) — research a (usually not-yet-researched) idea from scratch.
+#   review             — read the idea's existing research and synthesize progress,
+#                        fill gaps, and update its stage/status. Used by
+#                        research_all.sh when there's nothing fresh to research.
+#
+# Everything goes through tools/ideaflow, so it works from any machine. The run
+# isn't done until log-effort succeeds.
 #
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
@@ -17,10 +21,15 @@
 set -euo pipefail
 
 ID="${1:-}"
+MODE="${2:-research}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
-  echo "usage: $0 <idea-id>   (a numeric idea id, e.g. ./research_idea.sh 3)" >&2
+  echo "usage: $0 <idea-id> [research|review]" >&2
   exit 2
 fi
+case "$MODE" in
+  research|review) ;;
+  *) echo "error: mode must be 'research' or 'review', got '$MODE'." >&2; exit 2 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
@@ -35,12 +44,38 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-REPORT="$(mktemp -t "idea-${ID}-report.XXXXXX.md")"
+REPORT="$(mktemp -t "idea-${ID}-${MODE}.XXXXXX.md")"
 
-read -r -d '' PROMPT <<PROMPT || true
-Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client
-"${IFCLI}" (it uses the HTTP API at ${BASE}); do not touch any local database.
+if [[ "$MODE" == "review" ]]; then
+  read -r -d '' PROMPT <<PROMPT || true
+Review IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}"
+(HTTP API at ${BASE}); do not touch any local database. This idea has already
+been researched — your job is to review and move it forward, not start over.
 Steps:
+
+1. Read the idea and all its existing research: ${IFCLI} dump-idea ${ID}
+2. Synthesize the existing research_entries: what's been learned, what's
+   validated vs still open, and the most valuable concrete next step. Do fresh
+   web research only to fill specific gaps you identify — don't repeat prior work.
+3. Register any new RSS/Atom feeds you find: ${IFCLI} add-feed --url <url> --idea ${ID}
+4. Write a concise review + synthesis (markdown) to: ${REPORT}
+5. Log it — you are NOT done until this succeeds. Always set --next-action to the
+   single most valuable next step for this idea:
+     ${IFCLI} log-effort ${ID} \\
+       --topic 'Review & synthesis' \\
+       --model claude-opus-4-8 \\
+       --context-file ${REPORT} \\
+       --effort <1-5> --quality <1-5> --tokens <approx> \\
+       --next-action '<the single most valuable next step>'
+   Update the idea's stage/status if the review warrants it: advance a promising
+   one (--stage <slug>), or --status archived for a dead end, --status tracking
+   to keep watching. Only change what your review actually justifies.
+6. Print the new ResearchEntry id and a two-line summary of your assessment.
+PROMPT
+else
+  read -r -d '' PROMPT <<PROMPT || true
+Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}"
+(HTTP API at ${BASE}); do not touch any local database. Steps:
 
 1. Read the idea as JSON: ${IFCLI} dump-idea ${ID}
    Work from its real title, summary, notes, resources, and any existing
@@ -65,8 +100,9 @@ Steps:
 6. Print the new ResearchEntry id, how many feeds you registered, and a
    two-line summary.
 PROMPT
+fi
 
-echo "→ Researching idea ${ID} against ${BASE}; report scratch file: ${REPORT}" >&2
+echo "→ ${MODE} idea ${ID} against ${BASE}; report scratch file: ${REPORT}" >&2
 
 claude -p "$PROMPT" \
   --allowedTools "Bash,Read,Write,WebSearch,WebFetch"
