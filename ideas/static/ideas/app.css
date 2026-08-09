@@ -98,6 +98,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .tracking td a { color: var(--ink); text-decoration: none; font-weight: 500; }
 .tracking td a:hover { color: var(--accent); }
 .tracking .rank { font-variant-numeric: tabular-nums; color: var(--dim); }
+.tracking .since-review { font-variant-numeric: tabular-nums; }
 
 /* Feeds */
 .feeds-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
