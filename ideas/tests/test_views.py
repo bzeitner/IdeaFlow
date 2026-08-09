@@ -494,3 +494,29 @@ class PauseControlTests(TestCase):
         )
         idea.refresh_from_db()
         self.assertEqual(idea.agent_runs_since_feedback, 0)
+
+
+class PwaTests(TestCase):
+    def test_manifest_served_with_share_target(self):
+        r = self.client.get("/manifest.json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["content-type"], "application/manifest+json")
+        body = r.content.decode()
+        self.assertIn("share_target", body)
+        self.assertIn("/new/", body)
+
+    def test_service_worker_served_as_javascript(self):
+        r = self.client.get("/sw.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["content-type"], "application/javascript")
+
+    def test_share_target_prefills_new_idea(self):
+        user = make_user(roles=["role_add_ideas"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(
+            "/new/", {"title": "Shared idea", "text": "the gist", "url": "https://ex.com/a"}
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Shared idea")
+        self.assertContains(r, "the gist")
+        self.assertContains(r, "https://ex.com/a")

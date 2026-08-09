@@ -190,8 +190,22 @@ def idea_form(request, pk=None):
             messages.success(request, f"Saved “{saved.title}”.")
             return redirect(saved)
     else:
-        form = IdeaForm(instance=idea)
-        formset = ResourceFormSet(instance=idea)
+        # Prefill a new idea from Web Share Target params (manifest maps a share
+        # to /new/?title=&text=&url=).
+        initial = {}
+        resource_initial = None
+        if idea is None:
+            shared_title = request.GET.get("title") or request.GET.get("name")
+            shared_text = request.GET.get("text")
+            shared_url = request.GET.get("url")
+            if shared_title:
+                initial["title"] = shared_title[:200]
+            if shared_text:
+                initial["summary"] = shared_text
+            if shared_url:
+                resource_initial = [{"url": shared_url}]
+        form = IdeaForm(instance=idea, initial=initial or None)
+        formset = ResourceFormSet(instance=idea, initial=resource_initial)
         research_formset = ResearchEntryFormSet(instance=idea)
     return render(
         request,
