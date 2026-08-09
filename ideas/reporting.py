@@ -109,7 +109,9 @@ def record_effort(
     if next_action is not None:
         idea.next_action = next_action
         changed.append("next_action")
-    if changed:
-        changed.append("updated_at")
-        idea.save(update_fields=changed)
+    # Every effort is an agent run; count it toward the pause-for-feedback limit.
+    idea.agent_runs_since_feedback = (idea.agent_runs_since_feedback or 0) + 1
+    changed.append("agent_runs_since_feedback")
+    changed.append("updated_at")
+    idea.save(update_fields=changed)
     return entry, resource

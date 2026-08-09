@@ -37,6 +37,9 @@ def main():
     listing = ["list-ideas"] + (["--status", status] if status else [])
     ideas = run(*listing)["ideas"]
     detail = {it["id"]: run("dump-idea", str(it["id"])) for it in ideas}
+    # Paused ideas need human feedback before any agent works them again — the
+    # API rejects effort on them anyway, so drop them from every pass.
+    ideas = [it for it in ideas if not detail[it["id"]].get("is_paused")]
 
     def has_research(i):
         return bool(detail[i].get("research_entries"))

@@ -3,11 +3,11 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .feeds import is_http_url
+from .feeds import is_http_url, recent_articles
 from .forms import IdeaForm, ResearchEntryFormSet, ResourceFormSet
 from .models import FeedItem, Idea, Profile, Status
 
@@ -140,6 +140,9 @@ def detail(request, pk):
     if not (idea.is_public or can_manage):
         messages.error(request, "You don't have access to that.")
         return redirect("ideas:home")
+    idea_feeds = idea.idea_feeds.select_related("feed").order_by(
+        F("rating").desc(nulls_last=True), "-created_at"
+    )
     return render(
         request,
         "ideas/detail.html",
@@ -148,6 +151,8 @@ def detail(request, pk):
             "tabs": _tabs(request.user.profile),
             "active": idea.status,
             "can_manage": can_manage,
+            "idea_feeds": idea_feeds,
+            "articles": recent_articles(idea),
         },
     )
 
@@ -230,8 +235,25 @@ def set_next_action(request, pk):
     if denied:
         return denied
     idea.next_action = request.POST.get("next_action", "").strip()
-    idea.save(update_fields=["next_action", "updated_at"])
+    # A human next action is feedback — clear the pause counter.
+    idea.agent_runs_since_feedback = 0
+    idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
     messages.success(request, "Next action saved.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def continue_work(request, pk):
+    """Resume agent work on a paused idea (clears the run-since-feedback count)."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    idea.agent_runs_since_feedback = 0
+    idea.save(update_fields=["agent_runs_since_feedback", "updated_at"])
+    messages.success(request, "Resumed — agents can work this idea again.")
     return redirect("ideas:detail", pk=pk)
 
 

@@ -16,5 +16,6 @@ urlpatterns = [
     path("<int:pk>/edit/", views.idea_form, name="edit"),
     path("<int:pk>/status/<str:status>/", views.set_status, name="set_status"),
     path("<int:pk>/next-action/", views.set_next_action, name="set_next_action"),
+    path("<int:pk>/continue-work/", views.continue_work, name="continue_work"),
     path("users/", views.user_management, name="user_management"),
 ]

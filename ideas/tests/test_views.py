@@ -465,3 +465,32 @@ class CardNextActionTests(TestCase):
         response = self.client.get(reverse("ideas:current"))
         self.assertContains(response, "Call the vendor")
         self.assertContains(response, "next-line")
+
+
+class PauseControlTests(TestCase):
+    def _login_current(self):
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+    def test_paused_banner_and_continue_work(self):
+        idea = make_idea(status=Status.CURRENT)
+        idea.agent_runs_since_feedback = 3
+        idea.save()
+        self._login_current()
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(r, "Paused")
+        r = self.client.post(reverse("ideas:continue_work", args=[idea.pk]))
+        self.assertRedirects(r, reverse("ideas:detail", args=[idea.pk]))
+        idea.refresh_from_db()
+        self.assertEqual(idea.agent_runs_since_feedback, 0)
+
+    def test_setting_next_action_clears_pause(self):
+        idea = make_idea(status=Status.CURRENT)
+        idea.agent_runs_since_feedback = 5
+        idea.save()
+        self._login_current()
+        self.client.post(
+            reverse("ideas:set_next_action", args=[idea.pk]), {"next_action": "go"}
+        )
+        idea.refresh_from_db()
+        self.assertEqual(idea.agent_runs_since_feedback, 0)

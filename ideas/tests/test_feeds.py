@@ -95,7 +95,7 @@ class FeedCommandTests(TestCase):
 
         feed = Feed.objects.get(url=url)
         self.assertEqual(Feed.objects.filter(url=url).count(), 1)
-        self.assertIn(idea, feed.ideas.all())
+        self.assertTrue(feed.idea_feeds.filter(idea=idea).exists())
 
     def test_dump_feed_items_unsummarized_is_the_work_queue(self):
         feed = make_feed()
@@ -184,3 +184,48 @@ class NextActionEffortTests(TestCase):
         record_effort(idea, topic="Review", model="other", next_action="Ship an MVP")
         idea.refresh_from_db()
         self.assertEqual(idea.next_action, "Ship an MVP")
+
+
+class FeedCapTests(TestCase):
+    def test_non_research_idea_caps_at_5(self):
+        from ideas.feeds import link_feed
+
+        idea = make_idea()
+        for r in [1, 2, 3, 4, 5, 5]:
+            link_feed(idea, make_feed(), rating=r)
+        self.assertEqual(idea.idea_feeds.count(), 5)
+        # the lowest-rated (1) got pruned
+        self.assertNotIn(1, list(idea.idea_feeds.values_list("rating", flat=True)))
+
+    def test_research_category_caps_at_10(self):
+        from .helpers import make_category
+        from ideas.feeds import link_feed
+
+        idea = make_idea(category=make_category(is_research=True))
+        self.assertEqual(idea.feed_cap, 10)
+        for _ in range(12):
+            link_feed(idea, make_feed(), rating=3)
+        self.assertEqual(idea.idea_feeds.count(), 10)
+
+    def test_recent_articles_only_summarized(self):
+        from ideas.feeds import ingest_entries, link_feed, recent_articles, record_feed_item_summary
+
+        idea = make_idea()
+        feed = make_feed()
+        link_feed(idea, feed, rating=5)
+        (article,) = ingest_entries(feed, [entry("x")])
+        self.assertEqual(recent_articles(idea), [])          # unsummarized excluded
+        record_feed_item_summary(article, summary="s", usefulness=3)
+        self.assertEqual([i.id for i in recent_articles(idea)], [article.id])
+
+
+class AgentPauseTests(TestCase):
+    def test_effort_increments_and_pauses(self):
+        from ideas.reporting import record_effort
+
+        idea = make_idea()
+        for _ in range(3):
+            record_effort(idea, topic="t", model="other")
+        idea.refresh_from_db()
+        self.assertEqual(idea.agent_runs_since_feedback, 3)
+        self.assertTrue(idea.is_paused)

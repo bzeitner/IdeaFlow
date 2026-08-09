@@ -123,6 +123,22 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .rate-agent-note { font-size: 11px; margin-left: 4px; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 
+/* Paused banner (idea detail) */
+.paused-banner { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+  justify-content: space-between; background: var(--warm-bg); border: 1px solid var(--warm-line);
+  color: var(--ink); border-radius: 10px; padding: 12px 14px; margin: 4px 0 16px; font-size: 14px; }
+.paused-banner form { margin: 0; }
+
+/* Feeds + articles (idea detail) */
+.feed-links { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.feed-links li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.feed-links a { color: var(--ink); text-decoration: none; font-weight: 500; }
+.feed-links a:hover { color: var(--accent); }
+.article-list { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.article-list li { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.article-list a { color: var(--ink); text-decoration: none; font-weight: 500; }
+.article-list a:hover { color: var(--accent); }
+
 /* Next action on cards */
 .next-line { margin: 8px 0 0; font-size: 13.5px; color: var(--ink); }
 .next-tag { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase;

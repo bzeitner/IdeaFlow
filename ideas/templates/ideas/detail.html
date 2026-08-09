@@ -14,6 +14,18 @@
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
     </div>
 
+    {% if idea.is_paused %}
+      <div class="paused-banner">
+        <span>⏸ Paused — worked {{ idea.agent_runs_since_feedback }} times without feedback. Add a next action or resume to let agents continue.</span>
+        {% if can_manage %}
+          <form method="post" action="{% url 'ideas:continue_work' idea.pk %}">
+            {% csrf_token %}
+            <button class="btn primary" type="submit">Continue work</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if idea.summary %}<p class="summary">{{ idea.summary|linebreaksbr }}</p>{% endif %}
 
     <h4>Resources</h4>
@@ -52,6 +64,37 @@
           </details>
         {% endif %}
       </div>
+    {% endif %}
+
+    <h4>Feeds <span class="dim">({{ idea_feeds|length }}/{{ idea.feed_cap }})</span></h4>
+    {% if idea_feeds %}
+      <ul class="feed-links">
+        {% for link in idea_feeds %}
+          <li>
+            <a href="{{ link.feed.url }}" target="_blank" rel="noopener">{{ link.feed.title|default:link.feed.url }}</a>
+            {% if link.rating %}<span class="pill">Relevance {{ link.rating }}/5</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="dim">No feeds linked yet.</p>
+    {% endif %}
+
+    {% if articles %}
+      <h4>Recent articles</h4>
+      <ul class="article-list">
+        {% for a in articles %}
+          <li>
+            <div class="card-head">
+              {% if a.link %}<a href="{{ a.link }}" target="_blank" rel="noopener">{{ a.title|default:"(untitled)" }}</a>
+              {% else %}<strong>{{ a.title|default:"(untitled)" }}</strong>{% endif %}
+              {% if a.published_at %}<span class="dim">{{ a.published_at|date:"M j, Y" }}</span>{% endif %}
+            </div>
+            <div class="dim">{{ a.feed.title|default:a.feed.url }}</div>
+            {% if a.summary %}<p class="summary">{{ a.summary }}</p>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
     {% endif %}
 
     <h4>Research</h4>

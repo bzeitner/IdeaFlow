@@ -53,11 +53,15 @@ Review IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}"
 been researched — your job is to review and move it forward, not start over.
 Steps:
 
-1. Read the idea and all its existing research: ${IFCLI} dump-idea ${ID}
-2. Synthesize the existing research_entries: what's been learned, what's
-   validated vs still open, and the most valuable concrete next step. Do fresh
-   web research only to fill specific gaps you identify — don't repeat prior work.
-3. Register any new RSS/Atom feeds you find: ${IFCLI} add-feed --url <url> --idea ${ID}
+1. Read the idea, its existing research, its linked "feeds", and its
+   "recent_articles" (summarized feed items): ${IFCLI} dump-idea ${ID}
+2. Synthesize the existing research_entries AND anything new in recent_articles:
+   what's been learned, what's validated vs still open, and the most valuable
+   concrete next step. Do fresh web research only to fill specific gaps you
+   identify — don't repeat prior work.
+3. Register any new RSS/Atom feeds you find, rating each one's relevance to this
+   idea 1-5 (the idea keeps only its top-rated feeds):
+     ${IFCLI} add-feed --url <url> --idea ${ID} --rating <1-5>
 4. Write a concise review + synthesis (markdown) to: ${REPORT}
 5. Log it — you are NOT done until this succeeds. Always set --next-action to the
    single most valuable next step for this idea:
@@ -84,8 +88,9 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
    feasibility, and concrete next steps as appropriate to the idea.
 3. Register any RSS/Atom feeds you come across (blogs, news, release feeds) so
    they're tracked centrally and summarized once — don't fetch/summarize them
-   inline, just register each distinct feed (idempotent by URL):
-     ${IFCLI} add-feed --url <feed-url> --idea ${ID}
+   inline. Register each distinct feed and rate its relevance to this idea 1-5
+   (the idea keeps only its top-rated feeds):
+     ${IFCLI} add-feed --url <feed-url> --idea ${ID} --rating <1-5>
 4. Write a clear findings report (markdown) to: ${REPORT}
 5. Log the effort back into IdeaFlow — you are NOT done until this succeeds:
      ${IFCLI} log-effort ${ID} \\
