@@ -92,7 +92,7 @@
         {% for a in articles %}
           <li>
             <div class="card-head">
-              {% if a.link %}<a href="{{ a.link }}" target="_blank" rel="noopener">{{ a.title|default:"(untitled)" }}</a>
+              {% if a.safe_link %}<a href="{{ a.safe_link }}" target="_blank" rel="noopener">{{ a.title|default:"(untitled)" }}</a>
               {% else %}<strong>{{ a.title|default:"(untitled)" }}</strong>{% endif %}
               {% if a.published_at %}<span class="dim">{{ a.published_at|date:"M j, Y" }}</span>{% endif %}
             </div>
