@@ -520,3 +520,23 @@ class PwaTests(TestCase):
         self.assertContains(r, "Shared idea")
         self.assertContains(r, "the gist")
         self.assertContains(r, "https://ex.com/a")
+
+
+class ArticleLinkXssTests(TestCase):
+    def test_javascript_article_link_not_rendered_on_detail(self):
+        from ideas.feeds import link_feed, record_feed_item_summary
+        from ideas.models import FeedItem
+        from .helpers import make_feed
+
+        idea = make_idea(status=Status.CURRENT)
+        feed = make_feed()
+        link_feed(idea, feed, rating=5)
+        item = FeedItem.objects.create(
+            feed=feed, guid="x", title="Sneaky", link="javascript:alert(1)"
+        )
+        record_feed_item_summary(item, summary="s", usefulness=3)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(r, "Sneaky")          # title shown
+        self.assertNotContains(r, "javascript:")   # but not as a link

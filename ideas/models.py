@@ -302,6 +302,14 @@ class FeedItem(models.Model):
     def is_summarized(self):
         return self.summarized_at is not None
 
+    @property
+    def safe_link(self):
+        """The link only if it's an http(s) URL — feed content is untrusted, so
+        never render a javascript:/data: scheme as a clickable href."""
+        from urllib.parse import urlsplit
+
+        return self.link if urlsplit(self.link or "").scheme in ("http", "https") else ""
+
 
 class IdeaFeed(models.Model):
     """Association of a feed to an idea, with a per-idea relevance rating. Each
