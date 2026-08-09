@@ -229,3 +229,14 @@ class AgentPauseTests(TestCase):
         idea.refresh_from_db()
         self.assertEqual(idea.agent_runs_since_feedback, 3)
         self.assertTrue(idea.is_paused)
+
+
+class FeedLimitOverrideTests(TestCase):
+    def test_override_raises_the_cap(self):
+        from ideas.feeds import link_feed
+
+        idea = make_idea(feed_limit_override=7)
+        self.assertEqual(idea.feed_cap, 7)
+        for _ in range(9):
+            link_feed(idea, make_feed(), rating=3)
+        self.assertEqual(idea.idea_feeds.count(), 7)

@@ -121,6 +121,12 @@ class Idea(models.Model):
         help_text="Agent runs logged since the last human feedback; the idea "
         "pauses once it reaches the limit.",
     )
+    feed_limit_override = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Manually cap how many feeds this idea keeps. Leave blank to "
+        "use the default (5, or 10 for research categories).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -139,7 +145,10 @@ class Idea(models.Model):
 
     @property
     def feed_cap(self):
-        """How many feeds this idea keeps — more for research-type categories."""
+        """How many feeds this idea keeps: a manual override if set, otherwise
+        more for research-type categories."""
+        if self.feed_limit_override:
+            return self.feed_limit_override
         return RESEARCH_FEED_CAP if self.category.is_research else FEED_CAP
 
     @property

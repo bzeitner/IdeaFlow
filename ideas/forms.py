@@ -30,6 +30,7 @@ class IdeaForm(forms.ModelForm):
             "notes",
             "next_action",
             "is_public",
+            "feed_limit_override",
         ]
         labels = {
             "title": "Idea Title",
@@ -37,6 +38,7 @@ class IdeaForm(forms.ModelForm):
             "interest_level": "Interest Level",
             "next_action": "Next Action",
             "is_public": "Public (visible to everyone signed in)",
+            "feed_limit_override": "Feed limit override",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),

@@ -8,7 +8,7 @@
       <thead>
         <tr>
           <th>Rank</th><th>Idea</th><th>Category</th><th>Stage</th>
-          <th>Interest</th><th>Resources</th><th>Updated</th><th></th>
+          <th>Interest</th><th>Resources</th><th>Since review</th><th>Updated</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -20,6 +20,9 @@
             <td>{% include "ideas/_pill.html" with obj=idea.stage %}</td>
             <td class="stars">{{ idea.stars }}</td>
             <td>{{ idea.resources.all|length }}</td>
+            <td class="since-review">
+              {{ idea.agent_runs_since_feedback }}{% if idea.is_paused %} <span class="pill">paused</span>{% endif %}
+            </td>
             <td class="dim">{{ idea.updated_at|date:"M j, Y" }}</td>
             <td class="row-actions">
               {% include "ideas/_move.html" with target='current' label='→ Current' %}
