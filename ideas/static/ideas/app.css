@@ -134,7 +134,13 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
   border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
   border-radius: 10px; padding: 12px 14px; margin: 6px 0 18px; }
 .next-action h4 { margin: 0 0 8px; }
-.next-action-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.next-action-text { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink); line-height: 1.45; }
+.next-action-edit { margin-top: 10px; }
+.next-action-edit summary { cursor: pointer; font-size: 12px; color: var(--accent);
+  list-style: none; display: inline-block; }
+.next-action-edit summary::-webkit-details-marker { display: none; }
+.next-action-edit summary:hover { text-decoration: underline; }
+.next-action-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 8px; }
 .next-action-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line);
   border-radius: 6px; font: inherit; background: #fff; }
 
