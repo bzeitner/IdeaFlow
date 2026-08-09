@@ -14,6 +14,12 @@
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
     </div>
 
+    {% if can_manage %}
+      <div class="card-actions">
+        <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+      </div>
+    {% endif %}
+
     {% if idea.is_paused %}
       <div class="paused-banner">
         <span>⏸ Paused — worked {{ idea.agent_runs_since_feedback }} times without feedback. Add a next action or resume to let agents continue.</span>
