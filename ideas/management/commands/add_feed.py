@@ -8,7 +8,7 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from ideas.feeds import is_acceptable_feed_url
+from ideas.feeds import is_acceptable_feed_url, link_feed
 from ideas.models import Feed, Idea
 from ideas.serialize import feed_to_dict
 
@@ -21,6 +21,12 @@ class Command(BaseCommand):
         parser.add_argument("--title", default="", help="Optional title.")
         parser.add_argument(
             "--idea", type=int, help="Idea id to associate this feed with."
+        )
+        parser.add_argument(
+            "--rating",
+            type=int,
+            help="Relevance of this feed to the idea (1-5). Ideas keep only their "
+            "top-rated feeds (5, or 10 for research categories).",
         )
 
     def handle(self, *args, **options):
@@ -40,7 +46,10 @@ class Command(BaseCommand):
                 idea = Idea.objects.get(pk=options["idea"])
             except Idea.DoesNotExist:
                 raise CommandError(f"No idea with id {options['idea']}.")
-            feed.ideas.add(idea)
+            try:
+                link_feed(idea, feed, options["rating"])
+            except (ValueError, LookupError) as exc:
+                raise CommandError(str(exc))
 
         self.stdout.write(json.dumps(feed_to_dict(feed), indent=2, default=str))
         self.stderr.write(

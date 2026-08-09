@@ -13,9 +13,10 @@ from datetime import datetime, timezone as dt_timezone
 from urllib.parse import urlsplit
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
-from .models import FeedItem
+from .models import FeedItem, IdeaFeed
 from .reporting import resolve_ai_model
 
 # Only ever fetch/store web feeds — no file://, ftp://, javascript:, data:, etc.
@@ -169,6 +170,44 @@ def _star(value, field):
     if not 1 <= value <= 5:
         raise ValueError(f"{field} must be between 1 and 5, got {value}.")
     return value
+
+
+def prune_idea_feeds(idea):
+    """Keep only the idea's top `feed_cap` feeds by relevance rating (unrated
+    sort last), dropping the excess *links* (the Feed rows stay — another idea
+    may use them). Returns the list of removed feed ids."""
+    keep = idea.feed_cap
+    links = list(
+        idea.idea_feeds.order_by(F("rating").desc(nulls_last=True), "-created_at")
+    )
+    removed = []
+    for link in links[keep:]:
+        removed.append(link.feed_id)
+        link.delete()
+    return removed
+
+
+def link_feed(idea, feed, rating=None):
+    """Associate a feed with an idea (idempotent), optionally rating its
+    relevance, then prune the idea back to its feed cap. Returns the IdeaFeed."""
+    link, _ = IdeaFeed.objects.get_or_create(idea=idea, feed=feed)
+    if rating is not None:
+        link.rating = _star(rating, "rating")
+        link.save(update_fields=["rating"])
+    prune_idea_feeds(idea)
+    return link
+
+
+def recent_articles(idea, limit=10):
+    """The idea's most recent *summarized* feed items, across its linked feeds."""
+    return list(
+        FeedItem.objects.filter(
+            feed__idea_feeds__idea=idea, summarized_at__isnull=False
+        )
+        .select_related("feed", "summary_model")
+        .order_by("-published_at", "-created_at")
+        .distinct()[:limit]
+    )
 
 
 def record_feed_item_summary(item, *, summary, model=None, usefulness=None):

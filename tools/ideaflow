@@ -103,6 +103,8 @@ def cmd_add_feed(a):
     body = {"url": a.url, "title": a.title or ""}
     if a.idea:
         body["idea_id"] = a.idea
+    if a.rating is not None:
+        body["rating"] = a.rating
     return _request("POST", "/feeds/", body=body)
 
 
@@ -155,6 +157,7 @@ def build_parser():
     s.add_argument("--url", required=True)
     s.add_argument("--idea", type=int)
     s.add_argument("--title", default="")
+    s.add_argument("--rating", type=int, help="Relevance to the idea (1-5).")
     s.set_defaults(func=cmd_add_feed)
 
     s = sub.add_parser("feed-items")

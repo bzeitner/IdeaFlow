@@ -83,10 +83,22 @@ def idea_to_dict(idea, *, detail=True):
         "updated_at": idea.updated_at.isoformat(),
     }
     if detail:
+        from django.db.models import F
+
+        from .feeds import recent_articles
+
         data["notes"] = idea.notes
         data["next_action"] = idea.next_action
+        data["agent_runs_since_feedback"] = idea.agent_runs_since_feedback
+        data["is_paused"] = idea.is_paused
+        data["feed_cap"] = idea.feed_cap
         data["resources"] = [resource_to_dict(r) for r in idea.resources.all()]
         data["research_entries"] = [
             research_entry_to_dict(e) for e in idea.research_entries.all()
         ]
+        links = idea.idea_feeds.select_related("feed").order_by(
+            F("rating").desc(nulls_last=True), "-created_at"
+        )
+        data["feeds"] = [{**feed_to_dict(link.feed), "rating": link.rating} for link in links]
+        data["recent_articles"] = [feed_item_to_dict(i) for i in recent_articles(idea)]
     return data

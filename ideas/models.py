@@ -12,6 +12,12 @@ STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
 # The one email that's always fully provisioned — everyone else starts with no roles.
 STANDING_ADMIN_EMAIL = "bzeitner@gmail.com"
 
+# Feed caps per idea, and how many agent runs an idea gets before it pauses for
+# a human (adding a next action or clicking "Continue work").
+FEED_CAP = 5
+RESEARCH_FEED_CAP = 10
+AGENT_RUNS_BEFORE_FEEDBACK = 3
+
 hex_color = RegexValidator(
     r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
     "Enter a hex color such as #24509b.",
@@ -68,6 +74,12 @@ class LookupBase(models.Model):
 class Category(LookupBase):
     """Project, Side Project, Passive Income, Research Effort, Focus Project — editable in admin."""
 
+    is_research = models.BooleanField(
+        default=False,
+        help_text="Research-type categories let their ideas track more feeds "
+        "(10 instead of 5).",
+    )
+
     class Meta(LookupBase.Meta):
         verbose_name_plural = "categories"
 
@@ -104,6 +116,11 @@ class Idea(models.Model):
         blank=True,
         help_text="The single next step to take, once the idea has been researched.",
     )
+    agent_runs_since_feedback = models.PositiveIntegerField(
+        default=0,
+        help_text="Agent runs logged since the last human feedback; the idea "
+        "pauses once it reaches the limit.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -119,6 +136,16 @@ class Idea(models.Model):
     @property
     def stars(self):
         return "★" * self.interest_level + "☆" * (5 - self.interest_level)
+
+    @property
+    def feed_cap(self):
+        """How many feeds this idea keeps — more for research-type categories."""
+        return RESEARCH_FEED_CAP if self.category.is_research else FEED_CAP
+
+    @property
+    def is_paused(self):
+        """True once agents have worked it enough times without human feedback."""
+        return self.agent_runs_since_feedback >= AGENT_RUNS_BEFORE_FEEDBACK
 
 
 class Resource(models.Model):
@@ -191,7 +218,8 @@ class Feed(models.Model):
     is_active = models.BooleanField(
         default=True, help_text="Inactive feeds are skipped by refresh_feeds."
     )
-    ideas = models.ManyToManyField(Idea, related_name="feeds", blank=True)
+    # Idea associations live on the IdeaFeed model (with a per-idea rating);
+    # reach them via feed.idea_feeds / idea.idea_feeds.
     # Conditional-GET bookkeeping so an unchanged feed isn't re-downloaded.
     etag = models.CharField(max_length=300, blank=True)
     last_modified = models.CharField(max_length=100, blank=True)
@@ -264,6 +292,30 @@ class FeedItem(models.Model):
     @property
     def is_summarized(self):
         return self.summarized_at is not None
+
+
+class IdeaFeed(models.Model):
+    """Association of a feed to an idea, with a per-idea relevance rating. Each
+    idea keeps only its top `feed_cap` feeds by this rating (see prune logic)."""
+
+    idea = models.ForeignKey(Idea, related_name="idea_feeds", on_delete=models.CASCADE)
+    feed = models.ForeignKey(Feed, related_name="idea_feeds", on_delete=models.CASCADE)
+    rating = models.PositiveSmallIntegerField(
+        choices=STAR_CHOICES,
+        null=True,
+        blank=True,
+        help_text="How relevant this feed is to this idea (1-5); unrated sorts last.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-rating", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["idea", "feed"], name="unique_idea_feed")
+        ]
+
+    def __str__(self):
+        return f"{self.idea} · {self.feed}"
 
 
 class Profile(models.Model):

@@ -21,7 +21,7 @@ from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
-from .feeds import is_acceptable_feed_url, record_feed_item_summary
+from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .models import Feed, FeedItem, Idea
 from .reporting import record_effort
 from .serialize import (
@@ -94,6 +94,15 @@ def idea_effort(request, pk):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     idea = get_object_or_404(Idea, pk=pk)
+    if idea.is_paused:
+        return JsonResponse(
+            {
+                "error": "Idea is paused for human feedback — add a next action or "
+                "click Continue work before agents work it again.",
+                "agent_runs_since_feedback": idea.agent_runs_since_feedback,
+            },
+            status=409,
+        )
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
@@ -172,7 +181,10 @@ def feed_list(request):
             idea = Idea.objects.filter(pk=idea_id).first()
             if idea is None:
                 return JsonResponse({"error": f"No idea with id {idea_id}."}, status=400)
-            feed.ideas.add(idea)
+            try:
+                link_feed(idea, feed, payload.get("rating"))
+            except (ValueError, LookupError) as exc:
+                return JsonResponse({"error": str(exc)}, status=400)
         return JsonResponse(feed_to_dict(feed), status=201 if created else 200)
     return HttpResponseNotAllowed(["GET", "POST"])
 

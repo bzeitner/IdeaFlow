@@ -8,6 +8,7 @@ from .models import (
     Feed,
     FeedItem,
     Idea,
+    IdeaFeed,
     Profile,
     Resource,
     ResearchEntry,
@@ -48,7 +49,9 @@ class LookupAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(LookupAdmin):
-    pass
+    list_display = ("name", "swatch", "is_research", "order", "is_active", "idea_count")
+    list_editable = ("is_research", "order", "is_active")
+    fields = ("name", "slug", "color", "is_research", "order", "is_active")
 
 
 @admin.register(Stage)
@@ -72,6 +75,13 @@ class ResearchEntryInline(admin.TabularInline):
     fields = ("topic", "focus", "occurred_at", "model", "effort", "quality", "tokens_used")
 
 
+class IdeaFeedInline(admin.TabularInline):
+    model = IdeaFeed
+    extra = 0
+    autocomplete_fields = ("feed",)
+    fields = ("feed", "rating")
+
+
 @admin.register(Idea)
 class IdeaAdmin(admin.ModelAdmin):
     list_display = ("title", "category", "status", "stage", "interest_level", "is_public", "rank")
@@ -79,7 +89,7 @@ class IdeaAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_public", "category", "stage", "interest_level")
     search_fields = ("title", "summary", "notes")
     list_select_related = ("category", "stage")
-    inlines = [ResourceInline, ResearchEntryInline]
+    inlines = [ResourceInline, ResearchEntryInline, IdeaFeedInline]
 
 
 @admin.register(ResearchEntry)
@@ -97,7 +107,6 @@ class FeedAdmin(admin.ModelAdmin):
     list_editable = ("is_active",)
     list_filter = ("is_active",)
     search_fields = ("title", "url")
-    filter_horizontal = ("ideas",)
     readonly_fields = ("etag", "last_modified", "last_fetched_at", "created_at", "updated_at")
 
     def get_queryset(self, request):

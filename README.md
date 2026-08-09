@@ -275,6 +275,17 @@ manage.py summarize_feed_item 42 \
 Run `refresh_feeds` on a schedule (cron / systemd timer / `/loop`); it's
 idempotent, so re-running only picks up genuinely new entries.
 
+**Feeds per idea.** Feeds link to ideas with a per-idea **relevance rating**
+(`add-feed … --rating 1-5`). Each idea keeps only its **top 5** feeds — **10** for
+ideas in a research-flagged category (`Category.is_research`) — pruning the
+lowest-rated links when new ones are added. `dump-idea` returns an idea's curated
+`feeds` plus its recent summarized `recent_articles`, and the review agent folds
+those into its synthesis; the detail page shows both.
+
+**Pause for feedback.** An idea pauses after **3 agent runs** without human
+feedback: the effort API returns `409` and `research_all.sh` skips it until you
+add a next action or click **Continue work** on its detail page.
+
 ## Deploying
 
 To put IdeaFlow on a DigitalOcean droplet (gunicorn + nginx + Postgres, fronted

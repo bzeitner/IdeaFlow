@@ -175,7 +175,7 @@ class ApiFeedTests(TestCase):
         from ideas.models import Feed
 
         feed = Feed.objects.get(url="https://ex.com/f.xml")
-        self.assertIn(idea, feed.ideas.all())
+        self.assertTrue(feed.idea_feeds.filter(idea=idea).exists())
 
     def test_add_feed_is_idempotent(self):
         self._post("/api/feeds/", {"url": "https://ex.com/f.xml"})
@@ -238,3 +238,31 @@ class ApiFeedSafetyTests(TestCase):
         )
         self.assertEqual(r.status_code, 400)
         self.assertEqual(Feed.objects.count(), 0)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiPauseAndRatingTests(TestCase):
+    def _post(self, path, payload):
+        return self.client.post(
+            path, data=json.dumps(payload), content_type="application/json", **AUTH
+        )
+
+    def test_effort_blocked_when_paused(self):
+        from .helpers import make_idea as mk
+
+        idea = mk()
+        idea.agent_runs_since_feedback = 3
+        idea.save()
+        r = self._post(f"/api/ideas/{idea.pk}/effort/", {"topic": "t", "model": "other"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_add_feed_stores_rating_on_link(self):
+        from .helpers import make_idea as mk
+        from ideas.models import IdeaFeed
+
+        idea = mk()
+        r = self._post(
+            "/api/feeds/", {"url": "https://ex.com/r.xml", "idea_id": idea.pk, "rating": 4}
+        )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(IdeaFeed.objects.get(idea=idea).rating, 4)
