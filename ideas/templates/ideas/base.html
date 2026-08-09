@@ -4,11 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}IdeaFlow{% endblock %}</title>
+  <link rel="icon" href="{% static 'ideas/favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% static 'ideas/app.css' %}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{% url 'ideas:home' %}">Idea<span>Flow</span></a>
+    <a class="brand" href="{% url 'ideas:home' %}">
+      <img class="brand-icon" src="{% static 'ideas/favicon.svg' %}" alt="" width="24" height="24">Idea<span>Flow</span></a>
     <span class="topbar-actions">
       {% if user.is_authenticated %}
         {% if user.profile.role_admin %}
