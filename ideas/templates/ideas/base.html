@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}IdeaFlow{% endblock %}</title>
   <link rel="icon" href="{% static 'ideas/favicon.svg' %}" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#3b6fd4">
+  <link rel="apple-touch-icon" href="{% static 'ideas/icon-192.png' %}">
   <link rel="stylesheet" href="{% static 'ideas/app.css' %}">
 </head>
 <body>
@@ -53,5 +56,12 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
