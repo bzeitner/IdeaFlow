@@ -35,17 +35,21 @@
     {% if idea.research_entries.all %}
       <div class="next-action">
         <h4>Next action</h4>
-        {% if can_manage %}
-          <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
-            {% csrf_token %}
-            <textarea name="next_action" rows="2"
-                      placeholder="Research is in — what's the single next action?">{{ idea.next_action }}</textarea>
-            <button class="btn primary" type="submit">Save next action</button>
-          </form>
-        {% elif idea.next_action %}
-          <p class="summary">{{ idea.next_action|linebreaksbr }}</p>
+        {% if idea.next_action %}
+          <p class="next-action-text">{{ idea.next_action|linebreaksbr }}</p>
         {% else %}
           <p class="dim">No next action set yet.</p>
+        {% endif %}
+        {% if can_manage %}
+          <details class="next-action-edit"{% if not idea.next_action %} open{% endif %}>
+            <summary>{% if idea.next_action %}Edit next action{% else %}Set the next action{% endif %}</summary>
+            <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
+              {% csrf_token %}
+              <textarea name="next_action" rows="2"
+                        placeholder="What's the single next action?">{{ idea.next_action }}</textarea>
+              <button class="btn primary" type="submit">Save next action</button>
+            </form>
+          </details>
         {% endif %}
       </div>
     {% endif %}

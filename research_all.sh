@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 #
 # Keep an agent doing useful work across all IdeaFlow ideas, against the
-# DEPLOYED app. Tiered by default:
+# DEPLOYED app.
 #
-#   1. Research every idea that has no research yet (research mode).
-#   2. If none are left, review/synthesize the already-researched ideas
-#      (review mode) — updating each idea's next action.
-#   3. If there are no ideas at all, reflect on the project as a whole.
+# Default pass selects, in priority order:
+#   * every idea with no research yet          -> research mode
+#   * every idea that has a next action set     -> review mode (advance it)
+#   * if that's fewer than --min (default 5), top up with the highest
+#     interest-level ideas not already picked   -> review (or research if new)
 #
 #   IDEAFLOW_API_TOKEN=... ./research_all.sh [options]
 #
 # Options:
 #   --status current|tracking|archived   limit to one tab
+#   --min N                               minimum tasks per pass (default 5)
 #   --delay SECONDS                       cooldown between runs (default 90)
-#   --review                              force the review pass over researched ideas
-#   --force                               research ALL ideas (ignore existing research)
+#   --review                              review every already-researched idea
+#   --force                               research EVERY idea (ignore existing work)
 #   --reflect                             just run the project-level reflection
 #   --dry-run                             show the plan, launch nothing
 #
@@ -29,6 +31,7 @@ IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 
 STATUS=""
+MIN=5
 DELAY=90
 FORCE=0
 REVIEW=0
@@ -38,6 +41,7 @@ DRY_RUN=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --status) STATUS="${2:-}"; shift 2 ;;
+    --min)    MIN="${2:-}";    shift 2 ;;
     --delay)  DELAY="${2:-}";  shift 2 ;;
     --force)  FORCE=1; shift ;;
     --review) REVIEW=1; shift ;;
@@ -52,10 +56,9 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   echo "error: set IDEAFLOW_API_TOKEN (the IdeaFlow API bearer token)." >&2
   exit 1
 fi
-if ! [[ "$DELAY" =~ ^[0-9]+$ ]]; then
-  echo "error: --delay must be a whole number of seconds." >&2
-  exit 2
-fi
+for n in "$MIN" "$DELAY"; do
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "error: --min and --delay must be whole numbers." >&2; exit 2; }
+done
 
 run_reflection() {
   echo "No ideas to work on — reflecting on the project."
@@ -67,7 +70,7 @@ run_reflection() {
   read -r -d '' prompt <<PROMPT || true
 Reflect on the IdeaFlow project. Use the client "${IFCLI}" (HTTP API at ${BASE}):
 run "${IFCLI} list-ideas" and "${IFCLI} feed-items --unsummarized" to see the
-current state. There is nothing queued to research right now. Reflect on: what's
+current state. There is nothing queued to work on right now. Reflect on: what's
 been covered, where the ideas are concentrated, what's stale or stuck, and 3-5
 concrete new ideas or angles worth adding. Print your reflection — do not modify
 anything.
@@ -80,58 +83,34 @@ if [[ "$REFLECT" -eq 1 ]]; then
   exit 0
 fi
 
-# Sort ideas into fresh (no research) and done (has research), via the client.
-FRESH=()
-DONE=()
-while read -r kind id; do
-  [[ -z "$kind" ]] && continue
-  if [[ "$kind" == "F" ]]; then FRESH+=("$id"); else DONE+=("$id"); fi
-done < <(
-  IF_STATUS="$STATUS" python3 - "$IFCLI" <<'PY'
-import json, os, subprocess, sys
-cli = sys.argv[1]
-status = os.environ.get("IF_STATUS") or None
+# Build the work list as "<id> <mode>" pairs (selection logic in select_tasks.py,
+# a standalone file — bash 3.2 mis-parses a heredoc nested in <(...)).
+IDS=()
+MODES=()
+PAIRS="$(
+  IF_STATUS="$STATUS" IF_FORCE="$FORCE" IF_REVIEW="$REVIEW" IF_MIN="$MIN" \
+    python3 "$SCRIPT_DIR/tools/select_tasks.py" "$IFCLI"
+)"
+while read -r id mode; do
+  [[ -z "$id" ]] && continue
+  IDS+=("$id"); MODES+=("$mode")
+done <<< "$PAIRS"
 
-def run(*a):
-    return json.loads(subprocess.check_output([cli, *a]))
-
-listing = ["list-ideas"] + (["--status", status] if status else [])
-for it in run(*listing)["ideas"]:
-    detail = run("dump-idea", str(it["id"]))
-    print("D" if detail.get("research_entries") else "F", it["id"])
-PY
-)
-
-# Decide the pass: what to run, and in which mode.
-TARGETS=()
-MODE="research"
-if [[ "$FORCE" -eq 1 ]]; then
-  MODE="research"
-  [[ ${#FRESH[@]} -gt 0 ]] && TARGETS+=("${FRESH[@]}")
-  [[ ${#DONE[@]} -gt 0 ]] && TARGETS+=("${DONE[@]}")
-elif [[ "$REVIEW" -eq 1 ]]; then
-  MODE="review"
-  [[ ${#DONE[@]} -gt 0 ]] && TARGETS+=("${DONE[@]}")
-elif [[ ${#FRESH[@]} -gt 0 ]]; then
-  MODE="research"
-  TARGETS+=("${FRESH[@]}")
-elif [[ ${#DONE[@]} -gt 0 ]]; then
-  MODE="review"
-  echo "Nothing fresh to research — reviewing already-researched ideas."
-  TARGETS+=("${DONE[@]}")
-else
-  run_reflection
-  exit 0
-fi
-
-if [[ ${#TARGETS[@]} -eq 0 ]]; then
+if [[ ${#IDS[@]} -eq 0 ]]; then
+  if [[ "$FORCE" -eq 0 && "$REVIEW" -eq 0 ]]; then
+    run_reflection
+    exit 0
+  fi
   echo "Nothing to do for this pass."
   exit 0
 fi
 
+# Summarize the plan, e.g. "3 (research), 12 (review)".
+plan=""
+for i in "${!IDS[@]}"; do plan+="${IDS[$i]} (${MODES[$i]}), "; done
 note=""
 [[ -n "$STATUS" ]] && note+=", status=$STATUS"
-echo "${MODE} pass over ${#TARGETS[@]} idea(s): ${TARGETS[*]}"
+echo "Work list (${#IDS[@]}, min ${MIN}): ${plan%, }"
 echo "Pacing: ${DELAY}s between runs${note}"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -140,22 +119,22 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 fi
 
 fail=0
-for i in "${!TARGETS[@]}"; do
-  id="${TARGETS[$i]}"
+for i in "${!IDS[@]}"; do
+  id="${IDS[$i]}"; mode="${MODES[$i]}"
   echo
-  echo "=== [$((i + 1))/${#TARGETS[@]}] ${MODE} idea ${id} ==="
-  if ./research_idea.sh "$id" "$MODE"; then
+  echo "=== [$((i + 1))/${#IDS[@]}] ${mode} idea ${id} ==="
+  if ./research_idea.sh "$id" "$mode"; then
     echo "=== idea ${id} done ==="
   else
     echo "!!! idea ${id} failed (continuing) !!!" >&2
     fail=$((fail + 1))
   fi
-  if [[ $((i + 1)) -lt ${#TARGETS[@]} ]]; then
+  if [[ $((i + 1)) -lt ${#IDS[@]} ]]; then
     echo "--- waiting ${DELAY}s before the next idea ---"
     sleep "$DELAY"
   fi
 done
 
 echo
-echo "All done: ${MODE} pass, ${#TARGETS[@]} attempted, ${fail} failed."
+echo "All done: ${#IDS[@]} attempted, ${fail} failed."
 [[ "$fail" -eq 0 ]]
