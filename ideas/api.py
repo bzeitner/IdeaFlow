@@ -208,6 +208,13 @@ def api_config(request):
     )
 
 
+def _positive_int(value):
+    """Query-param ints, ignoring anything that isn't a positive number."""
+    if value and value.isdigit() and int(value) > 0:
+        return int(value)
+    return None
+
+
 @require_api_token
 def feed_item_list(request):
     if request.method != "GET":
@@ -233,7 +240,16 @@ def feed_item_list(request):
                 seen[item.feed_id] += 1
         items = capped
 
-    return JsonResponse({"items": [feed_item_to_dict(i) for i in items]})
+    # Page the queue (?limit=25&offset=50) — the full corpus is megabytes, and
+    # a scoring run only ever wants the next handful.
+    offset = _positive_int(request.GET.get("offset")) or 0
+    limit = _positive_int(request.GET.get("limit"))
+    items = items[offset : offset + limit] if limit else items[offset:]
+
+    with_content = bool(request.GET.get("content"))
+    return JsonResponse(
+        {"items": [feed_item_to_dict(i, content=with_content) for i in items]}
+    )
 
 
 @require_api_token

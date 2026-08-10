@@ -1,0 +1,15 @@
+# Runs score_items.sh daily. Scoring is idempotent at the item level — an item
+# is only queued while summarized_at is null — so a missed run just catches up,
+# and the --limit keeps any single run's cost bounded. Offset from the hourly
+# refresh so it scores a settled corpus.
+
+[Unit]
+Description=IdeaFlow: score queued feed items daily
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

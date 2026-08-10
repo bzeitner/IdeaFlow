@@ -314,6 +314,13 @@ class FeedItem(models.Model):
     title = models.CharField(max_length=300, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
     content_hash = models.CharField(max_length=64, blank=True)
+    content = models.TextField(
+        blank=True,
+        help_text=(
+            "The entry body as published, truncated on ingest. Kept so a "
+            "scoring agent can judge the item without re-fetching the page."
+        ),
+    )
 
     # Filled once, by the ingesting agent.
     summary = models.TextField(blank=True)

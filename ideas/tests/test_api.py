@@ -202,6 +202,29 @@ class ApiFeedTests(TestCase):
         guids = {i["guid"] for i in r.json()["items"]}
         self.assertEqual(guids, {"a"})
 
+    def test_feed_items_limit_and_offset(self):
+        from .helpers import make_feed, make_feed_item
+
+        feed = make_feed()
+        for guid in ("a", "b", "c"):
+            make_feed_item(feed=feed, guid=guid)
+        r = self.client.get("/api/feed-items/?limit=2", **AUTH)
+        self.assertEqual(len(r.json()["items"]), 2)
+        page2 = self.client.get("/api/feed-items/?limit=2&offset=2", **AUTH)
+        self.assertEqual(len(page2.json()["items"]), 1)
+        # No overlap between the pages.
+        first = {i["guid"] for i in r.json()["items"]}
+        self.assertNotIn(page2.json()["items"][0]["guid"], first)
+
+    def test_feed_items_body_is_opt_in(self):
+        from .helpers import make_feed_item
+
+        make_feed_item(guid="a", content="The whole post.")
+        plain = self.client.get("/api/feed-items/", **AUTH).json()["items"][0]
+        self.assertNotIn("content", plain)
+        withbody = self.client.get("/api/feed-items/?content=1", **AUTH)
+        self.assertEqual(withbody.json()["items"][0]["content"], "The whole post.")
+
     def test_summarize_feed_item(self):
         from .helpers import make_feed_item
 
