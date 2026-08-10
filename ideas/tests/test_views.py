@@ -573,3 +573,21 @@ class ParentChildTests(TestCase):
         options = list(form.fields["parent"].queryset.values_list("pk", flat=True))
         self.assertNotIn(idea.pk, options)   # can't parent itself
         self.assertNotIn(child.pk, options)  # nor a descendant (cycle)
+
+
+class TrackingPrIconTests(TestCase):
+    def test_pr_link_shows_when_a_pr_resource_exists(self):
+        idea = make_idea(title="Repo Idea", status=Status.TRACKING)
+        idea.resources.create(label="PR", url="https://github.com/x/y/pull/3")
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:tracking"))
+        self.assertContains(r, "pr-icon")
+        self.assertContains(r, "https://github.com/x/y/pull/3")
+
+    def test_no_pr_link_without_a_pr(self):
+        make_idea(title="Plain", status=Status.TRACKING)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:tracking"))
+        self.assertNotContains(r, "pr-icon")
