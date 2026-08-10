@@ -49,6 +49,13 @@ fi
 
 REPORT="$(mktemp -t "idea-${ID}-${MODE}.XXXXXX.md")"
 
+# Idea title (for readable logs; empty if it can't be fetched).
+TITLE="$(
+  "$IFCLI" dump-idea "$ID" 2>/dev/null \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('title',''))" 2>/dev/null \
+    || true
+)"
+
 # Route to the right model tier for this task (falls back to Opus).
 MODEL="$(
   "$IFCLI" config 2>/dev/null \
@@ -178,7 +185,7 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
 PROMPT
 fi
 
-echo "→ ${MODE} idea ${ID} against ${BASE}; report scratch file: ${REPORT}" >&2
+echo "→ ${MODE}: ${TITLE:-(untitled)} (#${ID}) against ${BASE}; report scratch file: ${REPORT}" >&2
 
 claude -p "$PROMPT" \
   --allowedTools "Bash,Read,Write,WebSearch,WebFetch"

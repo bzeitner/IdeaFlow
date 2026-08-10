@@ -97,8 +97,9 @@ def main():
                     break
                 add(it["id"], "review")
 
+    # Emit "<id> <mode> <title>" — the title is the rest of the line.
     for i, mode in selected:
-        print(i, mode)
+        print(i, mode, (detail[i].get("title") or "").replace("\n", " "))
 
 
 if __name__ == "__main__":

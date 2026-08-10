@@ -87,13 +87,14 @@ fi
 # a standalone file — bash 3.2 mis-parses a heredoc nested in <(...)).
 IDS=()
 MODES=()
+TITLES=()
 PAIRS="$(
   IF_STATUS="$STATUS" IF_FORCE="$FORCE" IF_REVIEW="$REVIEW" IF_MIN="$MIN" \
     python3 "$SCRIPT_DIR/tools/select_tasks.py" "$IFCLI"
 )"
-while read -r id mode; do
+while read -r id mode title; do
   [[ -z "$id" ]] && continue
-  IDS+=("$id"); MODES+=("$mode")
+  IDS+=("$id"); MODES+=("$mode"); TITLES+=("$title")
 done <<< "$PAIRS"
 
 if [[ ${#IDS[@]} -eq 0 ]]; then
@@ -120,13 +121,13 @@ fi
 
 fail=0
 for i in "${!IDS[@]}"; do
-  id="${IDS[$i]}"; mode="${MODES[$i]}"
+  id="${IDS[$i]}"; mode="${MODES[$i]}"; title="${TITLES[$i]}"
   echo
-  echo "=== [$((i + 1))/${#IDS[@]}] ${mode} idea ${id} ==="
+  echo "=== [$((i + 1))/${#IDS[@]}] ${mode}: ${title} (#${id}) ==="
   if ./research_idea.sh "$id" "$mode"; then
-    echo "=== idea ${id} done ==="
+    echo "=== ${title} (#${id}) done ==="
   else
-    echo "!!! idea ${id} failed (continuing) !!!" >&2
+    echo "!!! ${title} (#${id}) failed (continuing) !!!" >&2
     fail=$((fail + 1))
   fi
   if [[ $((i + 1)) -lt ${#IDS[@]} ]]; then
