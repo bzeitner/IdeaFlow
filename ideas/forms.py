@@ -51,6 +51,8 @@ class IdeaForm(forms.ModelForm):
             "rank",
             "notes",
             "next_action",
+            "exec_summary",
+            "repo",
             "is_public",
             "feed_limit_override",
         ]
@@ -59,6 +61,8 @@ class IdeaForm(forms.ModelForm):
             "summary": "Idea Summary",
             "interest_level": "Interest Level",
             "next_action": "Next Action",
+            "exec_summary": "Executive Summary",
+            "repo": "Target repo (owner/name or URL)",
             "is_public": "Public (visible to everyone signed in)",
             "feed_limit_override": "Feed limit override",
         }
@@ -66,6 +70,7 @@ class IdeaForm(forms.ModelForm):
             "summary": forms.Textarea(attrs={"rows": 4}),
             "notes": forms.Textarea(attrs={"rows": 3}),
             "next_action": forms.Textarea(attrs={"rows": 2}),
+            "exec_summary": forms.Textarea(attrs={"rows": 3}),
             "interest_level": forms.RadioSelect,
         }
 

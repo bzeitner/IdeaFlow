@@ -17,6 +17,16 @@
     {% if idea.parent %}
       <p class="parent-line dim">Part of <a href="{{ idea.parent.get_absolute_url }}">{{ idea.parent.title }}</a></p>
     {% endif %}
+    {% if idea.repo %}
+      <p class="parent-line dim">Repo: <code>{{ idea.repo }}</code></p>
+    {% endif %}
+
+    {% if idea.exec_summary %}
+      <div class="exec-summary">
+        <h4>Executive summary</h4>
+        <p>{{ idea.exec_summary|linebreaksbr }}</p>
+      </div>
+    {% endif %}
 
     {% if can_manage %}
       <div class="card-actions">
@@ -156,7 +166,12 @@
               <span class="pill">Quality {{ r.quality_stars }}</span>
               {% if r.tokens_used %}<span class="dim">{{ r.tokens_used }} tokens</span>{% endif %}
             </div>
-            {% if r.context %}<p class="summary">{{ r.context|linebreaksbr }}</p>{% endif %}
+            {% if r.context %}
+              <details class="effort-detail">
+                <summary>In-depth review</summary>
+                <p class="summary">{{ r.context|linebreaksbr }}</p>
+              </details>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>

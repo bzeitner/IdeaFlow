@@ -76,6 +76,7 @@ def idea_to_dict(idea, *, detail=True):
         "interest_level": idea.interest_level,
         "status": idea.status,
         "is_public": idea.is_public,
+        "exec_summary": idea.exec_summary,
         "stage": _lookup(idea.stage),
         "rank": idea.rank,
         "url": idea.get_absolute_url(),
@@ -89,6 +90,7 @@ def idea_to_dict(idea, *, detail=True):
 
         data["notes"] = idea.notes
         data["next_action"] = idea.next_action
+        data["repo"] = idea.repo
         data["parent"] = (
             {"id": idea.parent_id, "title": idea.parent.title} if idea.parent_id else None
         )

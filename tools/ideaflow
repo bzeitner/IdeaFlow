@@ -73,6 +73,10 @@ def _read_text(inline, path):
     return inline or ""
 
 
+def cmd_config(a):
+    return _request("GET", "/config/")
+
+
 def cmd_list_ideas(a):
     return _request("GET", "/ideas/", params={"status": a.status})
 
@@ -93,10 +97,18 @@ def cmd_log_effort(a):
         "stage": a.stage,
         "status": a.status,
         "next_action": a.next_action,
+        "exec_summary": a.exec_summary,
     }
     if a.repo_url:
         body["resource"] = {"url": a.repo_url, "label": a.repo_label or ""}
     return _request("POST", f"/ideas/{a.id}/effort/", body=body)
+
+
+def cmd_feed_items(a):
+    params = {"feed": a.feed, "idea": a.idea, "per_feed": a.per_feed}
+    if a.unsummarized:
+        params["unsummarized"] = "1"
+    return _request("GET", "/feed-items/", params=params)
 
 
 def cmd_add_child(a):
@@ -121,13 +133,6 @@ def cmd_add_feed(a):
     return _request("POST", "/feeds/", body=body)
 
 
-def cmd_feed_items(a):
-    params = {"feed": a.feed}
-    if a.unsummarized:
-        params["unsummarized"] = "1"
-    return _request("GET", "/feed-items/", params=params)
-
-
 def cmd_summarize_item(a):
     body = {
         "summary": _read_text(a.summary, a.summary_file),
@@ -140,6 +145,9 @@ def cmd_summarize_item(a):
 def build_parser():
     p = argparse.ArgumentParser(prog="ideaflow", description="Remote IdeaFlow client.")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("config", help="Task->model routing + model tiers.")
+    s.set_defaults(func=cmd_config)
 
     s = sub.add_parser("list-ideas")
     s.add_argument("--status")
@@ -164,6 +172,7 @@ def build_parser():
     s.add_argument("--stage")
     s.add_argument("--status")
     s.add_argument("--next-action", dest="next_action")
+    s.add_argument("--exec-summary", dest="exec_summary")
     s.set_defaults(func=cmd_log_effort)
 
     s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
@@ -188,6 +197,8 @@ def build_parser():
     s = sub.add_parser("feed-items")
     s.add_argument("--unsummarized", action="store_true")
     s.add_argument("--feed", type=int)
+    s.add_argument("--idea", type=int)
+    s.add_argument("--per-feed", type=int, dest="per_feed", help="Max items per feed.")
     s.set_defaults(func=cmd_feed_items)
 
     s = sub.add_parser("summarize-item")

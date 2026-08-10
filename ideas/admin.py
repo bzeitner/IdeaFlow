@@ -61,7 +61,14 @@ class StageAdmin(LookupAdmin):
 
 @admin.register(AIModel)
 class AIModelAdmin(LookupAdmin):
-    pass
+    list_display = ("name", "swatch", "tier", "order", "is_active")
+    list_editable = ("tier", "order", "is_active")
+    list_filter = ("tier", "is_active")
+    fields = ("name", "slug", "color", "tier", "order", "is_active")
+
+    def get_queryset(self, request):
+        # AIModel has no "ideas" relation, so skip LookupAdmin's Count("ideas").
+        return admin.ModelAdmin.get_queryset(self, request)
 
 
 class ResourceInline(admin.TabularInline):
