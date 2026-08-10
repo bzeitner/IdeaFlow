@@ -66,19 +66,36 @@ def main():
             if has_research(it["id"]):
                 add(it["id"], "review")
     else:
-        for it in ideas:                          # 1. new ideas
-            if not has_research(it["id"]):
-                add(it["id"], "research")
-        for it in ideas:                          # 2. ideas with a next action
-            if has_next(it["id"]):
-                add(it["id"], "review")
-        if len(selected) < minimum:               # 3. top up by interest level
+        def has_open_pr(i):
+            for r in detail[i].get("resources") or []:
+                if "/pull/" in (r.get("url") or "") or "pr" in (r.get("label") or "").lower():
+                    return True
+            return False
+
+        def mode_for(it):
+            i = it["id"]
+            na = (detail[i].get("next_action") or "").strip().lower()
+            if na.startswith("critical pr review"):
+                return "critique"                 # a PR is waiting for a critical pass
+            if detail[i].get("repo") and na and has_research(i) and not has_open_pr(i):
+                return "execute"                  # repo-targeted, ready to build
+            if not has_research(i):
+                return "research"
+            if has_next(i):
+                return "review"
+            return None                           # researched, idle → fill only
+
+        for it in ideas:
+            m = mode_for(it)
+            if m is not None:
+                add(it["id"], m)
+        if len(selected) < minimum:               # top up by interest level
             rest = [it for it in ideas if it["id"] not in seen]
             rest.sort(key=lambda it: it.get("interest_level", 0), reverse=True)
             for it in rest:
                 if len(selected) >= minimum:
                     break
-                add(it["id"], "review" if has_research(it["id"]) else "research")
+                add(it["id"], "review")
 
     for i, mode in selected:
         print(i, mode)

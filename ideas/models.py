@@ -193,6 +193,15 @@ class Idea(models.Model):
     def is_archived(self):
         return self.status == Status.ARCHIVED
 
+    @property
+    def pr_url(self):
+        """URL of a pull request linked to this idea (from a resource), if any —
+        surfaced for manual review after an agent opens/reviews a PR."""
+        for r in self.resources.all():
+            if "/pull/" in r.url or "pr" in (r.label or "").lower():
+                return r.url
+        return ""
+
 
 class Resource(models.Model):
     idea = models.ForeignKey(Idea, related_name="resources", on_delete=models.CASCADE)

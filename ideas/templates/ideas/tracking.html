@@ -15,7 +15,10 @@
         {% for idea in ideas %}
           <tr>
             <td class="rank">{{ idea.rank }}</td>
-            <td><a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></td>
+            <td>
+              <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a>
+              {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener" title="Open PR for manual review">🔀</a>{% endif %}
+            </td>
             <td>{% include "ideas/_pill.html" with obj=idea.category %}</td>
             <td>{% include "ideas/_pill.html" with obj=idea.stage %}</td>
             <td class="stars">{{ idea.stars }}</td>
