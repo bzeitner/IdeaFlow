@@ -282,3 +282,54 @@ class ApiArchivedTests(TestCase):
         from ideas.models import ResearchEntry
 
         self.assertFalse(ResearchEntry.objects.exists())
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiChildIdeaTests(TestCase):
+    def _post(self, path, payload):
+        return self.client.post(
+            path, data=json.dumps(payload), content_type="application/json", **AUTH
+        )
+
+    def test_agent_creates_child_under_top_level(self):
+        from ideas.models import Idea
+
+        parent = make_idea(title="Passive Income")
+        r = self._post(f"/api/ideas/{parent.pk}/children/", {"title": "A SaaS"})
+        self.assertEqual(r.status_code, 201)
+        child = Idea.objects.get(title="A SaaS")
+        self.assertEqual(child.parent_id, parent.pk)
+        self.assertTrue(child.proposed_by_agent)
+        self.assertEqual(child.category_id, parent.category_id)  # inherited
+
+    def test_child_limit_is_five(self):
+        parent = make_idea()
+        for i in range(5):
+            self.assertEqual(
+                self._post(f"/api/ideas/{parent.pk}/children/", {"title": f"c{i}"}).status_code,
+                201,
+            )
+        r = self._post(f"/api/ideas/{parent.pk}/children/", {"title": "sixth"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_child_cannot_have_its_own_children(self):
+        parent = make_idea()
+        child = make_idea(title="child", parent=parent)
+        r = self._post(f"/api/ideas/{child.pk}/children/", {"title": "grand"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_cannot_create_child_on_archived(self):
+        parent = make_idea(status=Status.ARCHIVED)
+        r = self._post(f"/api/ideas/{parent.pk}/children/", {"title": "x"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_suggest_children_appends_and_works_on_a_child(self):
+        parent = make_idea()
+        child = make_idea(parent=parent)
+        r = self._post(
+            f"/api/ideas/{child.pk}/suggest-children/", {"suggestions": ["one", "two"]}
+        )
+        self.assertEqual(r.status_code, 201)
+        child.refresh_from_db()
+        self.assertIn("one", child.suggested_children)
+        self.assertIn("two", child.suggested_children)

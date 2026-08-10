@@ -22,7 +22,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
-from .models import Feed, FeedItem, Idea
+from .models import AGENT_CHILD_LIMIT, Category, Feed, FeedItem, Idea, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -229,10 +229,101 @@ def feed_item_summarize(request, pk):
     return JsonResponse(feed_item_to_dict(item), status=201)
 
 
+@require_api_token
+def idea_children(request, pk):
+    """Agent proposes a child idea under a top-level idea. Capped, and only for
+    top-level parents — a child idea can't get its own children."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    parent = get_object_or_404(Idea, pk=pk)
+    if parent.is_archived:
+        return JsonResponse(
+            {"error": "Idea is archived — agents don't work archived ideas."}, status=409
+        )
+    if parent.parent_id is not None:
+        return JsonResponse(
+            {
+                "error": "Child ideas can't have their own children. Use "
+                "suggest-children to leave suggestions for a human instead."
+            },
+            status=409,
+        )
+    if parent.children.filter(proposed_by_agent=True).count() >= AGENT_CHILD_LIMIT:
+        return JsonResponse(
+            {
+                "error": f"Agent child limit ({AGENT_CHILD_LIMIT}) reached for this "
+                "idea. Use suggest-children for any more."
+            },
+            status=409,
+        )
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return JsonResponse({"error": "title is required."}, status=400)
+
+    category = parent.category
+    cat_val = payload.get("category")
+    if cat_val:
+        category = (
+            Category.objects.filter(slug=cat_val).first()
+            or Category.objects.filter(name__iexact=cat_val).first()
+        )
+        if category is None:
+            return JsonResponse({"error": f"No category matches {cat_val!r}."}, status=400)
+
+    child = Idea.objects.create(
+        title=title[:200],
+        summary=payload.get("summary", ""),
+        category=category,
+        parent=parent,
+        status=Status.CURRENT,
+        proposed_by_agent=True,
+    )
+    child = Idea.objects.select_related("category", "stage", "parent").prefetch_related(
+        *_DETAIL_PREFETCH
+    ).get(pk=child.pk)
+    return JsonResponse(idea_to_dict(child, detail=True), status=201)
+
+
+@require_api_token
+def idea_suggest_children(request, pk):
+    """Agent leaves child-idea suggestions for a human (allowed on any idea,
+    including children that can't create their own)."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    raw = payload.get("suggestions")
+    if isinstance(raw, list):
+        lines = [str(s).strip() for s in raw if str(s).strip()]
+    else:
+        one = (payload.get("text") or raw or "")
+        lines = [str(one).strip()] if str(one).strip() else []
+    if not lines:
+        return JsonResponse({"error": "Provide one or more suggestions."}, status=400)
+    idea.suggested_children = "\n".join(
+        ([idea.suggested_children] if idea.suggested_children else []) + lines
+    )
+    idea.save(update_fields=["suggested_children", "updated_at"])
+    return JsonResponse(idea_to_dict(idea, detail=True), status=201)
+
+
 urlpatterns = [
     path("ideas/", idea_list, name="api_idea_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
     path("ideas/<int:pk>/effort/", idea_effort, name="api_idea_effort"),
+    path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),
+    path(
+        "ideas/<int:pk>/suggest-children/",
+        idea_suggest_children,
+        name="api_idea_suggest_children",
+    ),
     path("feeds/", feed_list, name="api_feed_list"),
     path("feed-items/", feed_item_list, name="api_feed_item_list"),
     path(

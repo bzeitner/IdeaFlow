@@ -99,6 +99,19 @@ def cmd_log_effort(a):
     return _request("POST", f"/ideas/{a.id}/effort/", body=body)
 
 
+def cmd_add_child(a):
+    body = {"title": a.title, "summary": a.summary or ""}
+    if a.category:
+        body["category"] = a.category
+    return _request("POST", f"/ideas/{a.id}/children/", body=body)
+
+
+def cmd_suggest_children(a):
+    return _request(
+        "POST", f"/ideas/{a.id}/suggest-children/", body={"suggestions": a.suggestion}
+    )
+
+
 def cmd_add_feed(a):
     body = {"url": a.url, "title": a.title or ""}
     if a.idea:
@@ -152,6 +165,18 @@ def build_parser():
     s.add_argument("--status")
     s.add_argument("--next-action", dest="next_action")
     s.set_defaults(func=cmd_log_effort)
+
+    s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
+    s.add_argument("id", type=int)
+    s.add_argument("--title", required=True)
+    s.add_argument("--summary", default="")
+    s.add_argument("--category", help="Category slug/name (defaults to the parent's).")
+    s.set_defaults(func=cmd_add_child)
+
+    s = sub.add_parser("suggest-children", help="Suggest child ideas for a human to create.")
+    s.add_argument("id", type=int)
+    s.add_argument("--suggestion", action="append", default=[], help="Repeatable.")
+    s.set_defaults(func=cmd_suggest_children)
 
     s = sub.add_parser("add-feed")
     s.add_argument("--url", required=True)
