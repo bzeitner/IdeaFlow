@@ -284,7 +284,9 @@ def feeds(request):
     items = FeedItem.objects.select_related("feed", "summary_model")
     unrated = bool(request.GET.get("unrated"))
     if unrated:
-        items = items.filter(interest__isnull=True)
+        # Summarized only: an unsummarized item has nothing to read but its
+        # title, and the summarized rows are otherwise buried thousands deep.
+        items = items.filter(interest__isnull=True, summarized_at__isnull=False)
     page = Paginator(items, 25).get_page(request.GET.get("page"))
     rows = [
         {

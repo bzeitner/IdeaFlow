@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from ideas.models import Idea, Profile, Status
 
@@ -366,11 +367,20 @@ class FeedPageTests(TestCase):
 
     def test_unrated_filter_hides_rated_items(self):
         self._login()
-        make_feed_item(title="Rated one", interest=3)
-        make_feed_item(title="Unrated one")
+        make_feed_item(title="Rated one", interest=3, summarized_at=timezone.now())
+        make_feed_item(title="Unrated one", summarized_at=timezone.now())
         response = self.client.get(reverse("ideas:feeds"), {"unrated": "1"})
         self.assertNotContains(response, "Rated one")
         self.assertContains(response, "Unrated one")
+
+    def test_unrated_filter_hides_unsummarized_items(self):
+        """Nothing to rate on an item that hasn't been summarized yet."""
+        self._login()
+        make_feed_item(title="Summarized one", summarized_at=timezone.now())
+        make_feed_item(title="Bare title only")
+        response = self.client.get(reverse("ideas:feeds"), {"unrated": "1"})
+        self.assertContains(response, "Summarized one")
+        self.assertNotContains(response, "Bare title only")
 
 
 class FeedLinkXssTests(TestCase):

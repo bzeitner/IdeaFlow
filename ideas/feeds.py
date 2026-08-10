@@ -22,6 +22,15 @@ from .reporting import resolve_ai_model
 # Only ever fetch/store web feeds — no file://, ftp://, javascript:, data:, etc.
 ALLOWED_SCHEMES = {"http", "https"}
 
+# Feed bodies are stored so a scoring agent doesn't have to re-download the
+# page; 20k characters is well past where a summary stops improving.
+CONTENT_MAX_CHARS = 20_000
+
+# A feed's first fetch often hands back the publisher's whole archive. Keep
+# only the newest entries of that first payload — later fetches are unclamped,
+# so nothing published from here on is missed.
+FIRST_FETCH_ENTRIES = 50
+
 
 def _ip_or_none(host):
     try:
@@ -103,16 +112,20 @@ def _hash(text):
 
 
 @transaction.atomic
-def ingest_entries(feed, entries):
+def ingest_entries(feed, entries, *, limit=None):
     """Upsert entries into `feed`, skipping any whose (feed, guid) already
     exists. Returns the list of newly-created FeedItems (those needing a
     summary) — existing items are left untouched, which is what keeps each
-    entry summarized only once."""
+    entry summarized only once. `limit` caps how many entries are considered,
+    taking them in feed order (newest first, by convention)."""
     created = []
+    if limit is not None:
+        entries = list(entries)[:limit]
     for entry in entries:
         guid = _guid(entry)
         if not guid:
             continue
+        body = _content(entry)
         item, was_created = FeedItem.objects.get_or_create(
             feed=feed,
             guid=guid[:500],
@@ -120,7 +133,8 @@ def ingest_entries(feed, entries):
                 "link": (entry.get("link") or "")[:500],
                 "title": (entry.get("title") or "")[:300],
                 "published_at": _published(entry),
-                "content_hash": _hash(_content(entry)),
+                "content_hash": _hash(body),
+                "content": (body or "")[:CONTENT_MAX_CHARS],
             },
         )
         if was_created:
@@ -145,6 +159,7 @@ def fetch_and_ingest(feed):
         modified=feed.last_modified or None,
     )
     status = getattr(parsed, "status", None)
+    is_first_fetch = feed.last_fetched_at is None
     feed.last_fetched_at = timezone.now()
 
     if status == 304:
@@ -161,7 +176,11 @@ def fetch_and_ingest(feed):
         feed.title = (parsed.feed.get("title", "") or "")[:200]
     feed.save()
 
-    new_items = ingest_entries(feed, getattr(parsed, "entries", []))
+    new_items = ingest_entries(
+        feed,
+        getattr(parsed, "entries", []),
+        limit=FIRST_FETCH_ENTRIES if is_first_fetch else None,
+    )
     return status, new_items
 
 

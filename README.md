@@ -189,7 +189,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
 | `GET /api/feeds/` · `POST /api/feeds/` | List feeds · register one (`{url, title?, idea_id?}`) |
-| `GET /api/feed-items/` | Feed items (`?unsummarized=1`, `?feed=<id>`) |
+| `GET /api/feed-items/` | Feed items (`?unsummarized=1`, `?feed=<id>`, `?idea=<id>`, `?limit=&offset=`, `?content=1` for the stored body) |
 | `POST /api/feed-items/<id>/summarize/` | Agent summary + usefulness (`{summary, model, usefulness}`) |
 
 ```bash
@@ -225,7 +225,17 @@ and is served at `/api/config`; cheap work like feed/blog summaries routes to a
 lighter model (Haiku) while research/review/execute/critique use the heavy one.
 `research_idea.sh` fetches its model from there per mode. Feed summarizing is
 bounded — `feed-items --idea <id> --per-feed 5` caps summaries per feed per idea
-per run.
+per run, and `--limit/--offset` page the queue instead of downloading the whole
+corpus. Items carry the entry body as ingested (`--content`), so a scoring agent
+judges them without re-fetching the page.
+
+**Scoring loop.** `score_items.sh <idea> [--limit N]` builds a queue with
+`tools/score_queue.py` (the idea's feeds, above a rating floor, within a recency
+window) and runs a headless agent that summarizes and rates each item 1-5
+against *that* idea. `deploy/ideaflow-score-items.{service,timer}` runs it daily.
+Note that `usefulness` is currently a single column on the item, so on a feed
+shared by two ideas the first scorer wins — run one idea's timer until that's
+per-idea.
 
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical

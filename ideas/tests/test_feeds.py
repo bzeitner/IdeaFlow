@@ -40,6 +40,25 @@ class IngestTests(TestCase):
         self.assertEqual([i.guid for i in created], ["c"])
         self.assertEqual(feed.items.count(), 3)
 
+    def test_ingest_stores_the_entry_body_truncated(self):
+        from ideas.feeds import CONTENT_MAX_CHARS
+
+        feed = make_feed()
+        body = "x" * (CONTENT_MAX_CHARS + 500)
+        ingest_entries(feed, [entry("a", summary=body)])
+        item = feed.items.get(guid="a")
+        self.assertEqual(len(item.content), CONTENT_MAX_CHARS)
+        self.assertTrue(item.content_hash)
+
+    def test_limit_caps_how_many_entries_are_ingested(self):
+        feed = make_feed()
+        created = ingest_entries(
+            feed, [entry("a"), entry("b"), entry("c")], limit=2
+        )
+        # Feeds are newest-first, so a clamped first fetch keeps the newest.
+        self.assertEqual([i.guid for i in created], ["a", "b"])
+        self.assertEqual(feed.items.count(), 2)
+
     def test_entry_without_guid_or_link_is_skipped(self):
         feed = make_feed()
         created = ingest_entries(feed, [{"title": "no id"}])

@@ -16,7 +16,8 @@ Commands:
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
   ideaflow add-feed --url URL [--idea <id>] [--title T]
-  ideaflow feed-items [--unsummarized] [--feed <id>]
+  ideaflow feed-items [--unsummarized] [--feed <id>] [--idea <id>]
+                      [--per-feed N] [--limit N] [--offset N] [--content]
   ideaflow summarize-item <id> [--summary-file F | --summary S]
                       [--model M] [--usefulness N]
 
@@ -105,9 +106,17 @@ def cmd_log_effort(a):
 
 
 def cmd_feed_items(a):
-    params = {"feed": a.feed, "idea": a.idea, "per_feed": a.per_feed}
+    params = {
+        "feed": a.feed,
+        "idea": a.idea,
+        "per_feed": a.per_feed,
+        "limit": a.limit,
+        "offset": a.offset,
+    }
     if a.unsummarized:
         params["unsummarized"] = "1"
+    if a.content:
+        params["content"] = "1"
     return _request("GET", "/feed-items/", params=params)
 
 
@@ -199,6 +208,13 @@ def build_parser():
     s.add_argument("--feed", type=int)
     s.add_argument("--idea", type=int)
     s.add_argument("--per-feed", type=int, dest="per_feed", help="Max items per feed.")
+    s.add_argument("--limit", type=int, help="Max items returned.")
+    s.add_argument("--offset", type=int, help="Skip this many items first.")
+    s.add_argument(
+        "--content",
+        action="store_true",
+        help="Include the stored entry body, so there's no page to re-fetch.",
+    )
     s.set_defaults(func=cmd_feed_items)
 
     s = sub.add_parser("summarize-item")

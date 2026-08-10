@@ -33,8 +33,8 @@ def research_entry_to_dict(entry):
     }
 
 
-def feed_item_to_dict(item):
-    return {
+def feed_item_to_dict(item, *, content=False):
+    data = {
         "id": item.id,
         "feed_id": item.feed_id,
         "guid": item.guid,
@@ -48,6 +48,9 @@ def feed_item_to_dict(item):
         "interest": item.interest,
         "info_value": item.info_value,
     }
+    if content:
+        data["content"] = item.content
+    return data
 
 
 def feed_to_dict(feed, *, detail=False):

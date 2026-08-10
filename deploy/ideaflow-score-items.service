@@ -1,0 +1,23 @@
+# Oneshot unit that scores one idea's queued feed items with a headless agent.
+# Paired with the .timer. Unlike refresh-feeds this does NOT run manage.py: the
+# app has no LLM dependency by design, so scoring runs through score_items.sh
+# against the HTTP API. Install both to /etc/systemd/system/, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ideaflow-score-items.timer
+#
+# Needs: the `claude` CLI on PATH for user ideaflow, and IDEAFLOW_API_TOKEN in
+# /etc/ideaflow/agent.env (same token the client uses).
+
+[Unit]
+Description=IdeaFlow: score queued feed items for idea 8
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+EnvironmentFile=/etc/ideaflow/agent.env
+ExecStart=/home/ideaflow/IdeaFlow/score_items.sh 8 --limit 25
+TimeoutStartSec=45min
