@@ -35,6 +35,7 @@ _DETAIL_PREFETCH = (
     "resources",
     "research_entries",
     "research_entries__model",
+    "children",
 )
 
 
@@ -94,6 +95,11 @@ def idea_effort(request, pk):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     idea = get_object_or_404(Idea, pk=pk)
+    if idea.is_archived:
+        return JsonResponse(
+            {"error": "Idea is archived — agents don't work archived ideas."},
+            status=409,
+        )
     if idea.is_paused:
         return JsonResponse(
             {

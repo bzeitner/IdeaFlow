@@ -96,6 +96,15 @@ class Idea(models.Model):
     category = models.ForeignKey(
         Category, on_delete=models.PROTECT, related_name="ideas"
     )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="children",
+        on_delete=models.SET_NULL,
+        help_text="Optional parent idea this is a sub-idea of (e.g. Passive "
+        "Income → a specific SaaS or rental).",
+    )
     interest_level = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=3)
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.CURRENT
@@ -155,6 +164,10 @@ class Idea(models.Model):
     def is_paused(self):
         """True once agents have worked it enough times without human feedback."""
         return self.agent_runs_since_feedback >= AGENT_RUNS_BEFORE_FEEDBACK
+
+    @property
+    def is_archived(self):
+        return self.status == Status.ARCHIVED
 
 
 class Resource(models.Model):

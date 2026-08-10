@@ -16,12 +16,34 @@ class IdeaForm(forms.ModelForm):
             self.fields[name].queryset = model.objects.filter(
                 Q(is_active=True) | Q(pk=current)
             )
+        # A parent can be any other idea except this one or its own descendants
+        # (which would create a cycle).
+        parents = Idea.objects.all()
+        if self.instance and self.instance.pk:
+            parents = parents.exclude(pk__in=self._descendant_ids(self.instance))
+        self.fields["parent"].queryset = parents.order_by("title")
+
+    @staticmethod
+    def _descendant_ids(idea):
+        """The idea's own id plus every id beneath it, so none can be its parent."""
+        ids = {idea.pk}
+        frontier = [idea.pk]
+        while frontier:
+            kids = list(
+                Idea.objects.filter(parent_id__in=frontier)
+                .exclude(pk__in=ids)
+                .values_list("pk", flat=True)
+            )
+            ids.update(kids)
+            frontier = kids
+        return ids
 
     class Meta:
         model = Idea
         fields = [
             "title",
             "category",
+            "parent",
             "summary",
             "interest_level",
             "status",

@@ -129,8 +129,8 @@ def archive(request):
 @login_required
 def detail(request, pk):
     idea = get_object_or_404(
-        Idea.objects.prefetch_related(
-            "resources", "research_entries", "research_entries__model"
+        Idea.objects.select_related("parent").prefetch_related(
+            "resources", "research_entries", "research_entries__model", "children"
         ),
         pk=pk,
     )
@@ -204,6 +204,10 @@ def idea_form(request, pk=None):
                 initial["summary"] = shared_text
             if shared_url:
                 resource_initial = [{"url": shared_url}]
+            # "+ Add child idea" links here with ?parent=<id>.
+            parent_id = request.GET.get("parent")
+            if parent_id and parent_id.isdigit():
+                initial["parent"] = parent_id
         form = IdeaForm(instance=idea, initial=initial or None)
         formset = ResourceFormSet(instance=idea, initial=resource_initial)
         research_formset = ResearchEntryFormSet(instance=idea)
