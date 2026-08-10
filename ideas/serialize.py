@@ -96,6 +96,7 @@ def idea_to_dict(idea, *, detail=True):
             {"id": c.id, "title": c.title, "status": c.status}
             for c in idea.children.all()
         ]
+        data["suggested_children"] = idea.suggested_children
         data["agent_runs_since_feedback"] = idea.agent_runs_since_feedback
         data["is_paused"] = idea.is_paused
         data["feed_cap"] = idea.feed_cap

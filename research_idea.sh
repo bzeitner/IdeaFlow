@@ -74,7 +74,13 @@ Steps:
    Update the idea's stage/status if the review warrants it: advance a promising
    one (--stage <slug>), or --status archived for a dead end, --status tracking
    to keep watching. Only change what your review actually justifies.
-6. Print the new ResearchEntry id and a two-line summary of your assessment.
+6. If distinct sub-directions deserve their own tracking: when this is a
+   top-level idea (dump-idea shows "parent": null) propose up to 5 child ideas
+     ${IFCLI} add-child ${ID} --title '<child title>' --summary '<why>'
+   When this idea is itself a child, do NOT create children — suggest them for a
+   human instead:
+     ${IFCLI} suggest-children ${ID} --suggestion '<idea>' --suggestion '<idea>'
+7. Print the new ResearchEntry id and a two-line summary of your assessment.
 PROMPT
 else
   read -r -d '' PROMPT <<PROMPT || true
@@ -102,7 +108,13 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
        --tokens <approx tokens used> \\
        --status tracking
    If the idea has a natural next stage, add --stage <slug> too.
-6. Print the new ResearchEntry id, how many feeds you registered, and a
+6. If distinct sub-directions deserve their own tracking: when this is a
+   top-level idea (dump-idea shows "parent": null) propose up to 5 child ideas
+     ${IFCLI} add-child ${ID} --title '<child title>' --summary '<why>'
+   When this idea is itself a child, don't create children — suggest them for a
+   human instead:
+     ${IFCLI} suggest-children ${ID} --suggestion '<idea>'
+7. Print the new ResearchEntry id, how many feeds you registered, and a
    two-line summary.
 PROMPT
 fi

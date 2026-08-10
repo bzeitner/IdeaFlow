@@ -17,6 +17,9 @@ STANDING_ADMIN_EMAIL = "bzeitner@gmail.com"
 FEED_CAP = 5
 RESEARCH_FEED_CAP = 10
 AGENT_RUNS_BEFORE_FEEDBACK = 3
+# Most child ideas an agent may create under one parent (it can suggest more
+# to a human beyond that).
+AGENT_CHILD_LIMIT = 5
 
 hex_color = RegexValidator(
     r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
@@ -135,6 +138,16 @@ class Idea(models.Model):
         blank=True,
         help_text="Manually cap how many feeds this idea keeps. Leave blank to "
         "use the default (5, or 10 for research categories).",
+    )
+    proposed_by_agent = models.BooleanField(
+        default=False,
+        help_text="Created by a research agent (child ideas). Counts toward the "
+        "per-parent agent child limit.",
+    )
+    suggested_children = models.TextField(
+        blank=True,
+        help_text="Child ideas an agent suggested for a human to create (used "
+        "when the agent isn't allowed to create them itself).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

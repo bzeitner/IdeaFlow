@@ -153,6 +153,9 @@ def detail(request, pk):
             "can_manage": can_manage,
             "idea_feeds": idea_feeds,
             "articles": recent_articles(idea),
+            "suggested_children": [
+                line for line in idea.suggested_children.splitlines() if line.strip()
+            ],
         },
     )
 
