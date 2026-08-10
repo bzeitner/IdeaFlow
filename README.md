@@ -220,6 +220,20 @@ The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
 command all drive this client, so they run from any machine — see
 [`deploy/README.md`](deploy/README.md) §14 for the "clone + set token" bootstrap.
 
+**Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
+and is served at `/api/config`; cheap work like feed/blog summaries routes to a
+lighter model (Haiku) while research/review/execute/critique use the heavy one.
+`research_idea.sh` fetches its model from there per mode. Feed summarizing is
+bounded — `feed-items --idea <id> --per-feed 5` caps summaries per feed per idea
+per run.
+
+**More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
+idea's target `repo`, makes the change, opens a PR, and schedules a **critical
+PR review** as the next action; `critique` runs a deliberately critical persona
+over that PR. Both run on your laptop with your `gh` auth. The review agent also
+keeps each idea's **executive summary** current (shown on the detail page, where
+each effort's in-depth write-up is collapsed behind a click).
+
 `research_all.sh` is tiered so an agent always has useful work: it researches
 ideas with no research yet, and when there are none it **reviews** the
 already-researched ones (`research_idea.sh <id> review` — synthesize progress,

@@ -71,6 +71,7 @@ def record_effort(
     stage=None,
     status=None,
     next_action=None,
+    exec_summary=None,
 ):
     """Create a ResearchEntry for `idea`, plus an optional result Resource and an
     optional stage/status move / next-action update. Returns
@@ -109,6 +110,9 @@ def record_effort(
     if next_action is not None:
         idea.next_action = next_action
         changed.append("next_action")
+    if exec_summary is not None:
+        idea.exec_summary = exec_summary
+        changed.append("exec_summary")
     # Every effort is an agent run; count it toward the pause-for-feedback limit.
     idea.agent_runs_since_feedback = (idea.agent_runs_since_feedback or 0) + 1
     changed.append("agent_runs_since_feedback")

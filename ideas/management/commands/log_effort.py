@@ -55,6 +55,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--next-action", dest="next_action", help="Set the idea's next action."
         )
+        parser.add_argument(
+            "--exec-summary",
+            dest="exec_summary",
+            help="Set the idea's executive summary of current state.",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -85,6 +90,7 @@ class Command(BaseCommand):
                 stage=options["stage"],
                 status=options["status"],
                 next_action=options["next_action"],
+                exec_summary=options["exec_summary"],
             )
         except (ValueError, LookupError) as exc:
             raise CommandError(str(exc))

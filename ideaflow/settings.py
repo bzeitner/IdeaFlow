@@ -225,6 +225,17 @@ SOCIALACCOUNT_PROVIDERS = {
 # entirely, so it stays off until you deliberately set a token.
 IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
 
+# Task -> model routing. Cheap, high-volume work (feed/blog summaries) goes to a
+# lighter model; deeper work uses the heavy model. Agents fetch this from
+# /api/config and pass the right --model. Override any entry via env.
+IDEAFLOW_TASK_MODELS = {
+    'summary': os.getenv('IDEAFLOW_MODEL_SUMMARY', 'claude-haiku-4-5'),
+    'research': os.getenv('IDEAFLOW_MODEL_RESEARCH', 'claude-opus-4-8'),
+    'review': os.getenv('IDEAFLOW_MODEL_REVIEW', 'claude-opus-4-8'),
+    'execute': os.getenv('IDEAFLOW_MODEL_EXECUTE', 'claude-opus-4-8'),
+    'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-opus-4-8'),
+}
+
 
 # Production hardening (behind nginx + Cloudflare)
 #

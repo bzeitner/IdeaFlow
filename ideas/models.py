@@ -128,6 +128,17 @@ class Idea(models.Model):
         blank=True,
         help_text="The single next step to take, once the idea has been researched.",
     )
+    exec_summary = models.TextField(
+        blank=True,
+        help_text="Executive summary of the effort's current state (kept up to "
+        "date by the review agent).",
+    )
+    repo = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Target GitHub repo (owner/name or URL) an agent may branch "
+        "and open PRs against.",
+    )
     agent_runs_since_feedback = models.PositiveIntegerField(
         default=0,
         help_text="Agent runs logged since the last human feedback; the idea "
@@ -202,6 +213,19 @@ class Resource(models.Model):
 
 class AIModel(LookupBase):
     """The AI model used for a research entry — editable in admin."""
+
+    TIER_CHOICES = [
+        ("light", "Light"),
+        ("standard", "Standard"),
+        ("heavy", "Heavy"),
+    ]
+    tier = models.CharField(
+        max_length=10,
+        choices=TIER_CHOICES,
+        default="standard",
+        help_text="Rough capability/cost tier, for routing cheap tasks (e.g. "
+        "summaries) to lighter models.",
+    )
 
     class Meta(LookupBase.Meta):
         verbose_name = "AI model"

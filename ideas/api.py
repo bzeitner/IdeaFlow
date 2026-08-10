@@ -11,6 +11,7 @@ Unset token disables the whole API, so it stays off until you opt in.
 """
 
 import json
+from collections import defaultdict
 from functools import wraps
 
 from django.conf import settings
@@ -22,7 +23,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
-from .models import AGENT_CHILD_LIMIT, Category, Feed, FeedItem, Idea, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -141,6 +142,7 @@ def idea_effort(request, pk):
             stage=payload.get("stage"),
             status=payload.get("status"),
             next_action=payload.get("next_action"),
+            exec_summary=payload.get("exec_summary"),
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
@@ -196,14 +198,41 @@ def feed_list(request):
 
 
 @require_api_token
+def api_config(request):
+    """Task->model routing + per-model tiers, so agents pick the right tier."""
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    tiers = {m.slug: m.tier for m in AIModel.objects.all()}
+    return JsonResponse(
+        {"task_models": settings.IDEAFLOW_TASK_MODELS, "model_tiers": tiers}
+    )
+
+
+@require_api_token
 def feed_item_list(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
     items = FeedItem.objects.select_related("feed", "summary_model")
     if request.GET.get("feed"):
         items = items.filter(feed_id=request.GET["feed"])
+    if request.GET.get("idea"):
+        items = items.filter(feed__idea_feeds__idea=request.GET["idea"]).distinct()
     if request.GET.get("unsummarized"):
         items = items.filter(summarized_at__isnull=True)
+
+    # Cap items per feed (e.g. ?per_feed=5) — bounds summaries per feed per
+    # idea per effort.
+    per_feed = request.GET.get("per_feed")
+    if per_feed and per_feed.isdigit():
+        cap = int(per_feed)
+        seen = defaultdict(int)
+        capped = []
+        for item in items:
+            if seen[item.feed_id] < cap:
+                capped.append(item)
+                seen[item.feed_id] += 1
+        items = capped
+
     return JsonResponse({"items": [feed_item_to_dict(i) for i in items]})
 
 
@@ -324,6 +353,7 @@ urlpatterns = [
         idea_suggest_children,
         name="api_idea_suggest_children",
     ),
+    path("config/", api_config, name="api_config"),
     path("feeds/", feed_list, name="api_feed_list"),
     path("feed-items/", feed_item_list, name="api_feed_item_list"),
     path(

@@ -3,16 +3,19 @@
 # Launch a headless Claude Code agent to research OR review one IdeaFlow idea,
 # reporting back to the DEPLOYED app over its HTTP API.
 #
-#   IDEAFLOW_API_TOKEN=... ./research_idea.sh <idea-id> [research|review]
+#   IDEAFLOW_API_TOKEN=... ./research_idea.sh <idea-id> [research|review|execute|critique]
 #
 # Modes:
 #   research (default) — research a (usually not-yet-researched) idea from scratch.
-#   review             — read the idea's existing research and synthesize progress,
-#                        fill gaps, and update its stage/status. Used by
-#                        research_all.sh when there's nothing fresh to research.
+#   review             — read existing research, synthesize progress, fill gaps,
+#                        update stage/status and the executive summary.
+#   execute            — for an idea with a target repo: branch, make the change,
+#                        open a PR, and schedule a critical review as the next task.
+#   critique           — a deliberately critical persona reviews the idea's open PR.
 #
-# Everything goes through tools/ideaflow, so it works from any machine. The run
-# isn't done until log-effort succeeds.
+# The model for each mode comes from /api/config (task->model routing), so
+# cheap work uses a lighter model. Everything goes through tools/ideaflow.
+# execute/critique run on your machine and use your gh auth (write access).
 #
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
@@ -23,12 +26,12 @@ set -euo pipefail
 ID="${1:-}"
 MODE="${2:-research}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
-  echo "usage: $0 <idea-id> [research|review]" >&2
+  echo "usage: $0 <idea-id> [research|review|execute|critique]" >&2
   exit 2
 fi
 case "$MODE" in
-  research|review) ;;
-  *) echo "error: mode must be 'research' or 'review', got '$MODE'." >&2; exit 2 ;;
+  research|review|execute|critique) ;;
+  *) echo "error: mode must be research|review|execute|critique, got '$MODE'." >&2; exit 2 ;;
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -46,7 +49,62 @@ fi
 
 REPORT="$(mktemp -t "idea-${ID}-${MODE}.XXXXXX.md")"
 
-if [[ "$MODE" == "review" ]]; then
+# Route to the right model tier for this task (falls back to Opus).
+MODEL="$(
+  "$IFCLI" config 2>/dev/null \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['task_models'].get('${MODE}','claude-opus-4-8'))" \
+    2>/dev/null || echo claude-opus-4-8
+)"
+[[ -z "$MODEL" ]] && MODEL="claude-opus-4-8"
+
+if [[ "$MODE" == "execute" ]]; then
+  read -r -d '' PROMPT <<PROMPT || true
+Execute on IdeaFlow idea ${ID}: implement the change in its target repo and open
+a PR. Use the client "${IFCLI}" (HTTP API at ${BASE}) for IdeaFlow, and your
+local git + gh (you have write access) for the repo. Steps:
+
+1. ${IFCLI} dump-idea ${ID}. The "repo" field is the target (owner/name or URL).
+   If it's empty, stop and report that no repo is set — do not guess.
+2. Clone the repo to a temp dir, create a focused branch, and make the change the
+   idea and its next_action call for. Keep the change small and reviewable; add
+   or update tests where it makes sense. Commit.
+3. Open a PR: gh pr create --fill (or with a clear title/body). Capture the PR URL.
+4. Report back — you are NOT done until this succeeds:
+     ${IFCLI} log-effort ${ID} \\
+       --topic 'Implemented: <short what>' \\
+       --model ${MODEL} \\
+       --context-file ${REPORT} \\
+       --effort <1-5> --quality <1-5> --tokens <approx> \\
+       --repo-url '<PR_URL>' --repo-label 'PR' \\
+       --status tracking \\
+       --next-action 'Critical PR review: <PR_URL>'
+   (This links the PR and schedules the critical review as the next task.)
+5. Print the PR URL and a two-line summary.
+PROMPT
+elif [[ "$MODE" == "critique" ]]; then
+  read -r -d '' PROMPT <<PROMPT || true
+You are a deliberately critical senior reviewer for IdeaFlow idea ${ID}. Your job
+is to find problems, not to praise. Use "${IFCLI}" for IdeaFlow and gh for the PR.
+Steps:
+
+1. ${IFCLI} dump-idea ${ID}. Find the open PR URL in its resources or next_action.
+   If there's no PR, stop and say so.
+2. gh pr diff <PR_URL> (and view files as needed). Scrutinize for: correctness
+   bugs and edge cases, security issues, missing/weak tests, scope creep, and
+   simpler alternatives. Assume there are problems and look hard for them.
+3. Post the critique on the PR with specific, actionable, prioritized findings:
+   gh pr review <PR_URL> --request-changes --body '<findings>'  (use --comment if
+   nothing blocking). Reference files/lines.
+4. Record it — not done until this succeeds:
+     ${IFCLI} log-effort ${ID} \\
+       --topic 'Critical PR review' \\
+       --model ${MODEL} \\
+       --context-file ${REPORT} \\
+       --effort <1-5> --quality <1-5> --tokens <approx> \\
+       --next-action '<what the author must fix, or merge if truly clean>'
+5. Print a one-line verdict (request-changes / approve-with-nits / block).
+PROMPT
+elif [[ "$MODE" == "review" ]]; then
   read -r -d '' PROMPT <<PROMPT || true
 Review IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}"
 (HTTP API at ${BASE}); do not touch any local database. This idea has already
@@ -67,10 +125,11 @@ Steps:
    single most valuable next step for this idea:
      ${IFCLI} log-effort ${ID} \\
        --topic 'Review & synthesis' \\
-       --model claude-opus-4-8 \\
+       --model ${MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
-       --next-action '<the single most valuable next step>'
+       --next-action '<the single most valuable next step>' \\
+       --exec-summary '<2-4 sentence current state of this effort>'
    Update the idea's stage/status if the review warrants it: advance a promising
    one (--stage <slug>), or --status archived for a dead end, --status tracking
    to keep watching. Only change what your review actually justifies.
@@ -101,7 +160,7 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
 5. Log the effort back into IdeaFlow — you are NOT done until this succeeds:
      ${IFCLI} log-effort ${ID} \\
        --topic '<short title of what you did>' \\
-       --model claude-opus-4-8 \\
+       --model ${MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5, how much work> \\
        --quality <1-5, your confidence in the findings> \\

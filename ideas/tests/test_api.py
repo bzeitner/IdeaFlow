@@ -333,3 +333,49 @@ class ApiChildIdeaTests(TestCase):
         child.refresh_from_db()
         self.assertIn("one", child.suggested_children)
         self.assertIn("two", child.suggested_children)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN, IDEAFLOW_TASK_MODELS={"summary": "claude-haiku-4-5", "research": "claude-opus-4-8"})
+class ApiConfigAndRoutingTests(TestCase):
+    def test_config_returns_task_models(self):
+        r = self.client.get("/api/config/", **AUTH)
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["task_models"]["summary"], "claude-haiku-4-5")
+        self.assertIn("model_tiers", body)
+
+    def test_feed_items_per_feed_cap(self):
+        from .helpers import make_feed, make_feed_item
+
+        feed = make_feed()
+        for i in range(8):
+            make_feed_item(feed=feed, guid=f"g{i}")
+        r = self.client.get("/api/feed-items/?per_feed=5", **AUTH)
+        self.assertEqual(len(r.json()["items"]), 5)
+
+    def test_feed_items_filter_by_idea(self):
+        from .helpers import make_feed, make_feed_item, make_idea
+        from ideas.feeds import link_feed
+
+        idea = make_idea()
+        f1, f2 = make_feed(), make_feed()
+        link_feed(idea, f1, rating=5)
+        make_feed_item(feed=f1, guid="in")
+        make_feed_item(feed=f2, guid="out")  # not linked to idea
+        r = self.client.get(f"/api/feed-items/?idea={idea.pk}", **AUTH)
+        guids = {i["guid"] for i in r.json()["items"]}
+        self.assertEqual(guids, {"in"})
+
+    def test_effort_sets_exec_summary(self):
+        from .helpers import make_idea
+
+        idea = make_idea()
+        r = self.client.post(
+            f"/api/ideas/{idea.pk}/effort/",
+            data=json.dumps({"topic": "t", "model": "other", "exec_summary": "State: solid."}),
+            content_type="application/json",
+            **AUTH,
+        )
+        self.assertEqual(r.status_code, 201)
+        idea.refresh_from_db()
+        self.assertEqual(idea.exec_summary, "State: solid.")
