@@ -266,3 +266,19 @@ class ApiPauseAndRatingTests(TestCase):
         )
         self.assertEqual(r.status_code, 201)
         self.assertEqual(IdeaFeed.objects.get(idea=idea).rating, 4)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiArchivedTests(TestCase):
+    def test_effort_blocked_on_archived_idea(self):
+        idea = make_idea(status=Status.ARCHIVED)
+        r = self.client.post(
+            f"/api/ideas/{idea.pk}/effort/",
+            data=json.dumps({"topic": "t", "model": "other"}),
+            content_type="application/json",
+            **AUTH,
+        )
+        self.assertEqual(r.status_code, 409)
+        from ideas.models import ResearchEntry
+
+        self.assertFalse(ResearchEntry.objects.exists())

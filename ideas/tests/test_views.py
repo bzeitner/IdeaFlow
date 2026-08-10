@@ -540,3 +540,36 @@ class ArticleLinkXssTests(TestCase):
         r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
         self.assertContains(r, "Sneaky")          # title shown
         self.assertNotContains(r, "javascript:")   # but not as a link
+
+
+class ParentChildTests(TestCase):
+    def test_detail_shows_parent_and_children(self):
+        parent = make_idea(title="Passive Income", status=Status.CURRENT)
+        child = make_idea(title="A SaaS", status=Status.CURRENT, parent=parent)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        # parent page lists the child
+        r = self.client.get(reverse("ideas:detail", args=[parent.pk]))
+        self.assertContains(r, "A SaaS")
+        # child page links back to the parent
+        r = self.client.get(reverse("ideas:detail", args=[child.pk]))
+        self.assertContains(r, "Passive Income")
+
+    def test_new_idea_form_prefills_parent(self):
+        parent = make_idea(title="Passive Income")
+        user = make_user(roles=["role_add_ideas"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:create"), {"parent": parent.pk})
+        self.assertEqual(r.status_code, 200)
+        # the parent option is selected in the rendered form
+        self.assertContains(r, f'value="{parent.pk}" selected')
+
+    def test_form_excludes_self_as_parent(self):
+        from ideas.forms import IdeaForm
+
+        idea = make_idea(title="Root")
+        child = make_idea(title="Child", parent=idea)
+        form = IdeaForm(instance=idea)
+        options = list(form.fields["parent"].queryset.values_list("pk", flat=True))
+        self.assertNotIn(idea.pk, options)   # can't parent itself
+        self.assertNotIn(child.pk, options)  # nor a descendant (cycle)

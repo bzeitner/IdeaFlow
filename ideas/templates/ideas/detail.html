@@ -14,6 +14,10 @@
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
     </div>
 
+    {% if idea.parent %}
+      <p class="parent-line dim">Part of <a href="{{ idea.parent.get_absolute_url }}">{{ idea.parent.title }}</a></p>
+    {% endif %}
+
     {% if can_manage %}
       <div class="card-actions">
         <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
@@ -70,6 +74,25 @@
           </details>
         {% endif %}
       </div>
+    {% endif %}
+
+    <div class="card-head">
+      <h4>Child ideas</h4>
+      {% if user.profile.role_admin or user.profile.role_add_ideas %}
+        <a class="btn small" href="{% url 'ideas:create' %}?parent={{ idea.pk }}">+ Add child idea</a>
+      {% endif %}
+    </div>
+    {% if idea.children.all %}
+      <ul class="child-list">
+        {% for child in idea.children.all %}
+          <li>
+            <a href="{{ child.get_absolute_url }}">{{ child.title }}</a>
+            <span class="pill">{{ child.get_status_display }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="dim">No child ideas yet.</p>
     {% endif %}
 
     <h4>Feeds <span class="dim">({{ idea_feeds|length }}/{{ idea.feed_cap }})</span></h4>

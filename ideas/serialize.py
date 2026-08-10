@@ -89,6 +89,13 @@ def idea_to_dict(idea, *, detail=True):
 
         data["notes"] = idea.notes
         data["next_action"] = idea.next_action
+        data["parent"] = (
+            {"id": idea.parent_id, "title": idea.parent.title} if idea.parent_id else None
+        )
+        data["children"] = [
+            {"id": c.id, "title": c.title, "status": c.status}
+            for c in idea.children.all()
+        ]
         data["agent_runs_since_feedback"] = idea.agent_runs_since_feedback
         data["is_paused"] = idea.is_paused
         data["feed_cap"] = idea.feed_cap

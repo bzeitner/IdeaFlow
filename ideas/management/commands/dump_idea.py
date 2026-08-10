@@ -30,9 +30,12 @@ class Command(BaseCommand):
         if options["pk"] is not None:
             try:
                 idea = (
-                    Idea.objects.select_related("category", "stage")
+                    Idea.objects.select_related("category", "stage", "parent")
                     .prefetch_related(
-                        "resources", "research_entries", "research_entries__model"
+                        "resources",
+                        "research_entries",
+                        "research_entries__model",
+                        "children",
                     )
                     .get(pk=options["pk"])
                 )
