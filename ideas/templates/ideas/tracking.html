@@ -7,13 +7,14 @@
     <table class="tracking">
       <thead>
         <tr>
-          <th>Rank</th><th>Idea</th><th>Category</th><th>Stage</th>
+          <th>#</th><th>Rank</th><th>Idea</th><th>Category</th><th>Stage</th>
           <th>Interest</th><th>Resources</th><th>Since review</th><th>Updated</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for idea in ideas %}
           <tr>
+            <td class="idea-id dim">{{ idea.id }}</td>
             <td class="rank">{{ idea.rank }}</td>
             <td>
               <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a>
