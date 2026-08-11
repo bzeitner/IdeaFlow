@@ -101,6 +101,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .tracking td a:hover { color: var(--accent); }
 .tracking .rank { font-variant-numeric: tabular-nums; color: var(--dim); }
 .tracking .since-review { font-variant-numeric: tabular-nums; }
+.idea-id { font-variant-numeric: tabular-nums; font-weight: 400; font-size: .85em; }
 .pr-icon { text-decoration: none; margin-left: 6px; font-size: 13px; }
 .pr-icon:hover { opacity: .7; }
 

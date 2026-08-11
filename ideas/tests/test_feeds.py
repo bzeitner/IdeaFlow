@@ -259,3 +259,34 @@ class FeedLimitOverrideTests(TestCase):
         for _ in range(9):
             link_feed(idea, make_feed(), rating=3)
         self.assertEqual(idea.idea_feeds.count(), 7)
+
+
+class OrphanFeedTests(TestCase):
+    def test_prune_orphan_feeds_command(self):
+        from ideas.feeds import ingest_entries, link_feed
+
+        linked = make_feed()
+        orphan = make_feed()
+        ingest_entries(orphan, [entry("a"), entry("b")])
+        idea = make_idea()
+        link_feed(idea, linked, rating=5)
+        out = run("prune_orphan_feeds", "--dry-run")
+        self.assertIn("2 items", out)
+        run("prune_orphan_feeds")
+        from ideas.models import Feed, FeedItem
+
+        self.assertFalse(Feed.objects.filter(pk=orphan.pk).exists())
+        self.assertEqual(FeedItem.objects.filter(feed_id=orphan.pk).count(), 0)
+        self.assertTrue(Feed.objects.filter(pk=linked.pk).exists())
+
+    def test_link_prune_deletes_orphaned_feed(self):
+        from ideas.feeds import link_feed
+        from ideas.models import Feed
+
+        idea = make_idea()  # cap 5
+        feeds = [make_feed() for _ in range(6)]
+        for i, f in enumerate(feeds):
+            link_feed(idea, f, rating=i + 1 if i < 5 else 1)  # 6th is lowest, pruned
+        self.assertEqual(idea.idea_feeds.count(), 5)
+        # the pruned feed, linked to no other idea, is gone entirely
+        self.assertEqual(Feed.objects.filter(pk__in=[f.pk for f in feeds]).count(), 5)

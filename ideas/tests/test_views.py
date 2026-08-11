@@ -601,3 +601,20 @@ class TrackingPrIconTests(TestCase):
         self.client.force_login(user, backend=MODEL_BACKEND)
         r = self.client.get(reverse("ideas:tracking"))
         self.assertNotContains(r, "pr-icon")
+
+
+class IdeaNumberTests(TestCase):
+    def test_id_shown_on_current_cards(self):
+        idea = make_idea(title="Numbered", status=Status.CURRENT)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:current"))
+        self.assertContains(r, f"#{idea.id}")
+
+    def test_id_column_on_tracking(self):
+        idea = make_idea(title="Tracked", status=Status.TRACKING)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        r = self.client.get(reverse("ideas:tracking"))
+        self.assertContains(r, "idea-id")
+        self.assertContains(r, str(idea.id))

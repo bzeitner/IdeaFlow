@@ -22,7 +22,8 @@ class Command(BaseCommand):
         parser.add_argument("--feed", type=int, help="Only refresh this feed id.")
 
     def handle(self, *args, **options):
-        feeds = Feed.objects.filter(is_active=True)
+        # Only fetch feeds still linked to an idea — never re-ingest orphans.
+        feeds = Feed.objects.filter(is_active=True, idea_feeds__isnull=False).distinct()
         if options["feed"]:
             feeds = feeds.filter(pk=options["feed"])
             if not feeds.exists():

@@ -16,7 +16,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from .models import FeedItem, IdeaFeed
+from .models import Feed, FeedItem, IdeaFeed
 from .reporting import resolve_ai_model
 
 # Only ever fetch/store web feeds — no file://, ftp://, javascript:, data:, etc.
@@ -193,16 +193,20 @@ def _star(value, field):
 
 def prune_idea_feeds(idea):
     """Keep only the idea's top `feed_cap` feeds by relevance rating (unrated
-    sort last), dropping the excess *links* (the Feed rows stay — another idea
-    may use them). Returns the list of removed feed ids."""
+    sort last), dropping the excess links. A feed that ends up linked to no idea
+    is deleted outright (with its items), so orphans don't accrue and get
+    ingested forever. Returns the list of removed feed ids."""
     keep = idea.feed_cap
     links = list(
         idea.idea_feeds.order_by(F("rating").desc(nulls_last=True), "-created_at")
     )
     removed = []
     for link in links[keep:]:
-        removed.append(link.feed_id)
+        feed_id = link.feed_id
+        removed.append(feed_id)
         link.delete()
+        if not IdeaFeed.objects.filter(feed_id=feed_id).exists():
+            Feed.objects.filter(pk=feed_id).delete()
     return removed
 
 
