@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Launch a headless Claude Code agent to research OR review one IdeaFlow idea,
-# reporting back to the DEPLOYED app over its HTTP API.
+# Launch a headless agent to research OR review one IdeaFlow idea, reporting
+# back to the DEPLOYED app over its HTTP API. Claude Code is the default;
+# set IDEAFLOW_AGENT=codex to use Codex instead.
 #
 #   IDEAFLOW_API_TOKEN=... ./research_idea.sh <idea-id> [research|review|execute|critique]
 #
@@ -20,11 +21,16 @@
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
 #   IDEAFLOW_API_TOKEN  required — the shared bearer token
+#   IDEAFLOW_AGENT      claude (default) or codex
+#   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`; leave
+#                        unset to use the logged-in Codex CLI default
 
 set -euo pipefail
 
 ID="${1:-}"
 MODE="${2:-research}"
+AGENT="${IDEAFLOW_AGENT:-claude}"
+AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
   echo "usage: $0 <idea-id> [research|review|execute|critique]" >&2
   exit 2
@@ -33,13 +39,17 @@ case "$MODE" in
   research|review|execute|critique) ;;
   *) echo "error: mode must be research|review|execute|critique, got '$MODE'." >&2; exit 2 ;;
 esac
+case "$AGENT" in
+  claude|codex) ;;
+  *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "error: the 'claude' CLI isn't on your PATH." >&2
+if ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
+  echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
   exit 1
 fi
 if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
@@ -47,7 +57,9 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-REPORT="$(mktemp -t "idea-${ID}-${MODE}.XXXXXX.md")"
+REPORT_DIR="$SCRIPT_DIR/.agent-reports"
+mkdir -p "$REPORT_DIR"
+REPORT="$(mktemp "$REPORT_DIR/idea-${ID}-${MODE}.XXXXXX")"
 
 # Idea title (for readable logs; empty if it can't be fetched).
 TITLE="$(
@@ -185,7 +197,19 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
 PROMPT
 fi
 
-echo "→ ${MODE}: ${TITLE:-(untitled)} (#${ID}) against ${BASE}; report scratch file: ${REPORT}" >&2
+echo "→ ${AGENT}/${MODE}: ${TITLE:-(untitled)} (#${ID}) against ${BASE}; report scratch file: ${REPORT}" >&2
 
-claude -p "$PROMPT" \
-  --allowedTools "Bash,Read,Write,WebSearch,WebFetch"
+if [[ "$AGENT" == "claude" ]]; then
+  "$AGENT_BIN" -p "$PROMPT" \
+    --allowedTools "Bash,Read,Write,WebSearch,WebFetch"
+else
+  CODEX_ARGS=(
+    --search
+    -C "$SCRIPT_DIR"
+    --sandbox danger-full-access
+    --ask-for-approval never
+  )
+  [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && CODEX_ARGS+=(--model "$IDEAFLOW_CODEX_MODEL")
+  CODEX_ARGS+=(exec --ephemeral)
+  "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT"
+fi
