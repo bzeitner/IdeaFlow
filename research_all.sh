@@ -23,12 +23,17 @@
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
 #   IDEAFLOW_API_TOKEN  required — the shared bearer token
+#   IDEAFLOW_AGENT      claude (default) or codex
+#   IDEAFLOW_AGENT_BIN  optional CLI name/path override
+#   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
+AGENT="${IDEAFLOW_AGENT:-claude}"
+AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 
 STATUS=""
 MIN=5
@@ -56,6 +61,10 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   echo "error: set IDEAFLOW_API_TOKEN (the IdeaFlow API bearer token)." >&2
   exit 1
 fi
+case "$AGENT" in
+  claude|codex) ;;
+  *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
+esac
 for n in "$MIN" "$DELAY"; do
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "error: --min and --delay must be whole numbers." >&2; exit 2; }
 done
@@ -63,8 +72,8 @@ done
 run_reflection() {
   echo "No ideas to work on — reflecting on the project."
   if [[ "$DRY_RUN" -eq 1 ]]; then echo "(dry run — not launching anything)"; return 0; fi
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "error: the 'claude' CLI isn't on your PATH." >&2; exit 1
+  if ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
+    echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2; exit 1
   fi
   local prompt
   read -r -d '' prompt <<PROMPT || true
@@ -75,7 +84,19 @@ been covered, where the ideas are concentrated, what's stale or stuck, and 3-5
 concrete new ideas or angles worth adding. Print your reflection — do not modify
 anything.
 PROMPT
-  claude -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch"
+  if [[ "$AGENT" == "claude" ]]; then
+    "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch"
+  else
+    local codex_args=(
+      --search
+      -C "$SCRIPT_DIR"
+      --sandbox danger-full-access
+      --ask-for-approval never
+    )
+    [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && codex_args+=(--model "$IDEAFLOW_CODEX_MODEL")
+    codex_args+=(exec --ephemeral)
+    "$AGENT_BIN" "${codex_args[@]}" "$prompt"
+  fi
 }
 
 if [[ "$REFLECT" -eq 1 ]]; then
@@ -112,6 +133,7 @@ for i in "${!IDS[@]}"; do plan+="${IDS[$i]} (${MODES[$i]}), "; done
 note=""
 [[ -n "$STATUS" ]] && note+=", status=$STATUS"
 echo "Work list (${#IDS[@]}, min ${MIN}): ${plan%, }"
+echo "Agent: ${AGENT}"
 echo "Pacing: ${DELAY}s between runs${note}"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
