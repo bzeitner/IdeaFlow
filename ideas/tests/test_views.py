@@ -395,19 +395,10 @@ class FeedLinkXssTests(TestCase):
 
 
 class NextActionTests(TestCase):
-    def test_block_shows_only_when_research_exists(self):
-        from .helpers import make_ai_model
-        from ideas.models import ResearchEntry
-
+    def test_block_shows_before_research_exists(self):
         idea = make_idea(status=Status.CURRENT)
         user = make_user(roles=["role_current"])
         self.client.force_login(user, backend=MODEL_BACKEND)
-
-        # No research yet → no next-action prompt.
-        r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
-        self.assertNotContains(r, "next-action-form")
-
-        ResearchEntry.objects.create(idea=idea, topic="t", model=make_ai_model())
         r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
         self.assertContains(r, "next-action-form")
         self.assertContains(r, "single next action")
@@ -434,6 +425,66 @@ class NextActionTests(TestCase):
         self.assertRedirects(r, reverse("ideas:home"), fetch_redirect_response=False)
         idea.refresh_from_db()
         self.assertEqual(idea.next_action, "")
+
+
+class TrackingWorkflowTests(TestCase):
+    def setUp(self):
+        self.user = make_user(roles=["role_tracking"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_search_and_attention_filters(self):
+        make_idea(title="Matching roadmap", status=Status.TRACKING, next_action="")
+        make_idea(title="Other idea", status=Status.TRACKING, next_action="Ship it")
+        response = self.client.get(
+            reverse("ideas:tracking"), {"q": "roadmap", "attention": "no-next-action"}
+        )
+        self.assertContains(response, "Matching roadmap")
+        self.assertNotContains(response, "Other idea")
+
+    def test_quick_update_saves_next_action_and_clears_pause(self):
+        idea = make_idea(
+            status=Status.TRACKING, next_action="", agent_runs_since_feedback=3
+        )
+        response = self.client.post(
+            reverse("ideas:quick_update", args=[idea.pk]),
+            {"field": "next_action", "value": "Call the first customer"},
+        )
+        self.assertRedirects(response, reverse("ideas:tracking") + "?")
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Call the first customer")
+        self.assertEqual(idea.agent_runs_since_feedback, 0)
+
+
+class AddResearchViewTests(TestCase):
+    def test_matching_status_role_can_log_research(self):
+        from .helpers import make_ai_model
+
+        idea = make_idea(status=Status.CURRENT)
+        model = make_ai_model()
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:add_research", args=[idea.pk]),
+            {
+                "topic": "Market scan",
+                "focus": "",
+                "context": "Three useful competitors found.",
+                "occurred_at": "",
+                "model": model.pk,
+                "effort": 3,
+                "quality": 4,
+                "tokens_used": "",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        self.assertEqual(idea.research_entries.get().topic, "Market scan")
+
+    def test_wrong_status_role_is_denied(self):
+        idea = make_idea(status=Status.CURRENT)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:add_research", args=[idea.pk]))
+        self.assertRedirects(response, reverse("ideas:home"), fetch_redirect_response=False)
 
 
 class PublicDetailAccessTests(TestCase):

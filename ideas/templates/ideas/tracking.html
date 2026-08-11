@@ -1,42 +1,85 @@
 {% extends "ideas/base.html" %}
 {% block title %}Tracking · IdeaFlow{% endblock %}
 {% block content %}
-  <h2>Tracking</h2>
-  <p class="lede">A snapshot of every idea on the radar — state and ranking at a glance.</p>
+  <div class="page-head">
+    <div>
+      <h2>Tracking</h2>
+      <p class="lede">Find what needs attention and update it without leaving the list.</p>
+    </div>
+  </div>
+
+  <form method="get" class="tracking-filters">
+    <label class="filter-search">
+      <span class="sr-only">Search ideas</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Search ideas…">
+    </label>
+    <select name="category" aria-label="Filter by category">
+      <option value="">All categories</option>
+      {% for category in categories %}<option value="{{ category.slug }}"{% if filters.category == category.slug %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
+    </select>
+    <select name="stage" aria-label="Filter by stage">
+      <option value="">All stages</option>
+      {% for stage in stages %}<option value="{{ stage.slug }}"{% if filters.stage == stage.slug %} selected{% endif %}>{{ stage.name }}</option>{% endfor %}
+    </select>
+    <select name="attention" aria-label="Filter by attention needed">
+      <option value="">All ideas</option>
+      <option value="paused"{% if filters.attention == 'paused' %} selected{% endif %}>Paused</option>
+      <option value="no-next-action"{% if filters.attention == 'no-next-action' %} selected{% endif %}>Missing next action</option>
+    </select>
+    <select name="sort" aria-label="Sort ideas">
+      <option value="rank"{% if filters.sort == 'rank' %} selected{% endif %}>Rank</option>
+      <option value="interest"{% if filters.sort == 'interest' %} selected{% endif %}>Interest</option>
+      <option value="updated"{% if filters.sort == 'updated' %} selected{% endif %}>Recently updated</option>
+      <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
+    </select>
+    <button class="btn primary" type="submit">Apply</button>
+    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'rank' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
+  </form>
+
   {% if ideas %}
-    <table class="tracking">
-      <thead>
-        <tr>
-          <th>#</th><th>Rank</th><th>Idea</th><th>Category</th><th>Stage</th>
-          <th>Interest</th><th>Resources</th><th>Since review</th><th>Updated</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for idea in ideas %}
-          <tr>
-            <td class="idea-id dim">{{ idea.id }}</td>
-            <td class="rank">{{ idea.rank }}</td>
-            <td>
-              <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a>
-              {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener" title="Open PR for manual review">🔀</a>{% endif %}
-            </td>
-            <td>{% include "ideas/_pill.html" with obj=idea.category %}</td>
-            <td>{% include "ideas/_pill.html" with obj=idea.stage %}</td>
-            <td class="stars">{{ idea.stars }}</td>
-            <td>{{ idea.resources.all|length }}</td>
-            <td class="since-review">
-              {{ idea.agent_runs_since_feedback }}{% if idea.is_paused %} <span class="pill">paused</span>{% endif %}
-            </td>
-            <td class="dim">{{ idea.updated_at|date:"M j, Y" }}</td>
-            <td class="row-actions">
-              {% include "ideas/_move.html" with target='current' label='→ Current' %}
-              {% include "ideas/_move.html" with target='archived' label='Archive' %}
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="tracking-list">
+      {% for idea in ideas %}
+        <article class="tracking-item{% if idea.is_paused %} needs-attention{% endif %}">
+          <div class="tracking-item-main">
+            <div class="card-head">
+              <h3><span class="idea-id dim">#{{ idea.id }}</span> <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></h3>
+              <span class="stars" title="Interest {{ idea.interest_level }}/5">{{ idea.stars }}</span>
+            </div>
+            <div class="meta">
+              {% include "ideas/_pill.html" with obj=idea.category %}
+              {% include "ideas/_pill.html" with obj=idea.stage %}
+              {% if idea.is_paused %}<span class="pill attention-pill">Paused</span>{% endif %}
+              <span class="dim">Updated {{ idea.updated_at|date:"M j, Y" }}</span>
+              {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener">Open PR ↗</a>{% endif %}
+            </div>
+            {% if idea.summary %}<p class="summary compact">{{ idea.summary }}</p>{% endif %}
+          </div>
+          <div class="quick-fields">
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form">
+              {% csrf_token %}<input type="hidden" name="field" value="next_action"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
+              <label>Next action<input name="value" value="{{ idea.next_action }}" placeholder="Set the next step…"></label>
+              <button class="btn small" type="submit">Save</button>
+            </form>
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form compact-form">
+              {% csrf_token %}<input type="hidden" name="field" value="rank"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
+              <label>Rank<input type="number" min="0" name="value" value="{{ idea.rank }}"></label>
+              <button class="btn small" type="submit">Save</button>
+            </form>
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form">
+              {% csrf_token %}<input type="hidden" name="field" value="stage"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
+              <label>Stage<select name="value"><option value="">No stage</option>{% for stage in stages %}<option value="{{ stage.pk }}"{% if idea.stage_id == stage.pk %} selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></label>
+              <button class="btn small" type="submit">Save</button>
+            </form>
+          </div>
+          <div class="row-actions">
+            <a class="btn small" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
+            {% include "ideas/_move.html" with target='current' label='→ Current' %}
+            {% include "ideas/_move.html" with target='archived' label='Archive' %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
   {% else %}
-    <p class="empty">Nothing being tracked yet.</p>
+    <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}">Clear filters</a></p>
   {% endif %}
 {% endblock %}

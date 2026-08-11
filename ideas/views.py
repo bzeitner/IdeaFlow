@@ -3,13 +3,13 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, F
+from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from .feeds import is_http_url, recent_articles
-from .forms import IdeaForm, ResearchEntryFormSet, ResourceFormSet
-from .models import FeedItem, Idea, Profile, Status
+from .forms import IdeaForm, ResearchEntryForm, ResourceFormSet
+from .models import Category, FeedItem, Idea, Profile, Stage, Status
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -118,7 +118,54 @@ def current(request):
 
 @role_required("role_tracking")
 def tracking(request):
-    return _tab_view(request, Status.TRACKING, "ideas/tracking.html")
+    ideas = Idea.objects.filter(status=Status.TRACKING).prefetch_related("resources")
+    query = request.GET.get("q", "").strip()
+    category = request.GET.get("category", "")
+    stage = request.GET.get("stage", "")
+    attention = request.GET.get("attention", "")
+    if query:
+        ideas = ideas.filter(
+            Q(title__icontains=query)
+            | Q(summary__icontains=query)
+            | Q(notes__icontains=query)
+            | Q(next_action__icontains=query)
+        )
+    if category:
+        ideas = ideas.filter(category__slug=category)
+    if stage:
+        ideas = ideas.filter(stage__slug=stage)
+    if attention == "paused":
+        ideas = ideas.filter(agent_runs_since_feedback__gte=3)
+    elif attention == "no-next-action":
+        ideas = ideas.filter(next_action="")
+
+    sort = request.GET.get("sort", "rank")
+    orderings = {
+        "rank": ("rank", "-interest_level", "-updated_at"),
+        "interest": ("-interest_level", "rank", "-updated_at"),
+        "updated": ("-updated_at", "rank"),
+        "oldest": ("updated_at", "rank"),
+    }
+    ideas = ideas.order_by(*orderings.get(sort, orderings["rank"]))
+    return render(
+        request,
+        "ideas/tracking.html",
+        {
+            "ideas": ideas,
+            "tabs": _tabs(request.user.profile),
+            "active": Status.TRACKING,
+            "can_manage": True,
+            "categories": Category.objects.filter(is_active=True),
+            "stages": Stage.objects.filter(is_active=True),
+            "filters": {
+                "q": query,
+                "category": category,
+                "stage": stage,
+                "attention": attention,
+                "sort": sort,
+            },
+        },
+    )
 
 
 @role_required("role_archive")
@@ -177,8 +224,7 @@ def idea_form(request, pk=None):
     if request.method == "POST":
         form = IdeaForm(request.POST, instance=idea)
         formset = ResourceFormSet(request.POST, instance=idea)
-        research_formset = ResearchEntryFormSet(request.POST, instance=idea)
-        if form.is_valid() and formset.is_valid() and research_formset.is_valid():
+        if form.is_valid() and formset.is_valid():
             if idea is None:
                 # role_add_ideas only grants creating ideas, not a target tab —
                 # force new ideas into Current regardless of what "status" was
@@ -188,8 +234,6 @@ def idea_form(request, pk=None):
             saved = form.save()
             formset.instance = saved
             formset.save()
-            research_formset.instance = saved
-            research_formset.save()
             messages.success(request, f"Saved “{saved.title}”.")
             return redirect(saved)
     else:
@@ -213,14 +257,12 @@ def idea_form(request, pk=None):
                 initial["parent"] = parent_id
         form = IdeaForm(instance=idea, initial=initial or None)
         formset = ResourceFormSet(instance=idea, initial=resource_initial)
-        research_formset = ResearchEntryFormSet(instance=idea)
     return render(
         request,
         "ideas/idea_form.html",
         {
             "form": form,
             "formset": formset,
-            "research_formset": research_formset,
             "idea": idea,
             "tabs": _tabs(profile),
             "active": idea.status if idea else None,
@@ -248,7 +290,7 @@ def set_status(request, pk, status):
 
 @login_required
 def set_next_action(request, pk):
-    """Set the idea's next action from its detail page (once research exists)."""
+    """Set the idea's next action from its detail page."""
     if request.method != "POST":
         return redirect("ideas:detail", pk=pk)
     idea = get_object_or_404(Idea, pk=pk)
@@ -261,6 +303,59 @@ def set_next_action(request, pk):
     idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
     messages.success(request, "Next action saved.")
     return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def quick_update(request, pk):
+    """Update prioritization fields directly from the Tracking table."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    if request.method == "POST":
+        field = request.POST.get("field")
+        value = request.POST.get("value", "").strip()
+        if field == "rank" and value.isdigit():
+            idea.rank = int(value)
+            idea.save(update_fields=["rank", "updated_at"])
+        elif field == "stage":
+            stage = Stage.objects.filter(pk=value, is_active=True).first() if value else None
+            if value == "" or stage:
+                idea.stage = stage
+                idea.save(update_fields=["stage", "updated_at"])
+        elif field == "next_action":
+            idea.next_action = value
+            idea.agent_runs_since_feedback = 0
+            idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
+        messages.success(request, f"Updated “{idea.title}”.")
+    back = request.POST.get("next", "")
+    return redirect(f"{reverse('ideas:tracking')}{back}")
+
+
+@login_required
+def add_research(request, pk):
+    """Log research without opening the idea's full edit form."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    form = ResearchEntryForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        entry = form.save(commit=False)
+        entry.idea = idea
+        entry.save()
+        messages.success(request, f"Research logged for “{idea.title}”.")
+        return redirect("ideas:detail", pk=pk)
+    return render(
+        request,
+        "ideas/research_form.html",
+        {
+            "idea": idea,
+            "form": form,
+            "tabs": _tabs(request.user.profile),
+            "active": idea.status,
+        },
+    )
 
 
 @login_required

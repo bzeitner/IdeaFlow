@@ -3,89 +3,67 @@
 {% block content %}
   <form method="post" class="idea-form">
     {% csrf_token %}
-
     <div class="form-topbar">
-      <h2>{% if idea %}Edit Idea{% else %}Capture an Idea{% endif %}</h2>
+      <div><h2>{% if idea %}Edit Idea{% else %}Capture an Idea{% endif %}</h2>{% if not idea %}<span class="dim">Start small. You can add operational details later.</span>{% endif %}</div>
       <div class="form-topbar-actions">
         <a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a>
         <button class="btn primary" type="submit">Save Idea</button>
       </div>
     </div>
-
     {{ form.non_field_errors }}
 
     {% for field in form %}
-      <div class="field {% if field.name == 'interest_level' %}stars-field{% endif %}">
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}
-        {{ field.errors }}
-      </div>
+      {% if field.name == 'title' or field.name == 'summary' or field.name == 'category' or field.name == 'next_action' %}
+        <div class="field{% if field.name == 'title' %} title-field{% endif %}">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+          {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
+        </div>
+      {% endif %}
     {% endfor %}
 
-    <fieldset class="resource-list">
-      <legend>Resource List</legend>
+    <fieldset class="resource-list" data-resource-formset>
+      <legend>Links and resources</legend>
       {{ formset.management_form }}
-      {% for f in formset %}
-        <div class="resource-row">
-          {{ f.id }}
-          {{ f.label }}
-          {{ f.url }}
-          {% if f.instance.pk %}<label class="del">{{ f.DELETE }} remove</label>{% endif %}
-          {{ f.errors }}
-        </div>
-      {% endfor %}
-      <small class="dim">Blank rows are ignored. Save and reopen to add more.</small>
+      <div data-resource-rows>
+        {% for f in formset %}
+          <div class="resource-row">{{ f.id }}{{ f.label }}{{ f.url }}{% if f.instance.pk %}<label class="del">{{ f.DELETE }} remove</label>{% endif %}{{ f.errors }}</div>
+        {% endfor %}
+      </div>
+      <template data-empty-resource><div class="resource-row">{{ formset.empty_form.id }}{{ formset.empty_form.label }}{{ formset.empty_form.url }}<button class="btn small" type="button" data-remove-resource>Remove</button></div></template>
+      <button class="btn small" type="button" data-add-resource>+ Add another link</button>
     </fieldset>
 
-    <fieldset class="resource-list">
-      <legend>Research Entries</legend>
-      {{ research_formset.management_form }}
-      {% for f in research_formset %}
-        <div class="research-row">
-          {{ f.id }}
-          <div class="field">
-            <label for="{{ f.topic.id_for_label }}">{{ f.topic.label }}</label>
-            {{ f.topic }}
-          </div>
-          <div class="field">
-            <label for="{{ f.focus.id_for_label }}">{{ f.focus.label }}</label>
-            {{ f.focus }}
-          </div>
-          <div class="field">
-            <label for="{{ f.context.id_for_label }}">{{ f.context.label }}</label>
-            {{ f.context }}
-          </div>
-          <div class="field">
-            <label for="{{ f.occurred_at.id_for_label }}">{{ f.occurred_at.label }}</label>
-            {{ f.occurred_at }}
-          </div>
-          <div class="field">
-            <label for="{{ f.model.id_for_label }}">{{ f.model.label }}</label>
-            {{ f.model }}
-          </div>
-          <div class="field stars-field">
-            <label>{{ f.effort.label }}</label>
-            {{ f.effort }}
-          </div>
-          <div class="field stars-field">
-            <label>{{ f.quality.label }}</label>
-            {{ f.quality }}
-          </div>
-          <div class="field">
-            <label for="{{ f.tokens_used.id_for_label }}">{{ f.tokens_used.label }}</label>
-            {{ f.tokens_used }}
-          </div>
-          {% if f.instance.pk %}<label class="del">{{ f.DELETE }} remove</label>{% endif %}
-          {{ f.errors }}
-        </div>
-      {% endfor %}
-      <small class="dim">Blank rows are ignored. Save and reopen to add more.</small>
-    </fieldset>
+    <details class="advanced-fields"{% if idea or form.errors %} open{% endif %}>
+      <summary>More details and settings</summary>
+      <div class="advanced-fields-body">
+        {% for field in form %}
+          {% if field.name != 'title' and field.name != 'summary' and field.name != 'category' and field.name != 'next_action' %}
+            <div class="field {% if field.name == 'interest_level' %}stars-field{% endif %}">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+              {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </details>
 
-    <div class="card-actions">
-      <button class="btn primary" type="submit">Save Idea</button>
-      <a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a>
-    </div>
+    <div class="card-actions"><button class="btn primary" type="submit">Save Idea</button><a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a></div>
   </form>
+  <script>
+    (function () {
+      const box = document.querySelector('[data-resource-formset]');
+      if (!box) return;
+      const rows = box.querySelector('[data-resource-rows]');
+      const total = box.querySelector('[name$="-TOTAL_FORMS"]');
+      box.querySelector('[data-add-resource]').addEventListener('click', function () {
+        const index = Number(total.value);
+        const html = box.querySelector('[data-empty-resource]').innerHTML.replaceAll('__prefix__', index);
+        rows.insertAdjacentHTML('beforeend', html);
+        total.value = index + 1;
+      });
+      rows.addEventListener('click', function (event) {
+        if (event.target.matches('[data-remove-resource]')) event.target.closest('.resource-row').remove();
+      });
+    }());
+  </script>
 {% endblock %}

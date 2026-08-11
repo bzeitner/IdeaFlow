@@ -79,7 +79,7 @@ ResourceFormSet = inlineformset_factory(
     Idea,
     Resource,
     fields=["label", "url"],
-    extra=3,
+    extra=1,
     can_delete=True,
     widgets={
         "label": forms.TextInput(attrs={"placeholder": "Label (optional)"}),

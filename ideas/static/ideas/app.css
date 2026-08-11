@@ -81,6 +81,7 @@ h4 { margin: 20px 0 6px; }
 
 .card-actions, .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; }
 .row-actions { margin-top: 0; }
+.page-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
 
 .btn {
   display: inline-block; padding: 6px 12px; border-radius: 6px; cursor: pointer;
@@ -104,6 +105,29 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .idea-id { font-variant-numeric: tabular-nums; font-weight: 400; font-size: .85em; }
 .pr-icon { text-decoration: none; margin-left: 6px; font-size: 13px; }
 .pr-icon:hover { opacity: .7; }
+
+/* Action-oriented tracking view */
+.tracking-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(120px, 1fr)) auto auto;
+  gap: 8px; align-items: center; padding: 12px; margin-bottom: 14px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; }
+.tracking-filters input, .tracking-filters select { width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+  border-radius: 6px; background: #fff; font: inherit; }
+.tracking-list { display: flex; flex-direction: column; gap: 10px; }
+.tracking-item { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(280px, .8fr) auto;
+  gap: 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.tracking-item.needs-attention { border-left: 4px solid var(--star); padding-left: 13px; }
+.tracking-item h3 { margin: 0; font-size: 16px; }
+.tracking-item h3 a { color: var(--ink); text-decoration: none; }
+.tracking-item h3 a:hover { color: var(--accent); }
+.summary.compact { margin-bottom: 0; font-size: 13px; }
+.attention-pill { color: #8a5a00; border-color: #e8c77e; background: #fff8e8; }
+.quick-fields { display: flex; flex-direction: column; gap: 7px; }
+.quick-form { display: flex; align-items: end; gap: 6px; margin: 0; }
+.quick-form label { flex: 1; color: var(--dim); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.quick-form input, .quick-form select { display: block; width: 100%; margin-top: 2px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; color: var(--ink); background: #fff; }
+.compact-form label { max-width: 90px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* Feeds */
 .feeds-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -182,6 +206,12 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .next-action-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 8px; }
 .next-action-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line);
   border-radius: 6px; font: inherit; background: #fff; }
+.detail-primary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.detail-section { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 4px; }
+.overview-section { border-top: 0; margin-top: 8px; }
+.section-title { margin: 18px 0 4px; font-size: 16px; }
+.research-heading { margin-top: 16px; }
+.research-heading h4 { margin: 0; }
 
 /* Forms */
 .idea-form { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -209,6 +239,9 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .resource-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
 .resource-row input { flex: 1; }
 .del { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.advanced-fields { border: 1px solid var(--line); border-radius: 8px; margin: 16px 0; }
+.advanced-fields > summary { cursor: pointer; padding: 12px 14px; font-weight: 600; }
+.advanced-fields-body { border-top: 1px solid var(--line); padding: 16px 14px 2px; }
 
 .research-row {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;
@@ -245,6 +278,11 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 
   /* Cards stack to one column. */
   .grid { grid-template-columns: 1fr; }
+
+  .tracking-filters { grid-template-columns: 1fr 1fr; }
+  .filter-search { grid-column: 1 / -1; }
+  .tracking-item { grid-template-columns: 1fr; }
+  .tracking-item .row-actions { margin-top: 2px; }
 
   /* Wide tracking table scrolls horizontally within the page. */
   table.tracking { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
