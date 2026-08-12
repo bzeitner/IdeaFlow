@@ -434,7 +434,9 @@ def continue_work(request, pk):
 @role_required("role_current", "role_tracking", "role_archive")
 def feeds(request):
     """Read the shared feed items and rate them (interest + info value)."""
-    items = FeedItem.objects.select_related("feed", "summary_model")
+    items = FeedItem.objects.select_related("feed", "summary_model").prefetch_related(
+        "assessments__idea"
+    )
     unrated = bool(request.GET.get("unrated"))
     if unrated:
         # Summarized only: an unsummarized item has nothing to read but its
@@ -449,7 +451,14 @@ def feeds(request):
             "link": item.link if is_http_url(item.link) else "",
             "interest_stars": _stars(item.interest),
             "info_value_stars": _stars(item.info_value),
-            "usefulness_stars": _stars(item.usefulness),
+            "assessments": [
+                {
+                    "idea": assessment.idea,
+                    "stars": _stars(assessment.usefulness),
+                    "note": assessment.relevance_note,
+                }
+                for assessment in item.assessments.all()
+            ],
         }
         for item in page
     ]

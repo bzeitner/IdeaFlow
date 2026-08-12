@@ -219,11 +219,19 @@ def _positive_int(value):
 def feed_item_list(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
+    if request.GET.get("unassessed") and not request.GET.get("idea"):
+        return JsonResponse(
+            {"error": "unassessed requires an idea query parameter."}, status=400
+        )
     items = FeedItem.objects.select_related("feed", "summary_model")
     if request.GET.get("feed"):
         items = items.filter(feed_id=request.GET["feed"])
+    idea = None
     if request.GET.get("idea"):
-        items = items.filter(feed__idea_feeds__idea=request.GET["idea"]).distinct()
+        idea = get_object_or_404(Idea, pk=request.GET["idea"])
+        items = items.filter(feed__idea_feeds__idea=idea).distinct()
+        if request.GET.get("unassessed"):
+            items = items.exclude(assessments__idea=idea)
     if request.GET.get("unsummarized"):
         items = items.filter(summarized_at__isnull=True)
 
@@ -247,8 +255,29 @@ def feed_item_list(request):
     items = items[offset : offset + limit] if limit else items[offset:]
 
     with_content = bool(request.GET.get("content"))
+    if idea is not None:
+        from django.db.models import Prefetch
+
+        from .models import FeedItemAssessment
+
+        items = list(items)
+        # The list may already have been sliced/paged, so prefetch onto those
+        # instances rather than attempting to modify the queryset afterward.
+        from django.db.models import prefetch_related_objects
+
+        prefetch_related_objects(
+            items,
+            Prefetch(
+                "assessments",
+                queryset=FeedItemAssessment.objects.filter(idea=idea),
+            ),
+        )
     return JsonResponse(
-        {"items": [feed_item_to_dict(i, content=with_content) for i in items]}
+        {
+            "items": [
+                feed_item_to_dict(i, content=with_content, idea=idea) for i in items
+            ]
+        }
     )
 
 
@@ -261,17 +290,29 @@ def feed_item_summarize(request, pk):
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    idea = None
+    idea_id = payload.get("idea_id")
+    if idea_id is not None:
+        idea = get_object_or_404(Idea, pk=idea_id)
+        if not idea.idea_feeds.filter(feed=item.feed).exists():
+            return JsonResponse(
+                {"error": "This feed item is not linked to that idea."}, status=400
+            )
     try:
         record_feed_item_summary(
             item,
             summary=payload.get("summary", ""),
             model=payload.get("model", "other"),
+            idea=idea,
             usefulness=payload.get("usefulness"),
+            relevance_note=payload.get("relevance_note", ""),
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
-    item = FeedItem.objects.select_related("feed", "summary_model").get(pk=item.pk)
-    return JsonResponse(feed_item_to_dict(item), status=201)
+    item = FeedItem.objects.select_related("feed", "summary_model").prefetch_related(
+        "assessments"
+    ).get(pk=item.pk)
+    return JsonResponse(feed_item_to_dict(item, idea=idea), status=201)
 
 
 @require_api_token

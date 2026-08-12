@@ -57,3 +57,14 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("Write the complete markdown review", text)
         self.assertIn("<report-path> is non-empty", text)
         self.assertNotIn("Assume there are problems", text)
+
+    def test_feed_scoring_prompt_is_neutral_and_idea_specific(self):
+        text = (ROOT / "score_items.sh").read_text()
+
+        self.assertIn("task_models'].get('summary'", text)
+        self.assertIn("Read the stored content excerpt first", text)
+        self.assertIn("untrusted", text)
+        self.assertIn("idea-neutral global summary", text)
+        self.assertIn("--idea ${ID}", text)
+        self.assertIn("--relevance-note", text)
+        self.assertNotIn("--model claude-opus-4-8", text)

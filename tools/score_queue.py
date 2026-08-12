@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build one idea's scoring queue from the DEPLOYED app, as JSON.
 
-The scoring agent (see ../score_items.sh) needs "the unsummarized items that
-matter to idea N". The API narrows that to the idea's own feeds and hands back
+The scoring agent (see ../score_items.sh) needs items not yet assessed for idea
+N. The API narrows that to the idea's own feeds and hands back
 each entry's stored body; the rest — the per-feed rating floor and the recency
 window — is applied here. Needs no database access, just tools/ideaflow and its
 bearer token.
@@ -19,7 +19,7 @@ Selection, in order:
   * published within --since-days (items with NO published_at are KEPT: a
     publisher emitting an unparseable date shouldn't fall out of the queue
     forever)
-  * not yet summarized
+  * not yet assessed for this idea (a neutral global summary may already exist)
   * newest first, capped at --limit
 """
 
@@ -75,14 +75,14 @@ def main(argv=None):
         sys.exit(f"error: idea {a.idea} has no feeds rated >= {a.min_rating}.")
 
     items = client(
-        "feed-items", "--unsummarized", "--content", "--idea", str(a.idea)
+        "feed-items", "--unassessed", "--content", "--idea", str(a.idea)
     )["items"]
     cutoff = datetime.now(timezone.utc) - timedelta(days=a.since_days)
 
     queue = []
     for item in items:
         feed = feeds.get(item["feed_id"])
-        if feed is None or item.get("summarized_at"):
+        if feed is None or item.get("assessment"):
             continue
         when = published(item)
         if when is not None and when < cutoff:
@@ -94,6 +94,7 @@ def main(argv=None):
                 "link": item["link"],
                 "published_at": item.get("published_at"),
                 "content": (item.get("content") or "")[:CONTENT_EXCERPT_CHARS],
+                "summary": item.get("summary", ""),
                 "feed_id": item["feed_id"],
                 "feed_title": feed.get("title", ""),
                 "feed_rating": feed.get("rating"),

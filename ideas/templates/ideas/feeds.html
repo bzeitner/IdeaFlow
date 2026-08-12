@@ -45,13 +45,17 @@
               {% endfor %}
             </div>
           </form>
-          <div class="rate-row muted">
-            <span class="rate-label">Usefulness{% if item.summary_model %} · {{ item.summary_model.name }}{% endif %}</span>
-            {% for n, filled in row.usefulness_stars %}
-              <span class="star {% if filled %}on{% endif %}">{% if filled %}★{% else %}☆{% endif %}</span>
-            {% endfor %}
-            <span class="dim rate-agent-note">(agent)</span>
-          </div>
+          {% for assessment in row.assessments %}
+            <div class="rate-row muted"{% if assessment.note %} title="{{ assessment.note }}"{% endif %}>
+              <span class="rate-label">Useful to {{ assessment.idea.title }}</span>
+              {% for n, filled in assessment.stars %}
+                <span class="star {% if filled %}on{% endif %}">{% if filled %}★{% else %}☆{% endif %}</span>
+              {% endfor %}
+              <span class="dim rate-agent-note">(agent{% if item.summary_model %}: {{ item.summary_model.name }}{% endif %})</span>
+            </div>
+          {% empty %}
+            <div class="rate-row muted"><span class="rate-label">Not assessed for an idea</span></div>
+          {% endfor %}
         </div>
       </article>
     {% endwith %}

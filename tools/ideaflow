@@ -16,10 +16,11 @@ Commands:
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
   ideaflow add-feed --url URL [--idea <id>] [--title T]
-  ideaflow feed-items [--unsummarized] [--feed <id>] [--idea <id>]
+  ideaflow feed-items [--unsummarized | --unassessed --idea <id>] [--feed <id>]
                       [--per-feed N] [--limit N] [--offset N] [--content]
-  ideaflow summarize-item <id> [--summary-file F | --summary S]
-                      [--model M] [--usefulness N]
+  ideaflow summarize-item <id> --idea <idea-id>
+                      [--summary-file F | --summary S] [--model M]
+                      [--usefulness N] [--relevance-note TEXT]
 
 Every command prints the JSON the server returned.
 """
@@ -115,6 +116,8 @@ def cmd_feed_items(a):
     }
     if a.unsummarized:
         params["unsummarized"] = "1"
+    if a.unassessed:
+        params["unassessed"] = "1"
     if a.content:
         params["content"] = "1"
     return _request("GET", "/feed-items/", params=params)
@@ -147,6 +150,8 @@ def cmd_summarize_item(a):
         "summary": _read_text(a.summary, a.summary_file),
         "model": a.model,
         "usefulness": a.usefulness,
+        "idea_id": a.idea,
+        "relevance_note": a.relevance_note,
     }
     return _request("POST", f"/feed-items/{a.id}/summarize/", body=body)
 
@@ -205,6 +210,11 @@ def build_parser():
 
     s = sub.add_parser("feed-items")
     s.add_argument("--unsummarized", action="store_true")
+    s.add_argument(
+        "--unassessed",
+        action="store_true",
+        help="Only items without an assessment for --idea.",
+    )
     s.add_argument("--feed", type=int)
     s.add_argument("--idea", type=int)
     s.add_argument("--per-feed", type=int, dest="per_feed", help="Max items per feed.")
@@ -223,13 +233,20 @@ def build_parser():
     s.add_argument("--summary-file")
     s.add_argument("--model", default="other")
     s.add_argument("--usefulness", type=int)
+    s.add_argument("--idea", type=int, help="Idea this usefulness score applies to.")
+    s.add_argument("--relevance-note", default="")
     s.set_defaults(func=cmd_summarize_item)
 
     return p
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd == "feed-items" and args.unassessed and not args.idea:
+        parser.error("feed-items --unassessed requires --idea")
+    if args.cmd == "summarize-item" and args.usefulness is not None and not args.idea:
+        parser.error("summarize-item --usefulness requires --idea")
     print(json.dumps(args.func(args), indent=2))
 
 

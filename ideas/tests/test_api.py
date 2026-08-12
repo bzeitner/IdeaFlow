@@ -197,7 +197,7 @@ class ApiFeedTests(TestCase):
         done = make_feed_item(feed=feed, guid="b")
         from ideas.feeds import record_feed_item_summary
 
-        record_feed_item_summary(done, summary="s", usefulness=3)
+        record_feed_item_summary(done, summary="s")
         r = self.client.get("/api/feed-items/?unsummarized=1", **AUTH)
         guids = {i["guid"] for i in r.json()["items"]}
         self.assertEqual(guids, {"a"})
@@ -227,25 +227,81 @@ class ApiFeedTests(TestCase):
 
     def test_summarize_feed_item(self):
         from .helpers import make_feed_item
+        from ideas.feeds import link_feed
 
         item = make_feed_item()
+        idea = make_idea()
+        link_feed(idea, item.feed)
         r = self._post(
             f"/api/feed-items/{item.pk}/summarize/",
-            {"summary": "Gist.", "model": "other", "usefulness": 4},
+            {
+                "summary": "Gist.",
+                "model": "other",
+                "idea_id": idea.pk,
+                "usefulness": 4,
+            },
         )
         self.assertEqual(r.status_code, 201)
         item.refresh_from_db()
-        self.assertEqual(item.usefulness, 4)
+        self.assertEqual(item.assessments.get(idea=idea).usefulness, 4)
         self.assertTrue(item.is_summarized)
 
     def test_summarize_bad_usefulness_is_400(self):
         from .helpers import make_feed_item
+        from ideas.feeds import link_feed
+
+        item = make_feed_item()
+        idea = make_idea()
+        link_feed(idea, item.feed)
+        r = self._post(
+            f"/api/feed-items/{item.pk}/summarize/",
+            {"summary": "x", "idea_id": idea.pk, "usefulness": 9},
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_usefulness_without_idea_is_rejected_without_summarizing(self):
+        from .helpers import make_feed_item
 
         item = make_feed_item()
         r = self._post(
-            f"/api/feed-items/{item.pk}/summarize/", {"summary": "x", "usefulness": 9}
+            f"/api/feed-items/{item.pk}/summarize/",
+            {"summary": "Should not persist.", "usefulness": 4},
         )
+
         self.assertEqual(r.status_code, 400)
+        item.refresh_from_db()
+        self.assertFalse(item.is_summarized)
+        self.assertEqual(item.summary, "")
+
+    def test_unassessed_filter_is_specific_to_the_idea(self):
+        from .helpers import make_feed_item
+        from ideas.feeds import link_feed, record_feed_item_summary
+
+        item = make_feed_item()
+        first = make_idea()
+        second = make_idea()
+        link_feed(first, item.feed)
+        link_feed(second, item.feed)
+        record_feed_item_summary(
+            item, summary="Neutral.", idea=first, usefulness=5
+        )
+
+        first_items = self.client.get(
+            f"/api/feed-items/?idea={first.pk}&unassessed=1", **AUTH
+        ).json()["items"]
+        second_items = self.client.get(
+            f"/api/feed-items/?idea={second.pk}&unassessed=1", **AUTH
+        ).json()["items"]
+
+        self.assertEqual(first_items, [])
+        self.assertEqual([row["id"] for row in second_items], [item.pk])
+        self.assertEqual(second_items[0]["summary"], "Neutral.")
+        self.assertIsNone(second_items[0]["assessment"])
+
+    def test_unassessed_filter_requires_an_idea(self):
+        response = self.client.get("/api/feed-items/?unassessed=1", **AUTH)
+
+        self.assertEqual(response.status_code, 400)
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)

@@ -6,7 +6,7 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError
 from django.test import TestCase
 
-from ideas.feeds import ingest_entries, record_feed_item_summary
+from ideas.feeds import ingest_entries, link_feed, record_feed_item_summary
 from ideas.models import FeedItem
 
 from .helpers import make_feed, make_feed_item, make_idea
@@ -89,19 +89,47 @@ class IngestTests(TestCase):
 class SummaryTests(TestCase):
     def test_records_summary_model_and_usefulness(self):
         item = make_feed_item()
+        idea = make_idea()
+        link_feed(idea, item.feed)
         record_feed_item_summary(
-            item, summary="Concise.", model="claude-opus-4-8", usefulness=4
+            item,
+            summary="Concise.",
+            model="claude-opus-4-8",
+            idea=idea,
+            usefulness=4,
         )
         item.refresh_from_db()
         self.assertEqual(item.summary, "Concise.")
         self.assertEqual(item.summary_model.slug, "claude-opus-4-8")
-        self.assertEqual(item.usefulness, 4)
+        self.assertEqual(item.assessments.get(idea=idea).usefulness, 4)
         self.assertTrue(item.is_summarized)
 
     def test_out_of_range_usefulness_rejected(self):
         item = make_feed_item()
+        idea = make_idea()
         with self.assertRaises(ValueError):
-            record_feed_item_summary(item, summary="x", usefulness=9)
+            record_feed_item_summary(item, summary="x", idea=idea, usefulness=9)
+        item.refresh_from_db()
+        self.assertFalse(item.is_summarized)
+
+    def test_shared_item_can_have_different_assessments(self):
+        item = make_feed_item()
+        first = make_idea()
+        second = make_idea()
+        link_feed(first, item.feed)
+        link_feed(second, item.feed)
+
+        record_feed_item_summary(
+            item, summary="Neutral fact.", idea=first, usefulness=5
+        )
+        record_feed_item_summary(
+            item, summary="Attempted overwrite.", idea=second, usefulness=1
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(item.summary, "Neutral fact.")
+        self.assertEqual(item.assessments.get(idea=first).usefulness, 5)
+        self.assertEqual(item.assessments.get(idea=second).usefulness, 1)
 
 
 class FeedCommandTests(TestCase):
@@ -120,7 +148,7 @@ class FeedCommandTests(TestCase):
         feed = make_feed()
         ingest_entries(feed, [entry("a"), entry("b")])
         summarized = feed.items.first()
-        record_feed_item_summary(summarized, summary="done", usefulness=3)
+        record_feed_item_summary(summarized, summary="done")
         data = json.loads(run("dump_feed_items", "--unsummarized"))
         guids = {i["guid"] for i in data["items"]}
         self.assertNotIn(summarized.guid, guids)
@@ -128,16 +156,19 @@ class FeedCommandTests(TestCase):
 
     def test_summarize_feed_item_command(self):
         item = make_feed_item()
+        idea = make_idea()
+        link_feed(idea, item.feed)
         run(
             "summarize_feed_item",
             str(item.pk),
             "--summary", "The gist.",
             "--model", "other",
+            "--idea", str(idea.pk),
             "--usefulness", "5",
         )
         item.refresh_from_db()
         self.assertEqual(item.summary, "The gist.")
-        self.assertEqual(item.usefulness, 5)
+        self.assertEqual(item.assessments.get(idea=idea).usefulness, 5)
         self.assertTrue(item.is_summarized)
 
     def test_summarize_unknown_item_raises(self):
@@ -234,7 +265,7 @@ class FeedCapTests(TestCase):
         link_feed(idea, feed, rating=5)
         (article,) = ingest_entries(feed, [entry("x")])
         self.assertEqual(recent_articles(idea), [])          # unsummarized excluded
-        record_feed_item_summary(article, summary="s", usefulness=3)
+        record_feed_item_summary(article, summary="s", idea=idea, usefulness=3)
         self.assertEqual([i.id for i in recent_articles(idea)], [article.id])
 
 

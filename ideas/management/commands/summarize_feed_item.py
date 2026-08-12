@@ -1,9 +1,7 @@
-"""The ingesting agent's write-back: summarize one feed item and rate its
-usefulness (1-5). Summarizing stamps the item so it won't resurface as
-unsummarized.
+"""Write one neutral summary and an idea-specific usefulness assessment.
 
     manage.py summarize_feed_item 42 \
-        --summary-file summary.md --model claude-opus-4-8 --usefulness 4
+        --idea 7 --summary-file summary.md --model claude-haiku-4-5 --usefulness 4
 """
 
 import json
@@ -11,7 +9,7 @@ import json
 from django.core.management.base import BaseCommand, CommandError
 
 from ideas.feeds import record_feed_item_summary
-from ideas.models import FeedItem
+from ideas.models import FeedItem, Idea
 from ideas.serialize import feed_item_to_dict
 
 
@@ -30,6 +28,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--usefulness", type=int, help="The agent's 1-5 usefulness rating."
         )
+        parser.add_argument("--idea", type=int, help="Idea the usefulness applies to.")
+        parser.add_argument("--relevance-note", default="")
 
     def handle(self, *args, **options):
         try:
@@ -45,15 +45,27 @@ class Command(BaseCommand):
             except OSError as exc:
                 raise CommandError(f"Could not read --summary-file: {exc}")
 
+        idea = None
+        if options["idea"] is not None:
+            try:
+                idea = Idea.objects.get(pk=options["idea"])
+            except Idea.DoesNotExist:
+                raise CommandError(f"No idea with id {options['idea']}.")
+            if not idea.idea_feeds.filter(feed=item.feed).exists():
+                raise CommandError("This feed item is not linked to that idea.")
         try:
             record_feed_item_summary(
                 item,
                 summary=summary,
                 model=options["model"],
+                idea=idea,
                 usefulness=options["usefulness"],
+                relevance_note=options["relevance_note"],
             )
         except (ValueError, LookupError) as exc:
             raise CommandError(str(exc))
 
-        self.stdout.write(json.dumps(feed_item_to_dict(item), indent=2, default=str))
+        self.stdout.write(
+            json.dumps(feed_item_to_dict(item, idea=idea), indent=2, default=str)
+        )
         self.stderr.write(self.style.SUCCESS(f"Summarized feed item {item.pk}."))

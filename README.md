@@ -189,8 +189,8 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
 | `GET /api/feeds/` · `POST /api/feeds/` | List feeds · register one (`{url, title?, idea_id?}`) |
-| `GET /api/feed-items/` | Feed items (`?unsummarized=1`, `?feed=<id>`, `?idea=<id>`, `?limit=&offset=`, `?content=1` for the stored body) |
-| `POST /api/feed-items/<id>/summarize/` | Agent summary + usefulness (`{summary, model, usefulness}`) |
+| `GET /api/feed-items/` | Feed items (`?unassessed=1&idea=<id>`, `?unsummarized=1`, `?feed=<id>`, `?limit=&offset=`, `?content=1`) |
+| `POST /api/feed-items/<id>/summarize/` | Neutral global summary + per-idea assessment (`{summary, model, idea_id, usefulness, relevance_note}`) |
 
 ```bash
 curl -H "Authorization: Bearer $IDEAFLOW_API_TOKEN" \
@@ -212,8 +212,8 @@ export IDEAFLOW_API_TOKEN=<the token from the server .env>
 ./tools/ideaflow log-effort 12 --topic "Prototyped it" --model claude-opus-4-8 \
   --context-file report.md --effort 4 --quality 5 --tokens 180000 --status tracking
 ./tools/ideaflow add-feed --url https://example.com/feed.xml --idea 12
-./tools/ideaflow feed-items --unsummarized
-./tools/ideaflow summarize-item 42 --summary-file s.md --model claude-opus-4-8 --usefulness 4
+./tools/ideaflow feed-items --idea 12 --unassessed
+./tools/ideaflow summarize-item 42 --idea 12 --summary-file s.md --model claude-haiku-4-5 --usefulness 4
 ```
 
 The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
@@ -231,11 +231,10 @@ judges them without re-fetching the page.
 
 **Scoring loop.** `score_items.sh <idea> [--limit N]` builds a queue with
 `tools/score_queue.py` (the idea's feeds, above a rating floor, within a recency
-window) and runs a headless agent that summarizes and rates each item 1-5
-against *that* idea. `deploy/ideaflow-score-items.{service,timer}` runs it daily.
-Note that `usefulness` is currently a single column on the item, so on a feed
-shared by two ideas the first scorer wins — run one idea's timer until that's
-per-idea.
+window) and runs a headless agent that writes one factual, idea-neutral summary
+and rates each item 1-5 against *that* idea. Assessments are stored per idea, so
+a shared item can be essential to one idea and irrelevant to another.
+`deploy/ideaflow-score-items.{service,timer}` runs it daily.
 
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical
@@ -272,7 +271,7 @@ Ratings per item:
 
 | Rating | Range | Who sets it |
 | --- | --- | --- |
-| `usefulness` | 1–5 | the ingesting agent, when it summarizes |
+| `usefulness` | 1–5 per idea | the scoring agent, in `FeedItemAssessment` |
 | `interest` | 1–5 | you (personal interest) |
 | `info_value` | 1–5 | you (information value) |
 
@@ -291,9 +290,9 @@ manage.py refresh_feeds
 # The agent's work queue: entries with no summary yet
 manage.py dump_feed_items --unsummarized
 
-# Agent write-back: summary + a 1-5 usefulness rating (stamps it "done")
+# Agent write-back: neutral summary + usefulness for one idea
 manage.py summarize_feed_item 42 \
-    --summary-file summary.md --model claude-opus-4-8 --usefulness 4
+    --idea 12 --summary-file summary.md --model claude-haiku-4-5 --usefulness 4
 ```
 
 Run `refresh_feeds` on a schedule (cron / systemd timer / `/loop`); it's

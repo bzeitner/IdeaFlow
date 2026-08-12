@@ -7,6 +7,7 @@ from .models import (
     Category,
     Feed,
     FeedItem,
+    FeedItemAssessment,
     Idea,
     IdeaFeed,
     Profile,
@@ -132,13 +133,12 @@ class FeedItemAdmin(admin.ModelAdmin):
         "title",
         "feed",
         "published_at",
-        "usefulness",
         "interest",
         "info_value",
         "is_summarized",
     )
     list_editable = ("interest", "info_value")
-    list_filter = ("feed", "usefulness", "interest", "info_value", "summary_model")
+    list_filter = ("feed", "interest", "info_value", "summary_model")
     search_fields = ("title", "summary", "guid", "link")
     list_select_related = ("feed", "summary_model")
     date_hierarchy = "published_at"
@@ -147,6 +147,14 @@ class FeedItemAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Summarized")
     def is_summarized(self, obj):
         return obj.is_summarized
+
+
+@admin.register(FeedItemAssessment)
+class FeedItemAssessmentAdmin(admin.ModelAdmin):
+    list_display = ("item", "idea", "usefulness", "updated_at")
+    list_filter = ("usefulness", "idea")
+    search_fields = ("item__title", "idea__title", "relevance_note")
+    list_select_related = ("item", "idea")
 
 
 @admin.register(Profile)

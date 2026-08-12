@@ -223,25 +223,50 @@ def link_feed(idea, feed, rating=None):
 
 def recent_articles(idea, limit=10):
     """The idea's most recent *summarized* feed items, across its linked feeds."""
+    from django.db.models import Prefetch
+
+    from .models import FeedItemAssessment
+
     return list(
         FeedItem.objects.filter(
             feed__idea_feeds__idea=idea, summarized_at__isnull=False
         )
         .select_related("feed", "summary_model")
+        .prefetch_related(
+            Prefetch(
+                "assessments",
+                queryset=FeedItemAssessment.objects.filter(idea=idea),
+            )
+        )
         .order_by("-published_at", "-created_at")
         .distinct()[:limit]
     )
 
 
-def record_feed_item_summary(item, *, summary, model=None, usefulness=None):
-    """The ingesting agent's write-back: set the summary, the model that wrote
-    it, and a 1-5 usefulness rating. Stamps summarized_at so the item won't be
-    picked up as unsummarized again."""
-    item.summary = summary or ""
-    if model:
-        item.summary_model = resolve_ai_model(model)
+def record_feed_item_summary(
+    item, *, summary, model=None, idea=None, usefulness=None, relevance_note=""
+):
+    """Store one neutral global summary and an optional idea-specific score."""
+    from .models import FeedItemAssessment
+
+    score = None
     if usefulness is not None:
-        item.usefulness = _star(usefulness, "usefulness")
-    item.summarized_at = timezone.now()
-    item.save()
+        if idea is None:
+            raise ValueError("idea is required when usefulness is provided.")
+        score = _star(usefulness, "usefulness")
+    if item.summarized_at is None:
+        item.summary = summary or ""
+        if model:
+            item.summary_model = resolve_ai_model(model)
+        item.summarized_at = timezone.now()
+        item.save(update_fields=["summary", "summary_model", "summarized_at"])
+    if usefulness is not None:
+        FeedItemAssessment.objects.update_or_create(
+            idea=idea,
+            item=item,
+            defaults={
+                "usefulness": score,
+                "relevance_note": relevance_note or "",
+            },
+        )
     return item

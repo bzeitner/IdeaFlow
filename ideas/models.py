@@ -332,13 +332,6 @@ class FeedItem(models.Model):
         blank=True,
     )
     summarized_at = models.DateTimeField(null=True, blank=True)
-    usefulness = models.PositiveSmallIntegerField(
-        choices=STAR_CHOICES,
-        null=True,
-        blank=True,
-        help_text="The ingesting agent's 1-5 usefulness rating.",
-    )
-
     # Your personal ratings, set from the admin (or the feed UI).
     interest = models.PositiveSmallIntegerField(
         choices=STAR_CHOICES,
@@ -375,6 +368,38 @@ class FeedItem(models.Model):
         from urllib.parse import urlsplit
 
         return self.link if urlsplit(self.link or "").scheme in ("http", "https") else ""
+
+
+class FeedItemAssessment(models.Model):
+    """An agent's idea-specific judgment of one globally summarized item."""
+
+    idea = models.ForeignKey(
+        Idea, related_name="feed_item_assessments", on_delete=models.CASCADE
+    )
+    item = models.ForeignKey(
+        FeedItem, related_name="assessments", on_delete=models.CASCADE
+    )
+    usefulness = models.PositiveSmallIntegerField(
+        choices=STAR_CHOICES,
+        help_text="How useful this feed item is to this specific idea (1-5).",
+    )
+    relevance_note = models.TextField(
+        blank=True,
+        help_text="Optional idea-specific explanation; the global summary stays neutral.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-usefulness", "-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idea", "item"], name="unique_idea_feed_item_assessment"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.idea} · {self.item} ({self.usefulness}/5)"
 
 
 class IdeaFeed(models.Model):

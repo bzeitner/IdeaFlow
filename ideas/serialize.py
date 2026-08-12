@@ -33,7 +33,7 @@ def research_entry_to_dict(entry):
     }
 
 
-def feed_item_to_dict(item, *, content=False):
+def feed_item_to_dict(item, *, content=False, idea=None):
     data = {
         "id": item.id,
         "feed_id": item.feed_id,
@@ -44,12 +44,23 @@ def feed_item_to_dict(item, *, content=False):
         "summary": item.summary,
         "summary_model": _lookup(item.summary_model),
         "summarized_at": item.summarized_at.isoformat() if item.summarized_at else None,
-        "usefulness": item.usefulness,
         "interest": item.interest,
         "info_value": item.info_value,
     }
     if content:
         data["content"] = item.content
+    if idea is not None:
+        assessment = next(
+            (a for a in item.assessments.all() if a.idea_id == idea.pk), None
+        )
+        data["assessment"] = (
+            {
+                "usefulness": assessment.usefulness,
+                "relevance_note": assessment.relevance_note,
+            }
+            if assessment
+            else None
+        )
     return data
 
 
@@ -113,5 +124,7 @@ def idea_to_dict(idea, *, detail=True):
             F("rating").desc(nulls_last=True), "-created_at"
         )
         data["feeds"] = [{**feed_to_dict(link.feed), "rating": link.rating} for link in links]
-        data["recent_articles"] = [feed_item_to_dict(i) for i in recent_articles(idea)]
+        data["recent_articles"] = [
+            feed_item_to_dict(i, idea=idea) for i in recent_articles(idea)
+        ]
     return data
