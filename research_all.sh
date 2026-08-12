@@ -6,14 +6,13 @@
 # Default pass selects, in priority order:
 #   * every idea with no research yet          -> research mode
 #   * every idea that has a next action set     -> review mode (advance it)
-#   * if that's fewer than --min (default 5), top up with the highest
-#     interest-level ideas not already picked   -> review (or research if new)
+#   * researched ideas without a next action are skipped
 #
 #   IDEAFLOW_API_TOKEN=... ./research_all.sh [options]
 #
 # Options:
 #   --status current|tracking|archived   limit to one tab
-#   --min N                               minimum tasks per pass (default 5)
+#   --min N                               retained for compatibility (default 5)
 #   --delay SECONDS                       cooldown between runs (default 90)
 #   --review                              review every already-researched idea
 #   --force                               research EVERY idea (ignore existing work)
@@ -132,7 +131,7 @@ plan=""
 for i in "${!IDS[@]}"; do plan+="${IDS[$i]} (${MODES[$i]}), "; done
 note=""
 [[ -n "$STATUS" ]] && note+=", status=$STATUS"
-echo "Work list (${#IDS[@]}, min ${MIN}): ${plan%, }"
+echo "Work list (${#IDS[@]} actionable): ${plan%, }"
 echo "Agent: ${AGENT}"
 echo "Pacing: ${DELAY}s between runs${note}"
 

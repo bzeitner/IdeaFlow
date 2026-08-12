@@ -27,22 +27,23 @@
       <option value="no-next-action"{% if filters.attention == 'no-next-action' %} selected{% endif %}>Missing next action</option>
     </select>
     <select name="sort" aria-label="Sort ideas">
+      <option value="family"{% if filters.sort == 'family' %} selected{% endif %}>Parent &amp; children</option>
       <option value="rank"{% if filters.sort == 'rank' %} selected{% endif %}>Rank</option>
       <option value="interest"{% if filters.sort == 'interest' %} selected{% endif %}>Interest</option>
       <option value="updated"{% if filters.sort == 'updated' %} selected{% endif %}>Recently updated</option>
       <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
     </select>
     <button class="btn primary" type="submit">Apply</button>
-    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'rank' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'family' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
   </form>
 
   {% if ideas %}
     <div class="tracking-list">
       {% for idea in ideas %}
-        <article class="tracking-item{% if idea.is_paused %} needs-attention{% endif %}">
+        <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused %} needs-attention{% endif %}">
           <div class="tracking-item-main">
             <div class="card-head">
-              <h3><span class="idea-id dim">#{{ idea.id }}</span> <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></h3>
+              <h3>{% if idea.parent_id %}<span class="child-marker" aria-label="Child idea">↳</span> {% endif %}<span class="idea-id dim">#{{ idea.id }}</span> <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></h3>
               <span class="stars" title="Interest {{ idea.interest_level }}/5">{{ idea.stars }}</span>
             </div>
             <div class="meta">

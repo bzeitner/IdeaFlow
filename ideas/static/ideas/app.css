@@ -116,6 +116,8 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .tracking-item { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(280px, .8fr) auto;
   gap: 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .tracking-item.needs-attention { border-left: 4px solid var(--star); padding-left: 13px; }
+.tracking-item.child-item { margin-left: 24px; }
+.child-marker { color: var(--dim); }
 .tracking-item h3 { margin: 0; font-size: 16px; }
 .tracking-item h3 a { color: var(--ink); text-decoration: none; }
 .tracking-item h3 a:hover { color: var(--accent); }
@@ -173,6 +175,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .parent-line { margin: 8px 0 0; }
 .child-list { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .child-list li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-form { display: inline; margin: 0; }
 .child-list a { color: var(--ink); text-decoration: none; font-weight: 500; }
 .child-list a:hover { color: var(--accent); }
 

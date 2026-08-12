@@ -5,11 +5,11 @@ Reads the deployed data through the tools/ideaflow client (path in argv[1]) and
 applies the default selection:
   * every idea with no research yet     -> research
   * every idea with a next action set   -> review
-  * if fewer than IF_MIN, top up with the highest interest-level ideas
-    not already picked                  -> review (or research if still new)
+  * researched ideas without a next action are skipped; continue to the next
+    actionable idea instead of re-analyzing idle work
 
 Env: IF_STATUS (tab filter), IF_FORCE (=1 research all), IF_REVIEW (=1 review
-all researched), IF_MIN (minimum tasks, default 5).
+all researched).
 
 Kept as a standalone file (not an inline heredoc) because bash 3.2 mis-parses a
 heredoc nested inside a process substitution.
@@ -26,11 +26,6 @@ def main():
     status = os.environ.get("IF_STATUS") or None
     force = os.environ.get("IF_FORCE") == "1"
     review = os.environ.get("IF_REVIEW") == "1"
-    try:
-        minimum = int(os.environ.get("IF_MIN", "5"))
-    except ValueError:
-        minimum = 5
-
     def run(*args):
         return json.loads(subprocess.check_output([cli, *args]))
 
@@ -83,19 +78,12 @@ def main():
                 return "research"
             if has_next(i):
                 return "review"
-            return None                           # researched, idle → fill only
+            return None                           # researched, idle → skip
 
         for it in ideas:
             m = mode_for(it)
             if m is not None:
                 add(it["id"], m)
-        if len(selected) < minimum:               # top up by interest level
-            rest = [it for it in ideas if it["id"] not in seen]
-            rest.sort(key=lambda it: it.get("interest_level", 0), reverse=True)
-            for it in rest:
-                if len(selected) >= minimum:
-                    break
-                add(it["id"], "review")
 
     # Emit "<id> <mode> <title>" — the title is the rest of the line.
     for i, mode in selected:

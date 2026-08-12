@@ -441,6 +441,38 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "Matching roadmap")
         self.assertNotContains(response, "Other idea")
 
+    def test_default_sort_groups_parents_with_their_children(self):
+        later_parent = make_idea(
+            title="Later parent", status=Status.TRACKING, rank=20
+        )
+        make_idea(
+            title="Later child", status=Status.TRACKING, rank=1,
+            parent=later_parent,
+        )
+        earlier_parent = make_idea(
+            title="Earlier parent", status=Status.TRACKING, rank=10
+        )
+        make_idea(
+            title="Earlier child", status=Status.TRACKING, rank=99,
+            parent=earlier_parent,
+        )
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertEqual(response.context["filters"]["sort"], "family")
+        self.assertEqual(
+            [idea.title for idea in response.context["ideas"]],
+            ["Earlier parent", "Earlier child", "Later parent", "Later child"],
+        )
+        self.assertContains(response, "Parent &amp; children", html=False)
+        self.assertContains(response, "child-item")
+
+    def test_unknown_sort_falls_back_to_parent_child_grouping(self):
+        response = self.client.get(reverse("ideas:tracking"), {"sort": "unknown"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["filters"]["sort"], "family")
+
     def test_quick_update_saves_next_action_and_clears_pause(self):
         idea = make_idea(
             status=Status.TRACKING, next_action="", agent_runs_since_feedback=3
@@ -624,6 +656,39 @@ class ParentChildTests(TestCase):
         self.assertEqual(r.status_code, 200)
         # the parent option is selected in the rendered form
         self.assertContains(r, f'value="{parent.pk}" selected')
+
+    def test_create_suggested_child_creates_and_removes_suggestion(self):
+        parent = make_idea(
+            title="Passive Income",
+            suggested_children="A SaaS\nA rental property",
+        )
+        user = make_user(roles=["role_add_ideas", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:create_suggested_child", args=[parent.pk]),
+            {"title": "A SaaS"},
+        )
+
+        child = parent.children.get()
+        self.assertRedirects(response, reverse("ideas:detail", args=[child.pk]))
+        self.assertEqual(child.title, "A SaaS")
+        self.assertEqual(child.category, parent.category)
+        parent.refresh_from_db()
+        self.assertEqual(parent.suggested_children, "A rental property")
+
+    def test_cannot_create_text_that_is_not_a_suggestion(self):
+        parent = make_idea(suggested_children="Expected child")
+        user = make_user(roles=["role_add_ideas", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:create_suggested_child", args=[parent.pk]),
+            {"title": "Injected child"},
+        )
+
+        self.assertRedirects(response, reverse("ideas:detail", args=[parent.pk]))
+        self.assertFalse(parent.children.exists())
 
     def test_form_excludes_self_as_parent(self):
         from ideas.forms import IdeaForm

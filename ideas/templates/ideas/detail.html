@@ -114,7 +114,11 @@
           <li>
             <span>{{ s }}</span>
             {% if user.profile.role_admin or user.profile.role_add_ideas %}
-              <a class="btn small" href="{% url 'ideas:create' %}?parent={{ idea.pk }}&title={{ s|urlencode }}">+ Add</a>
+              <form method="post" action="{% url 'ideas:create_suggested_child' idea.pk %}" class="inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="title" value="{{ s }}">
+                <button class="btn small" type="submit">Create child</button>
+              </form>
             {% endif %}
           </li>
         {% endfor %}

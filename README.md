@@ -244,11 +244,11 @@ over that PR. Both run on your laptop with your `gh` auth. The review agent also
 keeps each idea's **executive summary** current (shown on the detail page, where
 each effort's in-depth write-up is collapsed behind a click).
 
-`research_all.sh` is tiered so an agent always has useful work: it researches
-ideas with no research yet, and when there are none it **reviews** the
-already-researched ones (`research_idea.sh <id> review` — synthesize progress,
-update stage/status, and set each idea's **next action**), and if there are no
-ideas at all it reflects on the project. Flags: `--review`, `--force`,
+`research_all.sh` researches ideas with no research yet and **reviews**
+already-researched ideas only when they have a clear next action. Researched
+ideas without one are skipped so the runner proceeds to the next actionable
+idea instead of re-analyzing them. If nothing is actionable, it reflects on the
+project. Flags: `--review`, `--force`,
 `--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
 detail page prompts for that single next action (also settable by the review
 agent via `log-effort --next-action`).

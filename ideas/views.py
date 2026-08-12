@@ -3,7 +3,7 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Q
+from django.db.models import Case, Count, F, IntegerField, Q, When
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
@@ -139,14 +139,41 @@ def tracking(request):
     elif attention == "no-next-action":
         ideas = ideas.filter(next_action="")
 
-    sort = request.GET.get("sort", "rank")
+    sort = request.GET.get("sort", "family")
     orderings = {
+        "family": (
+            "family_rank",
+            "family_id",
+            "family_position",
+            "rank",
+            "id",
+        ),
         "rank": ("rank", "-interest_level", "-updated_at"),
         "interest": ("-interest_level", "rank", "-updated_at"),
         "updated": ("-updated_at", "rank"),
         "oldest": ("updated_at", "rank"),
     }
-    ideas = ideas.order_by(*orderings.get(sort, orderings["rank"]))
+    if sort not in orderings:
+        sort = "family"
+    if sort == "family":
+        ideas = ideas.annotate(
+            family_rank=Case(
+                When(parent__isnull=True, then=F("rank")),
+                default=F("parent__rank"),
+                output_field=IntegerField(),
+            ),
+            family_id=Case(
+                When(parent__isnull=True, then=F("id")),
+                default=F("parent_id"),
+                output_field=IntegerField(),
+            ),
+            family_position=Case(
+                When(parent__isnull=True, then=0),
+                default=1,
+                output_field=IntegerField(),
+            ),
+        )
+    ideas = ideas.order_by(*orderings[sort])
     return render(
         request,
         "ideas/tracking.html",
@@ -303,6 +330,37 @@ def set_next_action(request, pk):
     idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
     messages.success(request, "Next action saved.")
     return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def create_suggested_child(request, pk):
+    """Turn one agent suggestion into a child idea with a single click."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    parent = get_object_or_404(Idea, pk=pk)
+    if not request.user.profile.has_role("role_add_ideas"):
+        messages.error(request, "You don't have access to add ideas.")
+        return redirect("ideas:detail", pk=pk)
+
+    title = request.POST.get("title", "").strip()
+    suggestions = [
+        line for line in parent.suggested_children.splitlines() if line.strip()
+    ]
+    if not title or title not in suggestions:
+        messages.error(request, "That child-idea suggestion is no longer available.")
+        return redirect("ideas:detail", pk=pk)
+
+    child = Idea.objects.create(
+        title=title[:200],
+        category=parent.category,
+        parent=parent,
+        status=Status.CURRENT,
+    )
+    suggestions.remove(title)
+    parent.suggested_children = "\n".join(suggestions)
+    parent.save(update_fields=["suggested_children", "updated_at"])
+    messages.success(request, f"Created child idea “{child.title}”.")
+    return redirect("ideas:detail", pk=child.pk)
 
 
 @login_required
