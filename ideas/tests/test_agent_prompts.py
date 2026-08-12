@@ -1,4 +1,5 @@
 import subprocess
+import os
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -68,3 +69,27 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("--idea ${ID}", text)
         self.assertIn("--relevance-note", text)
         self.assertNotIn("--model claude-opus-4-8", text)
+
+    def test_every_agent_prompt_composes_shared_standards(self):
+        for mode in ("research", "review", "execute", "critique"):
+            with self.subTest(mode=mode):
+                text = prompt(mode)
+                self.assertIn("Shared operating standards:", text)
+                self.assertIn("Idempotency:", text)
+                self.assertIn("Accuracy:", text)
+
+    def test_reflection_prompt_is_structured_and_read_only(self):
+        env = {**os.environ, "IDEAFLOW_API_TOKEN": "prompt-test"}
+        text = subprocess.check_output(
+            [str(ROOT / "research_all.sh"), "--reflect", "--dry-run"],
+            cwd=ROOT,
+            env=env,
+            text=True,
+        )
+
+        self.assertIn("read-only portfolio reflection", text)
+        self.assertIn("Choose 3-8 candidates", text)
+        self.assertIn("Consolidation opportunities", text)
+        self.assertIn("Do not", text)
+        self.assertIn("modify IdeaFlow", text)
+        self.assertIn("Shared operating standards:", text)

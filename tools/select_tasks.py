@@ -11,6 +11,9 @@ applies the default selection:
 Env: IF_STATUS (tab filter), IF_FORCE (=1 research all), IF_REVIEW (=1 review
 all researched).
 
+If IF_STATE_FILE is set, writes a JSON explanation of the selection, including
+why a pass has no actionable work.
+
 Kept as a standalone file (not an inline heredoc) because bash 3.2 mis-parses a
 heredoc nested inside a process substitution.
 """
@@ -26,17 +29,24 @@ def main():
     status = os.environ.get("IF_STATUS") or None
     force = os.environ.get("IF_FORCE") == "1"
     review = os.environ.get("IF_REVIEW") == "1"
+
     def run(*args):
         return json.loads(subprocess.check_output([cli, *args]))
 
     listing = ["list-ideas"] + (["--status", status] if status else [])
-    ideas = run(*listing)["ideas"]
-    detail = {it["id"]: run("dump-idea", str(it["id"])) for it in ideas}
+    listed_ideas = run(*listing)["ideas"]
+    detail = {it["id"]: run("dump-idea", str(it["id"])) for it in listed_ideas}
     # Never work archived ideas, and skip paused ones (they need human feedback
     # first). The effort API rejects both anyway; this keeps agents off them.
+    archived_ids = [it["id"] for it in listed_ideas if it.get("status") == "archived"]
+    paused_ids = [
+        it["id"]
+        for it in listed_ideas
+        if it.get("status") != "archived" and detail[it["id"]].get("is_paused")
+    ]
     ideas = [
         it
-        for it in ideas
+        for it in listed_ideas
         if it.get("status") != "archived" and not detail[it["id"]].get("is_paused")
     ]
 
@@ -53,6 +63,7 @@ def main():
             selected.append((i, mode))
             seen.add(i)
 
+    idle_ids = []
     if force:
         for it in ideas:
             add(it["id"], "research")
@@ -84,6 +95,34 @@ def main():
             m = mode_for(it)
             if m is not None:
                 add(it["id"], m)
+            else:
+                idle_ids.append(it["id"])
+
+    skipped_ids = [it["id"] for it in ideas if it["id"] not in seen]
+    if not listed_ideas:
+        reason = "no_ideas"
+    elif selected:
+        reason = "actionable"
+    elif (force or review) and ideas:
+        reason = "mode_filtered"
+    elif ideas:
+        reason = "idle"
+    else:
+        reason = "unavailable"
+    state = {
+        "reason": reason,
+        "listed": len(listed_ideas),
+        "actionable": len(selected),
+        "archived_ids": archived_ids,
+        "paused_ids": paused_ids,
+        "idle_ids": idle_ids,
+        "skipped_ids": skipped_ids,
+        "status_filter": status,
+    }
+    state_file = os.environ.get("IF_STATE_FILE")
+    if state_file:
+        with open(state_file, "w", encoding="utf-8") as fh:
+            json.dump(state, fh)
 
     # Emit "<id> <mode> <title>" — the title is the rest of the line.
     for i, mode in selected:

@@ -219,6 +219,9 @@ export IDEAFLOW_API_TOKEN=<the token from the server .env>
 The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
 command all drive this client, so they run from any machine — see
 [`deploy/README.md`](deploy/README.md) §14 for the "clone + set token" bootstrap.
+The inputs, allowed mutations, outputs, terminal conditions, and shared safety
+standards for every mode are documented in
+[`docs/agent-workflows.md`](docs/agent-workflows.md).
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
@@ -246,8 +249,10 @@ each effort's in-depth write-up is collapsed behind a click).
 `research_all.sh` researches ideas with no research yet and **reviews**
 already-researched ideas only when they have a clear next action. Researched
 ideas without one are skipped so the runner proceeds to the next actionable
-idea instead of re-analyzing them. If nothing is actionable, it reflects on the
-project. Flags: `--review`, `--force`,
+idea instead of re-analyzing them. If eligible ideas exist but all are idle, it
+runs a structured read-only portfolio reflection. If no ideas match, or all are
+paused/archived, it reports the reason and exits without launching an agent.
+Flags: `--review`, `--force`,
 `--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
 detail page prompts for that single next action (also settable by the review
 agent via `log-effort --next-action`).

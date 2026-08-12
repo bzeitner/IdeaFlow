@@ -33,6 +33,9 @@ IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
+# shellcheck source=tools/prompt_standards.sh
+source "$SCRIPT_DIR/tools/prompt_standards.sh"
+SHARED_STANDARDS="$(prompt_shared_standards)"
 
 STATUS=""
 MIN=5
@@ -68,21 +71,54 @@ for n in "$MIN" "$DELAY"; do
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "error: --min and --delay must be whole numbers." >&2; exit 2; }
 done
 
+STATE_FILE="$(mktemp -t ideaflow-selection.XXXXXX.json)"
+printf '{}\n' > "$STATE_FILE"
+trap 'rm -f "$STATE_FILE"' EXIT
+
 run_reflection() {
-  echo "No ideas to work on — reflecting on the project."
-  if [[ "$DRY_RUN" -eq 1 ]]; then echo "(dry run — not launching anything)"; return 0; fi
+  local reason="${1:-explicit}"
+  echo "No actionable ideas (${reason}) — reflecting on the project."
   if ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then :; else
     echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2; exit 1
+    fi
   fi
   local prompt
   read -r -d '' prompt <<PROMPT || true
-Reflect on the IdeaFlow project. Use the client "${IFCLI}" (HTTP API at ${BASE}):
-run "${IFCLI} list-ideas" and "${IFCLI} feed-items --unsummarized" to see the
-current state. There is nothing queued to work on right now. Reflect on: what's
-been covered, where the ideas are concentrated, what's stale or stuck, and 3-5
-concrete new ideas or angles worth adding. Print your reflection — do not modify
-anything.
+Conduct a read-only portfolio reflection for IdeaFlow. The batch selector found
+no actionable work because: ${reason}. Its machine-readable counts and skipped
+idea ids are in ${STATE_FILE}.
+
+Use only reads through "${IFCLI}" (HTTP API at ${BASE}). Start with list-ideas.
+Use the selector state to distinguish paused, archived, and researched-but-idle
+ideas. Choose 3-8 candidates whose details are needed to support a conclusion,
+then dump-idea each of them. Inspect the unsummarized feed backlog only if it
+helps explain portfolio health. Do not claim an idea is stale, blocked,
+duplicative, or exhausted from its list row alone.
+
+Analyze in this order:
+1. Portfolio coverage and concentration by category, stage, and status.
+2. Stalled work: identify the exact missing decision, feedback, trigger, or next
+   action, citing idea ids and evidence from their details.
+3. Consolidation: overlapping ideas that may belong together; verify overlap
+   before recommending it.
+4. Child directions that fit an existing parent better than becoming new roots.
+5. Genuine portfolio gaps. Propose new ideas only after checking existing titles,
+   summaries, children, and suggestions for overlap. Use web research only to
+   validate a specific proposed gap, not to brainstorm broadly.
+
+Output these sections: State summary; Portfolio gaps; Stalled ideas;
+Consolidation opportunities; Suggested child ideas; New root ideas. For every
+recommendation include evidence, the affected idea ids, and a concrete human
+decision or action. If a section has no supported finding, say "None." Do not
+modify IdeaFlow, create ideas, add suggestions, register feeds, or log efforts.
+
+${SHARED_STANDARDS}
 PROMPT
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '%s\n' "$prompt"
+    return 0
+  fi
   if [[ "$AGENT" == "claude" ]]; then
     "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch"
   else
@@ -99,7 +135,7 @@ PROMPT
 }
 
 if [[ "$REFLECT" -eq 1 ]]; then
-  run_reflection
+  run_reflection "explicit request"
   exit 0
 fi
 
@@ -110,6 +146,7 @@ MODES=()
 TITLES=()
 PAIRS="$(
   IF_STATUS="$STATUS" IF_FORCE="$FORCE" IF_REVIEW="$REVIEW" IF_MIN="$MIN" \
+    IF_STATE_FILE="$STATE_FILE" \
     python3 "$SCRIPT_DIR/tools/select_tasks.py" "$IFCLI"
 )"
 while read -r id mode title; do
@@ -118,11 +155,18 @@ while read -r id mode title; do
 done <<< "$PAIRS"
 
 if [[ ${#IDS[@]} -eq 0 ]]; then
-  if [[ "$FORCE" -eq 0 && "$REVIEW" -eq 0 ]]; then
-    run_reflection
+  reason="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("reason", "unknown"))' "$STATE_FILE")"
+  summary="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print("listed={}, paused={}, archived={}, idle={}".format(s.get("listed", 0), len(s.get("paused_ids", [])), len(s.get("archived_ids", [])), len(s.get("idle_ids", []))))' "$STATE_FILE")"
+  if [[ "$reason" == "idle" && "$FORCE" -eq 0 && "$REVIEW" -eq 0 ]]; then
+    echo "Nothing actionable: ${summary}."
+    run_reflection "$reason"
     exit 0
   fi
-  echo "Nothing to do for this pass."
+  if [[ "$reason" == "no_ideas" ]]; then
+    echo "Nothing to do: no ideas match this pass${STATUS:+ (status=$STATUS)}."
+  else
+    echo "Nothing actionable (${reason}): ${summary}."
+  fi
   exit 0
 fi
 

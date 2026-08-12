@@ -27,6 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
+# shellcheck source=tools/prompt_standards.sh
+source "$SCRIPT_DIR/tools/prompt_standards.sh"
+SHARED_STANDARDS="$(prompt_shared_standards)"
 
 ID="${1:-}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
@@ -135,6 +138,8 @@ Rules:
 
 When done, print: how many items you scored, the distribution of your 1-5
 usefulness ratings, and the 3 items most worth the human's time.
+
+${SHARED_STANDARDS}
 PROMPT
 
 claude -p "$PROMPT" \

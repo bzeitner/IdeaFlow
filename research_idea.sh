@@ -50,6 +50,12 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
+# shellcheck source=tools/prompt_standards.sh
+source "$SCRIPT_DIR/tools/prompt_standards.sh"
+SHARED_STANDARDS="$(prompt_shared_standards)"
+EFFORT_QUALITY_STANDARD="$(prompt_effort_quality_scale)"
+CHILD_STANDARD="$(prompt_child_suggestion_standard)"
+NEXT_ACTION_STANDARD="$(prompt_next_action_standard)"
 
 if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
   echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
@@ -122,6 +128,9 @@ local git + gh (you have write access) for the repo. Steps:
 8. Completion checklist: one non-duplicate PR exists, required checks passed,
    ${REPORT} is non-empty, the effort was logged, and the next action points to
    the actual PR. Print the PR URL and a two-line summary.
+
+${SHARED_STANDARDS}
+${EFFORT_QUALITY_STANDARD}
 PROMPT
 elif [[ "$MODE" == "critique" ]]; then
   read -r -d '' PROMPT <<PROMPT || true
@@ -155,6 +164,9 @@ Steps:
 7. Completion checklist: the PR review is posted once, ${REPORT} is non-empty,
    the effort is logged, and its next action matches the verdict. Print one of:
    request-changes, comment-with-nits, or approve.
+
+${SHARED_STANDARDS}
+${EFFORT_QUALITY_STANDARD}
 PROMPT
 elif [[ "$MODE" == "review" ]]; then
   read -r -d '' PROMPT <<PROMPT || true
@@ -196,16 +208,18 @@ Steps:
    Update the idea's stage/status if the review warrants it: advance a promising
    one (--stage <slug>), or --status archived for a dead end, --status tracking
    to keep watching. Only change what your review actually justifies.
-7. If distinct sub-directions deserve their own tracking, compare them with
-   existing children and suggestions, then suggest up to 5 non-duplicate child
-   ideas. Each suggestion must be a short standalone title without a rationale,
-   bullets, numbering, or delimiters. Do not create child ideas yourself:
+7. If distinct sub-directions deserve their own tracking, follow the child-idea
+   standard below and submit suggestions through:
      ${IFCLI} suggest-children ${ID} --suggestion '<idea>' --suggestion '<idea>'
-8. Rate effort as work performed (1 trivial, 3 moderate, 5 extensive) and quality
-   as confidence in the evidence (1 speculative, 3 mixed, 5 strongly supported).
-   Completion checklist: ${REPORT} is non-empty, disposition is explicit,
+8. Apply the rating standard below. Completion checklist: ${REPORT} is
+   non-empty, disposition is explicit,
    exec-summary is current, and the effort is logged. Print the new ResearchEntry
    id and a two-line summary.
+
+${NEXT_ACTION_STANDARD}
+${CHILD_STANDARD}
+${EFFORT_QUALITY_STANDARD}
+${SHARED_STANDARDS}
 PROMPT
 else
   read -r -d '' PROMPT <<PROMPT || true
@@ -243,16 +257,18 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
        --status <tracking-or-archived> \\
        [--next-action '<specific action with completion condition>']
    If the idea has a natural next stage, add --stage <slug> too.
-7. If distinct sub-directions deserve their own tracking, compare them with
-   existing children and suggestions, then suggest up to 5 non-duplicate child
-   ideas. Each suggestion must be a short standalone title without a rationale,
-   bullets, numbering, or delimiters. Do not create child ideas yourself:
+7. If distinct sub-directions deserve their own tracking, follow the child-idea
+   standard below and submit suggestions through:
      ${IFCLI} suggest-children ${ID} --suggestion '<idea>' --suggestion '<idea>'
-8. Rate effort as work performed (1 trivial, 3 moderate, 5 extensive) and quality
-   as confidence in the evidence (1 speculative, 3 mixed, 5 strongly supported).
-   Completion checklist: ${REPORT} is non-empty, disposition is explicit,
+8. Apply the rating standard below. Completion checklist: ${REPORT} is
+   non-empty, disposition is explicit,
    exec-summary is set, and the effort is logged. Print the new ResearchEntry id,
    how many feeds you registered, and a two-line summary.
+
+${NEXT_ACTION_STANDARD}
+${CHILD_STANDARD}
+${EFFORT_QUALITY_STANDARD}
+${SHARED_STANDARDS}
 PROMPT
 fi
 
