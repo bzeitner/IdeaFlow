@@ -11,6 +11,7 @@ from .models import (
     Idea,
     IdeaFeed,
     IdeaRelation,
+    GraphAccessCapability,
     IdeaRelationSuggestion,
     IdeaSemanticState,
     Profile,
@@ -119,6 +120,14 @@ class IdeaRelationAdmin(admin.ModelAdmin):
     list_filter = ("relation_type", "confidence", "provenance")
     search_fields = ("source__title", "target__title", "description")
     autocomplete_fields = ("source", "target", "created_by")
+
+
+@admin.register(GraphAccessCapability)
+class GraphAccessCapabilityAdmin(admin.ModelAdmin):
+    list_display = ("user", "scope", "graph_revision", "request_count", "expires_at", "revoked_at")
+    list_filter = ("scope", "revoked_at")
+    search_fields = ("user__email", "user__username", "token_hash")
+    readonly_fields = ("token_hash", "user", "scope", "filters", "graph_revision", "request_count", "created_at", "expires_at", "last_accessed_at", "revoked_at")
 
 
 @admin.register(IdeaSemanticState)

@@ -65,6 +65,21 @@ class GraphProjectionTests(TestCase):
         context = graph_context(center)
         self.assertEqual([row["idea_id"] for row in context["dependencies"]], [dependency.pk])
 
+    def test_context_budget_prioritizes_dependencies_for_execution(self):
+        center = make_idea(title="Center")
+        for number in range(20):
+            dependency = make_idea(title=f"Dependency {number}", summary="x" * 500)
+            IdeaRelation.objects.create(
+                source=center,
+                target=dependency,
+                relation_type=RelationType.DEPENDS_ON,
+            )
+        context = graph_context(center, max_nodes=30, token_budget=500, task="execute")
+        self.assertLess(context["budget"]["included_relations"], 20)
+        self.assertGreater(context["budget"]["omitted_relations"], 0)
+        self.assertLessEqual(context["budget"]["estimated_tokens"], 550)
+        self.assertEqual(context["task"], "execute")
+
 
 class GraphViewTests(TestCase):
     def test_graph_role_can_open_tab(self):
@@ -186,6 +201,16 @@ class GraphApiTests(TestCase):
         response = self.client.get(f"/api/ideas/{idea.pk}/graph-context/?depth=1&max_nodes=5", **AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["idea"]["idea_id"], idea.pk)
+
+    def test_graph_context_accepts_agent_task_and_token_budget(self):
+        idea = make_idea()
+        response = self.client.get(
+            f"/api/ideas/{idea.pk}/graph-context/?task=execute&token_budget=700",
+            **AUTH,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["task"], "execute")
+        self.assertEqual(response.json()["budget"]["requested_tokens"], 700)
 
     def test_graph_endpoint_excludes_archived_by_default(self):
         visible, hidden = make_idea(), make_idea(status=Status.ARCHIVED)

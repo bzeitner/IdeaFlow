@@ -17,7 +17,12 @@ be reported precisely; and agents may claim only actions they observed succeed.
 
 Research and review always read bounded `graph-context`; execution and critique
 read it only for dependency or comparison context. Graph context never expands a
-mode's permitted mutations.
+whole graph into the prompt. Callers should pass a task and token budget, for
+example `?task=execute&token_budget=1500`; IdeaFlow prioritizes dependencies for
+execution and reports how many relationships were omitted. This budget is a
+serialization estimate and remains a hard prompt-shaping guard, not a billing
+counter. Graph Lab capabilities are for browser visualization only and must
+never be used as agent credentials.
 
 ## Workflow terms
 

@@ -1,0 +1,20 @@
+{% extends "ideas/base.html" %}
+{% load static %}
+{% block title %}Graph Lab · IdeaFlow{% endblock %}
+{% block content %}
+<div class="page-head graph-head">
+  <div><h2>Graph Lab</h2><p class="lede">Read-only network analysis in an isolated Gephi Lite application.</p></div>
+  <a class="btn" href="{% url 'ideas:graph' %}">Back to relationship review</a>
+</div>
+<form id="graph-lab-controls" class="graph-controls" data-capability-url="{% url 'ideas:graph_lab_capability' %}" data-graph-lab-origin="{{ graph_lab_origin }}">
+  {% csrf_token %}
+  <label><input type="checkbox" name="archived" value="1"> Include archived</label>
+  <label><input type="checkbox" name="suggestions" value="1"> Include suggestions</label>
+  <label>Minimum confidence <input type="number" name="minimum_confidence" min="0" max="1" step="0.05" value="0.55"></label>
+  <button class="btn primary" type="submit">Load graph</button>
+  <span id="graph-lab-status" class="dim" role="status">Preparing Graph Lab…</span>
+</form>
+<iframe id="graph-lab-frame" class="graph-lab-frame" src="{{ graph_lab_origin }}/" sandbox="allow-scripts allow-same-origin allow-downloads" referrerpolicy="no-referrer" title="IdeaFlow Graph Lab"></iframe>
+<p class="dim">Graph Lab is read-only. Review and approve relationships in the IdeaFlow Graph tab.</p>
+<script src="{% static 'ideas/graph_lab.js' %}"></script>
+{% endblock %}

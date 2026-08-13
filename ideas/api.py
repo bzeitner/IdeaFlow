@@ -132,9 +132,11 @@ def idea_graph_context(request, pk):
     try:
         depth = int(request.GET.get("depth", 1))
         max_nodes = int(request.GET.get("max_nodes", 30))
+        token_budget = int(request.GET.get("token_budget", settings.IDEAFLOW_GRAPH_CONTEXT_DEFAULT_TOKEN_BUDGET))
     except ValueError:
-        return JsonResponse({"error": "depth and max_nodes must be integers."}, status=400)
-    return JsonResponse(graph_context(idea, depth=depth, max_nodes=max_nodes))
+        return JsonResponse({"error": "depth, max_nodes, and token_budget must be integers."}, status=400)
+    task = request.GET.get("task", "research")
+    return JsonResponse(graph_context(idea, depth=depth, max_nodes=max_nodes, token_budget=token_budget, task=task))
 
 
 @require_api_token

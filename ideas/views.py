@@ -1,18 +1,24 @@
 from functools import wraps
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, Count, F, IntegerField, Q, When
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
 from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
 from .graph.projection import graph_projection
-from .models import Category, FeedItem, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
+from .graph.capabilities import consume_capability, issue_capability
+from .graph.export import graphml_export
+from .models import Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -104,8 +110,117 @@ def graph(request):
             "statuses": Status.choices,
             "relation_types": [("parent_of", "Parent of"), *RelationType.choices],
             "suggestions": IdeaRelationSuggestion.objects.filter(status=SuggestionStatus.PENDING).select_related("analyzed_idea", "source", "target"),
+            "graph_lab_enabled": settings.IDEAFLOW_GRAPH_LAB_ENABLED,
         },
     )
+
+
+@role_required("role_graph")
+def graph_lab(request):
+    if not settings.IDEAFLOW_GRAPH_LAB_ENABLED:
+        messages.error(request, "Graph Lab is not enabled.")
+        return redirect("ideas:graph")
+    response = render(
+        request,
+        "ideas/graph_lab.html",
+        {
+            "tabs": _tabs(request.user.profile),
+            "active": "graph",
+            "graph_lab_origin": settings.IDEAFLOW_GRAPH_LAB_ORIGIN,
+        },
+    )
+    response["Cache-Control"] = "no-store"
+    response["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        f"frame-src {settings.IDEAFLOW_GRAPH_LAB_ORIGIN}; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    )
+    return response
+
+
+@require_POST
+@role_required("role_graph")
+def graph_lab_capability(request):
+    if not settings.IDEAFLOW_GRAPH_LAB_ENABLED:
+        return JsonResponse({"error": "Graph Lab is disabled."}, status=503)
+    archived = request.POST.get("archived") == "1"
+    suggestions = request.POST.get("suggestions") == "1"
+    try:
+        confidence = float(request.POST.get("minimum_confidence", "0.55"))
+    except ValueError:
+        return JsonResponse({"error": "minimum_confidence must be a number."}, status=400)
+    if not 0 <= confidence <= 1:
+        return JsonResponse({"error": "minimum_confidence must be between 0 and 1."}, status=400)
+    recent = GraphAccessCapability.objects.filter(
+        user=request.user,
+        created_at__gte=timezone.now() - timedelta(minutes=1),
+    ).count()
+    if recent >= 20:
+        return JsonResponse({"error": "Too many Graph Lab sessions. Try again shortly."}, status=429)
+    capability, raw = issue_capability(
+        request.user,
+        filters={"archived": archived, "suggestions": suggestions, "minimum_confidence": confidence},
+    )
+    response = JsonResponse(
+        {
+            "capability": raw,
+            "expires_at": capability.expires_at.isoformat(),
+            "graph_revision": capability.graph_revision,
+            "export_url": request.build_absolute_uri(reverse("ideas:graph_lab_export")),
+        }
+    )
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+def graph_lab_export(request):
+    origin = request.headers.get("Origin", "")
+    allowed_origin = settings.IDEAFLOW_GRAPH_LAB_ORIGIN
+    if request.method == "OPTIONS":
+        if origin != allowed_origin:
+            return HttpResponse(status=403)
+        response = HttpResponse(status=204)
+        response["Access-Control-Allow-Origin"] = allowed_origin
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Authorization"
+        response["Access-Control-Max-Age"] = "600"
+        response["Vary"] = "Origin"
+        return response
+    def cors(response):
+        if origin == allowed_origin:
+            response["Access-Control-Allow-Origin"] = allowed_origin
+            response["Vary"] = "Origin"
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    if request.method != "GET":
+        return cors(HttpResponse(status=405, headers={"Allow": "GET, OPTIONS"}))
+    if not settings.IDEAFLOW_GRAPH_LAB_ENABLED:
+        return cors(JsonResponse({"error": "Graph Lab is disabled."}, status=503))
+    if origin != allowed_origin:
+        return JsonResponse({"error": "Origin is not allowed."}, status=403)
+    authorization = request.headers.get("Authorization", "")
+    prefix = "GraphCapability "
+    if not authorization.startswith(prefix):
+        return cors(JsonResponse({"error": "Missing graph capability."}, status=401))
+    capability, error = consume_capability(authorization[len(prefix):].strip())
+    if error:
+        status = 403 if error == "forbidden" else 429 if error == "exhausted" else 401
+        return cors(JsonResponse({"error": f"Graph capability is {error}."}, status=status))
+    try:
+        payload, node_count, edge_count, revision = graphml_export(filters=capability.filters)
+    except ValueError as exc:
+        return cors(JsonResponse({"error": str(exc)}, status=413))
+    except OverflowError as exc:
+        return cors(JsonResponse({"error": str(exc)}, status=413))
+    response = HttpResponse(payload, content_type="application/graphml+xml")
+    response["X-Graph-Revision"] = str(revision)
+    response["X-Graph-Nodes"] = str(node_count)
+    response["X-Graph-Edges"] = str(edge_count)
+    return cors(response)
 
 
 @role_required("role_graph")

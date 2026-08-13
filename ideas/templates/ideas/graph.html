@@ -2,7 +2,7 @@
 {% block title %}Knowledge Graph · IdeaFlow{% endblock %}
 {% block content %}
 <div class="page-head graph-head">
-  <div><h2>Knowledge Graph</h2><p class="lede">Explore parentage and explicit relationships across ideas.</p></div>
+  <div><h2>Knowledge Graph</h2><p class="lede">Explore parentage and explicit relationships across ideas.</p>{% if graph_lab_enabled %}<a class="btn small" href="{% url 'ideas:graph_lab' %}">Open Graph Lab</a>{% endif %}</div>
   <form method="get"><label><input type="checkbox" name="archived" value="1"{% if include_archived %} checked{% endif %} onchange="this.form.submit()"> Include archived</label></form>
 </div>
 <div class="graph-controls">

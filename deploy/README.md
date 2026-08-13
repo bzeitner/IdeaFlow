@@ -243,6 +243,73 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 ```
 
+### Install the isolated Graph Lab
+
+Graph Lab is a static, pinned Gephi Lite build on
+`graph-lab.bitesoftheweek.com`. It deliberately has a separate browser origin:
+it receives neither the IdeaFlow session cookie nor the long-lived agent API
+token. IdeaFlow grants an authenticated user with the Knowledge Graph role a
+short-lived, read-only capability and accepts it only in an Authorization
+header from the exact Graph Lab origin.
+
+Add a proxied Cloudflare `A` record for `graph-lab` pointing to the same droplet.
+The wildcard origin certificate created above already covers this hostname.
+Build the reviewed upstream revision on a trusted build machine with Node.js
+and npm installed:
+
+```bash
+./deploy/build_graph_lab.sh ./dist
+scp dist/gephi-lite-1.0.2.tar.gz* ideaflow@SERVER_IP:/home/ideaflow/
+```
+
+The build script checks out the pinned tag and verifies commit
+`d47ecb459a00e2942ee0c2b8d6630015124b9ff4` before using the upstream lockfile.
+On the droplet, install the second Nginx site and the checksummed release:
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/nginx-graph-lab.conf /etc/nginx/sites-available/ideaflow-graph-lab
+ln -sfn /etc/nginx/sites-available/ideaflow-graph-lab /etc/nginx/sites-enabled/ideaflow-graph-lab
+/home/ideaflow/IdeaFlow/deploy/install_graph_lab.sh \
+  /home/ideaflow/gephi-lite-1.0.2.tar.gz \
+  /home/ideaflow/gephi-lite-1.0.2.tar.gz.sha256 \
+  1.0.2
+```
+
+Run the normal `deploy/update.sh` before enabling Graph Lab. It applies the
+`GraphAccessCapability` migration, runs `collectstatic`, and restarts Django.
+Then set these values in `/home/ideaflow/IdeaFlow/.env` and restart:
+
+```dotenv
+IDEAFLOW_GRAPH_LAB_ENABLED=true
+IDEAFLOW_GRAPH_LAB_ORIGIN=https://graph-lab.bitesoftheweek.com
+```
+
+```bash
+sudo systemctl restart ideaflow
+curl -I https://graph-lab.bitesoftheweek.com/
+curl -I https://ideaflow.bitesoftheweek.com/graph-lab/
+```
+
+Sign in, grant the Knowledge Graph role, open Graph → Open Graph Lab, and load
+the default graph. Browser developer tools should show the GraphML request with
+an Authorization header, no capability in its URL, no IdeaFlow cookie on the
+Graph Lab origin, and an exact (never wildcard) CORS response. The GraphML
+endpoint is read-only and bounded by the `IDEAFLOW_GRAPH_EXPORT_MAX_*` settings.
+
+Operational controls:
+
+- Revoke every live browser capability after an incident or role-policy change:
+  `.venv/bin/python manage.py revoke_graph_capabilities --all`.
+- Nginx's default access log records the export path but not Authorization
+  headers; do not add `$http_authorization` to either site's log format.
+- To roll back the static UI, repoint
+  `/var/www/ideaflow-graph-lab/current` to a prior immutable release, run
+  `nginx -t`, and reload Nginx. Disable `IDEAFLOW_GRAPH_LAB_ENABLED` for an
+  immediate application-side kill switch.
+- Review upstream changes and update the pinned tag, commit, attribution, and
+  CSP only together. Never deploy an unchecksummed archive.
+
 > **Alternative (no Cloudflare proxy):** if you'd rather use Let's Encrypt, grey-cloud
 > the DNS record first, run `apt install certbot python3-certbot-nginx && certbot --nginx`,
 > then set Cloudflare SSL mode to Full (strict). The Cloudflare origin cert path above is

@@ -1,5 +1,7 @@
 from collections import deque
+import json
 
+from django.conf import settings
 from django.db.models import Q
 
 from ideas.graph.revision import current_revision
@@ -108,7 +110,28 @@ def neighborhood(idea, *, depth=1, max_nodes=50, include_archived=False):
     return graph_projection(idea_ids=seen, include_archived=include_archived)
 
 
-def graph_context(idea, *, depth=1, max_nodes=30):
+def _context_row(node, edge):
+    """Compact relation context: enough evidence for an agent without full idea text."""
+    return {
+        "idea_id": node["idea_id"],
+        "title": node["label"],
+        "status": node["status"],
+        "category": node["category"],
+        "stage": node["stage"],
+        "summary": (node["summary"] or "")[:600],
+        "next_action": (node["next_action"] or "")[:300],
+        "relation": edge["type"],
+        "relation_description": (edge.get("description", "") or "")[:300],
+        "confidence": edge.get("confidence"),
+        "provenance": edge.get("provenance", ""),
+    }
+
+
+def graph_context(idea, *, depth=1, max_nodes=30, token_budget=None, task="research"):
+    default_budget = settings.IDEAFLOW_GRAPH_CONTEXT_DEFAULT_TOKEN_BUDGET
+    maximum_budget = settings.IDEAFLOW_GRAPH_CONTEXT_MAX_TOKEN_BUDGET
+    token_budget = default_budget if token_budget is None else int(token_budget)
+    token_budget = max(500, min(token_budget, maximum_budget))
     graph = neighborhood(idea, depth=depth, max_nodes=max_nodes, include_archived=False)
     by_id = {node["id"]: node for node in graph["nodes"]}
     grouped = {"parents": [], "children": [], "dependencies": [], "dependents": [], "related": []}
@@ -131,8 +154,38 @@ def graph_context(idea, *, depth=1, max_nodes=30):
         elif edge["target"] == center:
             other = edge["source"]
         if other and other in by_id:
-            grouped[bucket].append({**by_id[other], "relation": edge["type"]})
-    return {"idea": _node(idea), "revision": graph["revision"], **grouped}
+            grouped[bucket].append(_context_row(by_id[other], edge))
+
+    priorities = {
+        "execute": ["dependencies", "parents", "children", "dependents", "related"],
+        "critique": ["dependencies", "related", "parents", "dependents", "children"],
+        "review": ["parents", "dependencies", "children", "related", "dependents"],
+        "research": ["parents", "children", "dependencies", "related", "dependents"],
+    }
+    task = task if task in priorities else "research"
+    result = {
+        "idea": _context_row(_node(idea), {"type": "focus"}),
+        "revision": graph["revision"],
+        "task": task,
+        **{key: [] for key in grouped},
+    }
+    included = 0
+    available = sum(len(rows) for rows in grouped.values())
+    for bucket in priorities[task]:
+        for row in grouped[bucket]:
+            candidate = {**result, bucket: [*result[bucket], row]}
+            estimated_tokens = max(1, len(json.dumps(candidate, ensure_ascii=False)) // 4)
+            if estimated_tokens > token_budget:
+                continue
+            result[bucket].append(row)
+            included += 1
+    result["budget"] = {
+        "requested_tokens": token_budget,
+        "estimated_tokens": max(1, len(json.dumps(result, ensure_ascii=False)) // 4),
+        "included_relations": included,
+        "omitted_relations": available - included,
+    }
+    return result
 
 
 def graph_search(query, *, limit=20, include_archived=False):

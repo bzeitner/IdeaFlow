@@ -286,6 +286,29 @@ class GraphRevision(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class GraphAccessCapability(models.Model):
+    """Short-lived, read-only authorization for the isolated Graph Lab UI."""
+
+    token_hash = models.CharField(max_length=64, unique=True)
+    user = models.ForeignKey(User, related_name="graph_capabilities", on_delete=models.CASCADE)
+    scope = models.CharField(max_length=32, default="graph:read")
+    filters = models.JSONField(default=dict, blank=True)
+    graph_revision = models.PositiveBigIntegerField(default=0)
+    request_count = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["expires_at"], name="graph_cap_expiry_idx")]
+
+    @property
+    def is_expired(self):
+        return self.expires_at <= timezone.now()
+
+
 class SemanticStatus(models.TextChoices):
     STALE = "stale", "Stale"
     PROCESSING = "processing", "Processing"

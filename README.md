@@ -77,7 +77,7 @@ locally you need your own OAuth client:
 
 ## Roles & access
 
-Every signed-in user gets a `Profile` with five independent role flags:
+Every signed-in user gets a `Profile` with six independent role flags:
 
 | Role | Grants |
 | --- | --- |
@@ -86,6 +86,7 @@ Every signed-in user gets a `Profile` with five independent role flags:
 | Tracking | View and manage ideas in the Tracking tab |
 | Archive | View and manage ideas in the Archive tab |
 | Add Ideas | Create new ideas |
+| Knowledge Graph | Inspect relationships and launch the read-only Graph Lab |
 
 New users start with **no roles** — an admin has to grant access at `/users/` (linked from
 the top bar as "Users" for admins). The one exception: `bzeitner@gmail.com` always gets every
@@ -187,7 +188,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | --- | --- |
 | `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
-| `GET /api/ideas/<id>/graph-context/` | Bounded parent, dependency, and related-idea context |
+| `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
 | `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
@@ -234,6 +235,13 @@ PostgreSQL data. Agents read bounded context with `./tools/ideaflow graph-contex
 graph access plus permission to manage the source idea. `manage.py audit_graph`
 checks dependency cycles, and `manage.py rebuild_graph_revision` invalidates
 projection caches after operational repairs. Cytoscape.js is bundled locally.
+
+When `IDEAFLOW_GRAPH_LAB_ENABLED=true`, the Graph tab also launches a pinned,
+self-hosted Gephi Lite build on a separate browser origin. IdeaFlow checks the
+Knowledge Graph role and sends that origin a short-lived, read-only capability;
+the IdeaFlow login cookie and API token are never shared. GraphML exports are
+bounded by node, edge, and byte limits. See [`deploy/README.md`](deploy/README.md)
+for build, installation, DNS, rollback, and security verification steps.
 
 With PostgreSQL's `vector` extension enabled, changed idea and research text is
 automatically marked for semantic processing. The

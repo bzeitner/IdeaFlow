@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+from urllib.parse import urlsplit
 from pathlib import Path
 
 import dj_database_url
@@ -252,6 +253,48 @@ IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL = os.getenv(
 IDEAFLOW_SEMANTIC_CANDIDATES = env_int('IDEAFLOW_SEMANTIC_CANDIDATES', 12)
 IDEAFLOW_SEMANTIC_MIN_SIMILARITY = float(
     os.getenv('IDEAFLOW_SEMANTIC_MIN_SIMILARITY', '0.35')
+)
+
+# Isolated Graph Lab. Its static UI is served from a separate browser origin;
+# Django issues short-lived read-only capabilities after checking role_graph.
+IDEAFLOW_GRAPH_LAB_ENABLED = env_bool('IDEAFLOW_GRAPH_LAB_ENABLED', False)
+IDEAFLOW_GRAPH_LAB_ORIGIN = os.getenv(
+    'IDEAFLOW_GRAPH_LAB_ORIGIN', 'https://graph-lab.bitesoftheweek.com'
+).rstrip('/')
+_graph_lab_url = urlsplit(IDEAFLOW_GRAPH_LAB_ORIGIN)
+if (
+    _graph_lab_url.scheme not in {'http', 'https'}
+    or not _graph_lab_url.netloc
+    or _graph_lab_url.path
+    or _graph_lab_url.query
+    or _graph_lab_url.fragment
+    or _graph_lab_url.username
+    or _graph_lab_url.password
+    or IDEAFLOW_GRAPH_LAB_ORIGIN != f'{_graph_lab_url.scheme}://{_graph_lab_url.netloc}'
+    or (_graph_lab_url.scheme == 'http' and _graph_lab_url.hostname not in {'localhost', '127.0.0.1'})
+):
+    raise ValueError('IDEAFLOW_GRAPH_LAB_ORIGIN must be an HTTPS origin without a path.')
+IDEAFLOW_GRAPH_CAPABILITY_TTL_SECONDS = max(
+    60, min(env_int('IDEAFLOW_GRAPH_CAPABILITY_TTL_SECONDS', 600), 3600)
+)
+IDEAFLOW_GRAPH_CAPABILITY_MAX_REQUESTS = max(
+    1, min(env_int('IDEAFLOW_GRAPH_CAPABILITY_MAX_REQUESTS', 10), 100)
+)
+IDEAFLOW_GRAPH_EXPORT_MAX_NODES = max(
+    1, min(env_int('IDEAFLOW_GRAPH_EXPORT_MAX_NODES', 2000), 10000)
+)
+IDEAFLOW_GRAPH_EXPORT_MAX_EDGES = max(
+    1, min(env_int('IDEAFLOW_GRAPH_EXPORT_MAX_EDGES', 10000), 50000)
+)
+IDEAFLOW_GRAPH_EXPORT_MAX_BYTES = max(
+    1024, min(env_int('IDEAFLOW_GRAPH_EXPORT_MAX_BYTES', 20971520), 52428800)
+)
+IDEAFLOW_GRAPH_CONTEXT_DEFAULT_TOKEN_BUDGET = max(
+    500, env_int('IDEAFLOW_GRAPH_CONTEXT_DEFAULT_TOKEN_BUDGET', 2500)
+)
+IDEAFLOW_GRAPH_CONTEXT_MAX_TOKEN_BUDGET = max(
+    IDEAFLOW_GRAPH_CONTEXT_DEFAULT_TOKEN_BUDGET,
+    env_int('IDEAFLOW_GRAPH_CONTEXT_MAX_TOKEN_BUDGET', 8000),
 )
 
 
