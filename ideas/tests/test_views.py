@@ -483,6 +483,21 @@ class NextActionTests(TestCase):
         self.assertEqual(idea.next_actions, ["Third", "Second"])
         self.assertEqual(idea.next_action, "Third")
 
+    def test_pr_urls_in_queued_actions_are_clickable(self):
+        pr_url = "https://github.com/example/project/pull/42"
+        idea = make_idea(
+            status=Status.CURRENT,
+            next_action=f"Review PR: {pr_url}",
+            next_actions=[f"Review PR: {pr_url}"],
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        self.assertContains(response, f'href="{pr_url}"')
+        self.assertContains(response, ">https://github.com/example/project/pull/42</a>")
+
     def test_queue_mutation_requires_status_role(self):
         idea = make_idea(status=Status.CURRENT, next_action="First")
         user = make_user(roles=["role_tracking"])

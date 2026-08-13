@@ -9,7 +9,7 @@
     {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
   </div>
   {% if idea.summary %}<p class="summary">{{ idea.summary }}</p>{% endif %}
-  {% if idea.next_action %}<p class="next-line"><span class="next-tag">Next</span> {{ idea.next_action }}</p>{% endif %}
+  {% if idea.next_action %}<p class="next-line"><span class="next-tag">Next</span> {{ idea.next_action|urlize }}</p>{% endif %}
   {% if idea.resources.all %}
     <ul class="resources">
       {% for r in idea.resources.all %}

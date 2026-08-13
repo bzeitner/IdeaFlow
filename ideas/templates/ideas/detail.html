@@ -24,7 +24,7 @@
     <div class="exec-summary">
       <h4>Latest effort summary</h4>
       {% if idea.exec_summary %}
-        <p>{{ idea.exec_summary|linebreaksbr }}</p>
+        <p>{{ idea.exec_summary|urlize|linebreaksbr }}</p>
       {% else %}
         <p class="dim">No effort summary has been recorded yet.</p>
       {% endif %}
@@ -60,7 +60,7 @@
               <li{% if forloop.first %} class="active-next-action"{% endif %}>
                 <div>
                   {% if forloop.first %}<span class="next-tag">Active</span>{% endif %}
-                  <span class="next-action-text">{{ action|linebreaksbr }}</span>
+                  <span class="next-action-text">{{ action|urlize|linebreaksbr }}</span>
                 </div>
                 {% if can_manage %}
                   <div class="queue-actions">
@@ -209,7 +209,7 @@
             {% if r.context %}
               <details class="effort-detail">
                 <summary>In-depth review</summary>
-                <p class="summary">{{ r.context|linebreaksbr }}</p>
+                <p class="summary">{{ r.context|urlize|linebreaksbr }}</p>
               </details>
             {% endif %}
           </li>
