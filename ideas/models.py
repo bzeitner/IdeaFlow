@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models.signals import post_save
@@ -33,6 +34,24 @@ class Status(models.TextChoices):
     CURRENT = "current", "Current"
     TRACKING = "tracking", "Tracking"
     ARCHIVED = "archived", "Archived"
+
+
+class RelationType(models.TextChoices):
+    RELATED_TO = "related_to", "Related to"
+    DEPENDS_ON = "depends_on", "Depends on"
+    ENABLES = "enables", "Enables"
+    ALTERNATIVE_TO = "alternative_to", "Alternative to"
+    COMPETES_WITH = "competes_with", "Competes with"
+    SUPPORTS = "supports", "Supports"
+    CONTRADICTS = "contradicts", "Contradicts"
+    DUPLICATES = "duplicates", "Duplicates"
+    INSPIRED_BY = "inspired_by", "Inspired by"
+
+
+class RelationProvenance(models.TextChoices):
+    HUMAN = "human", "Human"
+    AGENT = "agent", "Agent"
+    IMPORTED = "imported", "Imported"
 
 
 class LookupBase(models.Model):
@@ -201,6 +220,69 @@ class Idea(models.Model):
             if "/pull/" in r.url or "pr" in (r.label or "").lower():
                 return r.url
         return ""
+
+
+class IdeaRelation(models.Model):
+    SYMMETRIC_TYPES = {
+        RelationType.RELATED_TO,
+        RelationType.ALTERNATIVE_TO,
+        RelationType.COMPETES_WITH,
+        RelationType.CONTRADICTS,
+        RelationType.DUPLICATES,
+    }
+    source = models.ForeignKey(Idea, related_name="outgoing_relations", on_delete=models.CASCADE)
+    target = models.ForeignKey(Idea, related_name="incoming_relations", on_delete=models.CASCADE)
+    relation_type = models.CharField(max_length=24, choices=RelationType.choices)
+    description = models.TextField(blank=True)
+    confidence = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=5)
+    provenance = models.CharField(max_length=16, choices=RelationProvenance.choices, default=RelationProvenance.HUMAN)
+    created_by = models.ForeignKey(User, null=True, blank=True, related_name="idea_relations_created", on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["source_id", "relation_type", "target_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "target", "relation_type"], name="unique_typed_idea_relation"),
+            models.CheckConstraint(condition=~models.Q(source=models.F("target")), name="idea_relation_not_self"),
+        ]
+
+    def __str__(self):
+        return f"{self.source} {self.get_relation_type_display()} {self.target}"
+
+    def clean(self):
+        super().clean()
+        if self.source_id == self.target_id:
+            raise ValidationError("An idea cannot relate to itself.")
+        if self.relation_type == RelationType.DEPENDS_ON and self._creates_dependency_cycle():
+            raise ValidationError("This dependency would create a cycle.")
+
+    def _creates_dependency_cycle(self):
+        if not self.source_id or not self.target_id:
+            return False
+        frontier, visited = {self.target_id}, set()
+        while frontier:
+            if self.source_id in frontier:
+                return True
+            visited.update(frontier)
+            frontier = set(
+                IdeaRelation.objects.filter(source_id__in=frontier, relation_type=RelationType.DEPENDS_ON)
+                .exclude(pk=self.pk).exclude(target_id__in=visited)
+                .values_list("target_id", flat=True)
+            )
+        return False
+
+    def save(self, *args, **kwargs):
+        if self.relation_type in self.SYMMETRIC_TYPES and self.source_id and self.target_id:
+            if self.source_id > self.target_id:
+                self.source_id, self.target_id = self.target_id, self.source_id
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class GraphRevision(models.Model):
+    revision = models.PositiveBigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class Resource(models.Model):
@@ -448,6 +530,7 @@ class Profile(models.Model):
     role_add_ideas = models.BooleanField(
         default=False, help_text="Create new ideas."
     )
+    role_graph = models.BooleanField(default=False, help_text="View the knowledge graph.")
 
     STATUS_ROLE = {
         Status.CURRENT: "role_current",
@@ -497,5 +580,6 @@ def provision_profile(sender, instance, created, **kwargs):
             "role_tracking": is_admin,
             "role_archive": is_admin,
             "role_add_ideas": is_admin,
+            "role_graph": is_admin,
         },
     )

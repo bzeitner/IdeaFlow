@@ -23,6 +23,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
+from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
 from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, Status
 from .reporting import record_effort
 from .serialize import (
@@ -89,6 +90,51 @@ def idea_detail(request, pk):
         pk=pk,
     )
     return JsonResponse(idea_to_dict(idea, detail=True))
+
+
+@require_api_token
+def graph_data(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    return JsonResponse(
+        graph_projection(include_archived=request.GET.get("archived") == "1")
+    )
+
+
+@require_api_token
+def graph_neighborhood(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    idea = get_object_or_404(Idea, pk=request.GET.get("idea"))
+    try:
+        depth = int(request.GET.get("depth", 1))
+        max_nodes = int(request.GET.get("max_nodes", 50))
+    except ValueError:
+        return JsonResponse({"error": "depth and max_nodes must be integers."}, status=400)
+    return JsonResponse(neighborhood(idea, depth=depth, max_nodes=max_nodes))
+
+
+@require_api_token
+def graph_search_view(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    query = request.GET.get("q", "").strip()
+    if not query:
+        return JsonResponse({"error": "q is required."}, status=400)
+    return JsonResponse(graph_search(query))
+
+
+@require_api_token
+def idea_graph_context(request, pk):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    idea = get_object_or_404(Idea.objects.select_related("category", "stage"), pk=pk)
+    try:
+        depth = int(request.GET.get("depth", 1))
+        max_nodes = int(request.GET.get("max_nodes", 30))
+    except ValueError:
+        return JsonResponse({"error": "depth and max_nodes must be integers."}, status=400)
+    return JsonResponse(graph_context(idea, depth=depth, max_nodes=max_nodes))
 
 
 @require_api_token
@@ -401,8 +447,12 @@ def idea_suggest_children(request, pk):
 
 
 urlpatterns = [
+    path("graph/", graph_data, name="api_graph"),
+    path("graph/neighborhood/", graph_neighborhood, name="api_graph_neighborhood"),
+    path("graph/search/", graph_search_view, name="api_graph_search"),
     path("ideas/", idea_list, name="api_idea_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path("ideas/<int:pk>/graph-context/", idea_graph_context, name="api_idea_graph_context"),
     path("ideas/<int:pk>/effort/", idea_effort, name="api_idea_effort"),
     path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),
     path(

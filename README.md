@@ -187,7 +187,11 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | --- | --- |
 | `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
+| `GET /api/ideas/<id>/graph-context/` | Bounded parent, dependency, and related-idea context |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
+| `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
+| `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
+| `GET /api/graph/search/` | Search graph ideas (`?q=<text>`) |
 | `GET /api/feeds/` · `POST /api/feeds/` | List feeds · register one (`{url, title?, idea_id?}`) |
 | `GET /api/feed-items/` | Feed items (`?unassessed=1&idea=<id>`, `?unsummarized=1`, `?feed=<id>`, `?limit=&offset=`, `?content=1`) |
 | `POST /api/feed-items/<id>/summarize/` | Neutral global summary + per-idea assessment (`{summary, model, idea_id, usefulness, relevance_note}`) |
@@ -222,6 +226,14 @@ command all drive this client, so they run from any machine — see
 The inputs, allowed mutations, outputs, terminal conditions, and shared safety
 standards for every mode are documented in
 [`docs/agent-workflows.md`](docs/agent-workflows.md).
+
+**Knowledge graph.** Users with the Knowledge Graph role get a Graph tab that
+projects parent-child links and typed idea relationships directly from canonical
+PostgreSQL data. Agents read bounded context with `./tools/ideaflow graph-context
+<idea-id>`; `graph` returns the active projection. Relationship edits require
+graph access plus permission to manage the source idea. `manage.py audit_graph`
+checks dependency cycles, and `manage.py rebuild_graph_revision` invalidates
+projection caches after operational repairs. Cytoscape.js is bundled locally.
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a

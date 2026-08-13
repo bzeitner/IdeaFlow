@@ -27,6 +27,7 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("omit the next action", text)
         self.assertIn("short standalone title", text)
         self.assertNotIn("add-child", text)
+        self.assertIn("graph-context 123", text)
 
     def test_review_prompt_does_not_manufacture_a_next_action(self):
         text = prompt("review")
@@ -37,6 +38,7 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("Never use a placeholder", text)
         self.assertNotIn("Always set --next-action", text)
         self.assertNotIn("add-child", text)
+        self.assertIn("graph-context 123", text)
 
     def test_execute_prompt_requires_verification_and_a_nonempty_report(self):
         text = prompt("execute")

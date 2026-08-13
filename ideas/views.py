@@ -8,8 +8,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from .feeds import is_http_url, recent_articles
-from .forms import IdeaForm, ResearchEntryForm, ResourceFormSet
-from .models import Category, FeedItem, Idea, Profile, Stage, Status
+from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
+from .graph.projection import graph_projection
+from .models import Category, FeedItem, Idea, IdeaRelation, Profile, RelationType, Stage, Status
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -31,6 +32,7 @@ ROLE_COLUMNS = [
     ("role_tracking", "Tracking"),
     ("role_archive", "Archive"),
     ("role_add_ideas", "Add Ideas"),
+    ("role_graph", "Knowledge Graph"),
 ]
 ROLE_FIELDS = [field for field, _label in ROLE_COLUMNS]
 
@@ -68,11 +70,69 @@ def _tabs(profile):
             "status", "n"
         )
     )
-    return [
+    tabs = [
         {"value": value, "label": label, "route": route, "count": counts.get(value, 0)}
         for value, label, route in TAB_SPEC
         if profile.can_manage_status(value)
     ]
+    if profile.has_role("role_graph"):
+        tabs.append(
+            {
+                "value": "graph",
+                "label": "Graph",
+                "route": "ideas:graph",
+                "count": IdeaRelation.objects.count(),
+            }
+        )
+    return tabs
+
+
+@role_required("role_graph")
+def graph(request):
+    include_archived = request.GET.get("archived") == "1"
+    return render(
+        request,
+        "ideas/graph.html",
+        {
+            "tabs": _tabs(request.user.profile),
+            "active": "graph",
+            "graph_data": graph_projection(include_archived=include_archived),
+            "relation_form": IdeaRelationForm(),
+            "include_archived": include_archived,
+            "statuses": Status.choices,
+            "relation_types": [("parent_of", "Parent of"), *RelationType.choices],
+        },
+    )
+
+
+@role_required("role_graph")
+def graph_relation_create(request):
+    if request.method != "POST":
+        return redirect("ideas:graph")
+    form = IdeaRelationForm(request.POST)
+    if form.is_valid():
+        relation = form.save(commit=False)
+        if not request.user.profile.can_manage_status(relation.source.status):
+            messages.error(request, "You cannot manage the source idea.")
+        else:
+            relation.created_by = request.user
+            relation.save()
+            messages.success(request, "Relationship added.")
+    else:
+        messages.error(
+            request,
+            "; ".join(message for errors in form.errors.values() for message in errors),
+        )
+    return redirect("ideas:graph")
+
+
+@role_required("role_graph")
+def graph_relation_delete(request, pk):
+    relation = get_object_or_404(IdeaRelation.objects.select_related("source"), pk=pk)
+    if request.method == "POST" and request.user.profile.can_manage_status(relation.source.status):
+        relation.delete()
+        messages.success(request, "Relationship removed.")
+    return redirect("ideas:graph")
 
 
 def home(request):

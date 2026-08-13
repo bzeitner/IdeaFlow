@@ -15,6 +15,10 @@ be reported precisely; and agents may claim only actions they observed succeed.
 | Feed scoring | One idea and items lacking its assessment | Store one neutral global summary if absent; upsert that idea's assessment | Factual summary, idea-specific relevance note and usefulness | Every queued item has an assessment for the selected idea |
 | Reflection | Selector state, idea inventory, selected idea details | None | Structured portfolio audit | Claims cite inspected ideas; unsupported sections explicitly say `None` |
 
+Research and review always read bounded `graph-context`; execution and critique
+read it only for dependency or comparison context. Graph context never expands a
+mode's permitted mutations.
+
 ## Workflow terms
 
 - **Disposition**: the research/review decision: continue, monitor, archive, or

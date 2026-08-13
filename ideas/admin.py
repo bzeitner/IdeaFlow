@@ -10,6 +10,7 @@ from .models import (
     FeedItemAssessment,
     Idea,
     IdeaFeed,
+    IdeaRelation,
     Profile,
     Resource,
     ResearchEntry,
@@ -110,6 +111,14 @@ class ResearchEntryAdmin(admin.ModelAdmin):
     date_hierarchy = "occurred_at"
 
 
+@admin.register(IdeaRelation)
+class IdeaRelationAdmin(admin.ModelAdmin):
+    list_display = ("source", "relation_type", "target", "confidence", "provenance")
+    list_filter = ("relation_type", "confidence", "provenance")
+    search_fields = ("source__title", "target__title", "description")
+    autocomplete_fields = ("source", "target", "created_by")
+
+
 @admin.register(Feed)
 class FeedAdmin(admin.ModelAdmin):
     list_display = ("title", "url", "is_active", "item_count", "last_fetched_at")
@@ -168,6 +177,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "role_tracking",
         "role_archive",
         "role_add_ideas",
+        "role_graph",
     )
     list_editable = (
         "role_admin",
@@ -175,7 +185,8 @@ class ProfileAdmin(admin.ModelAdmin):
         "role_tracking",
         "role_archive",
         "role_add_ideas",
+        "role_graph",
     )
-    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas")
+    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas", "role_graph")
     search_fields = ("user__email", "user__username")
     list_select_related = ("user",)

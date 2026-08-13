@@ -87,6 +87,22 @@ def cmd_dump_idea(a):
     return _request("GET", f"/ideas/{a.id}/")
 
 
+def cmd_graph(a):
+    return _request("GET", "/graph/", params={"archived": "1" if a.archived else None})
+
+
+def cmd_graph_context(a):
+    return _request(
+        "GET",
+        f"/ideas/{a.id}/graph-context/",
+        params={"depth": a.depth, "max_nodes": a.max_nodes},
+    )
+
+
+def cmd_graph_search(a):
+    return _request("GET", "/graph/search/", params={"q": a.query})
+
+
 def cmd_log_effort(a):
     body = {
         "topic": a.topic,
@@ -170,6 +186,20 @@ def build_parser():
     s = sub.add_parser("dump-idea")
     s.add_argument("id", type=int)
     s.set_defaults(func=cmd_dump_idea)
+
+    s = sub.add_parser("graph", help="Read the projected knowledge graph.")
+    s.add_argument("--archived", action="store_true")
+    s.set_defaults(func=cmd_graph)
+
+    s = sub.add_parser("graph-context", help="Read bounded graph context for an idea.")
+    s.add_argument("id", type=int)
+    s.add_argument("--depth", type=int, default=1)
+    s.add_argument("--max-nodes", type=int, default=30, dest="max_nodes")
+    s.set_defaults(func=cmd_graph_context)
+
+    s = sub.add_parser("graph-search", help="Search ideas exposed by the graph.")
+    s.add_argument("query")
+    s.set_defaults(func=cmd_graph_search)
 
     s = sub.add_parser("log-effort")
     s.add_argument("id", type=int)

@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import AIModel, Category, Idea, ResearchEntry, Resource, Stage
+from .models import AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage
 
 
 class IdeaForm(forms.ModelForm):
@@ -86,6 +86,18 @@ ResourceFormSet = inlineformset_factory(
         "url": forms.URLInput(attrs={"placeholder": "https://…"}),
     },
 )
+
+
+class IdeaRelationForm(forms.ModelForm):
+    class Meta:
+        model = IdeaRelation
+        fields = ["source", "relation_type", "target", "description", "confidence"]
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("source") == cleaned.get("target"):
+            raise forms.ValidationError("An idea cannot relate to itself.")
+        return cleaned
 
 
 class ResearchEntryForm(forms.ModelForm):

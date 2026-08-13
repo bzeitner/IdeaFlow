@@ -211,6 +211,21 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
   border-radius: 6px; font: inherit; background: #fff; }
 .detail-primary-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 .detail-section { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 4px; }
+.graph-head { margin-bottom: 12px; }
+.graph-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+.graph-controls input { flex: 1; min-width: 180px; }
+.graph-controls input, .graph-controls select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.graph-shell { display: grid; grid-template-columns: minmax(0, 1fr) 260px; min-height: 620px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.knowledge-graph { min-height: 620px; }
+.graph-detail { padding: 16px; border-left: 1px solid var(--line); }
+.graph-detail h3 { margin-top: 0; }
+.graph-relation-form { margin-top: 10px; }
+@media (max-width: 760px) {
+  .graph-shell { grid-template-columns: 1fr; }
+  .knowledge-graph { min-height: 480px; }
+  .graph-detail { border-left: 0; border-top: 1px solid var(--line); }
+  .graph-controls { flex-wrap: wrap; }
+}
 .overview-section { border-top: 0; margin-top: 8px; }
 .section-title { margin: 18px 0 4px; font-size: 16px; }
 .research-heading { margin-top: 16px; }

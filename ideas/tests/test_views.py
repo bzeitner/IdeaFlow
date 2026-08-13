@@ -44,6 +44,7 @@ class TabAccessTests(TestCase):
         ("ideas:current", "role_current"),
         ("ideas:tracking", "role_tracking"),
         ("ideas:archive", "role_archive"),
+        ("ideas:graph", "role_graph"),
     ]
 
     def test_anonymous_is_redirected_to_login(self):

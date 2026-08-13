@@ -90,6 +90,8 @@ no actionable work because: ${reason}. Its machine-readable counts and skipped
 idea ids are in ${STATE_FILE}.
 
 Use only reads through "${IFCLI}" (HTTP API at ${BASE}). Start with list-ideas.
+Read "${IFCLI} graph" to identify clusters, isolated ideas, and dependency
+bottlenecks, then verify every claimed pattern against selected idea details.
 Use the selector state to distinguish paused, archived, and researched-but-idle
 ideas. Choose 3-8 candidates whose details are needed to support a conclusion,
 then dump-idea each of them. Inspect the unsummarized feed backlog only if it
