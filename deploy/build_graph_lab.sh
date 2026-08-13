@@ -33,6 +33,16 @@ npm install --no-save --ignore-scripts --legacy-peer-deps \
   graphology@0.25.4
 BASE_URL=/gephi/ npm run build
 
+# Keep the isolated UI self-hosted. Upstream CSS imports Google Fonts; removing
+# those imports preserves its declared fallback stacks without third-party
+# requests or a broader production CSP.
+find packages/gephi-lite/build -type f -name '*.css' -exec \
+  perl -0pi -e 's/\@import"https:\/\/fonts\.googleapis\.com\/[^"]+";//g' {} +
+if grep -R -q 'fonts.googleapis.com' packages/gephi-lite/build; then
+  echo "External Google Fonts import remains in the Graph Lab build." >&2
+  exit 1
+fi
+
 mkdir -p "$output_dir"
 artifact="$output_dir/gephi-lite-1.0.2.tar.gz"
 COPYFILE_DISABLE=1 tar -czf "$artifact" -C packages/gephi-lite/build .
