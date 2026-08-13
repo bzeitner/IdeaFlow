@@ -11,6 +11,8 @@ from .models import (
     Idea,
     IdeaFeed,
     IdeaRelation,
+    IdeaRelationSuggestion,
+    IdeaSemanticState,
     Profile,
     Resource,
     ResearchEntry,
@@ -117,6 +119,22 @@ class IdeaRelationAdmin(admin.ModelAdmin):
     list_filter = ("relation_type", "confidence", "provenance")
     search_fields = ("source__title", "target__title", "description")
     autocomplete_fields = ("source", "target", "created_by")
+
+
+@admin.register(IdeaSemanticState)
+class IdeaSemanticStateAdmin(admin.ModelAdmin):
+    list_display = ("idea", "status", "embedding_model", "processed_at", "updated_at")
+    list_filter = ("status", "embedding_model")
+    search_fields = ("idea__title", "error")
+    readonly_fields = ("content_hash", "embedding", "processed_at", "updated_at")
+
+
+@admin.register(IdeaRelationSuggestion)
+class IdeaRelationSuggestionAdmin(admin.ModelAdmin):
+    list_display = ("source", "relation_type", "target", "status", "confidence", "similarity")
+    list_filter = ("status", "relation_type", "classifier_model")
+    search_fields = ("source__title", "target__title", "description", "evidence")
+    autocomplete_fields = ("analyzed_idea", "source", "target", "reviewed_by", "accepted_relation")
 
 
 @admin.register(Feed)

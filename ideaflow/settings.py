@@ -236,6 +236,24 @@ IDEAFLOW_TASK_MODELS = {
     'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-opus-4-8'),
 }
 
+# Semantic graph enrichment. The worker uses OpenAI-compatible JSON endpoints;
+# changing embedding models requires a full semantic backfill because vectors
+# from different models must never be compared.
+IDEAFLOW_SEMANTIC_API_KEY = os.getenv('IDEAFLOW_SEMANTIC_API_KEY', '')
+IDEAFLOW_SEMANTIC_API_BASE = os.getenv(
+    'IDEAFLOW_SEMANTIC_API_BASE', 'https://api.openai.com/v1'
+).rstrip('/')
+IDEAFLOW_SEMANTIC_EMBEDDING_MODEL = os.getenv(
+    'IDEAFLOW_SEMANTIC_EMBEDDING_MODEL', 'text-embedding-3-small'
+)
+IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL = os.getenv(
+    'IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL', 'gpt-4.1-mini'
+)
+IDEAFLOW_SEMANTIC_CANDIDATES = env_int('IDEAFLOW_SEMANTIC_CANDIDATES', 12)
+IDEAFLOW_SEMANTIC_MIN_SIMILARITY = float(
+    os.getenv('IDEAFLOW_SEMANTIC_MIN_SIMILARITY', '0.35')
+)
+
 
 # Production hardening (behind nginx + Cloudflare)
 #

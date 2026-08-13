@@ -1,0 +1,14 @@
+[Unit]
+Description=IdeaFlow semantic graph enrichment
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+EnvironmentFile=/home/ideaflow/IdeaFlow/.env
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python manage.py process_semantic_graph --limit 25
+
+[Install]
+WantedBy=multi-user.target

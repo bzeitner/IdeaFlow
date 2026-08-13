@@ -1,12 +1,14 @@
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from ideas.graph.projection import graph_context, graph_projection, neighborhood
 from ideas.graph.revision import current_revision
-from ideas.models import IdeaRelation, RelationType, Status
+from ideas.graph.semantic import content_hash, process_idea, semantic_text
+from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, ResearchEntry, SemanticStatus, Status, SuggestionStatus
 
-from .helpers import MODEL_BACKEND, make_idea, make_user
+from .helpers import MODEL_BACKEND, make_ai_model, make_idea, make_user
 
 TOKEN = "graph-test-token"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
@@ -92,6 +94,88 @@ class GraphViewTests(TestCase):
         self.client.force_login(user, backend=MODEL_BACKEND)
         self.client.post(reverse("ideas:graph_relation_create"), {"source": source.pk, "target": target.pk, "relation_type": "related_to", "confidence": 4})
         self.assertTrue(IdeaRelation.objects.exists())
+
+    def test_manager_can_accept_semantic_suggestion(self):
+        source, target = make_idea(status=Status.CURRENT), make_idea()
+        suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=source, source=source, target=target, relation_type=RelationType.SUPPORTS,
+            description="Shared evidence", evidence="Research overlaps", confidence=0.82,
+            source_content_hash="a", target_content_hash="b", classifier_model="test",
+        )
+        user = make_user(roles=["role_graph", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(reverse("ideas:graph_suggestion_review", args=[suggestion.pk, "accept"]))
+        self.assertRedirects(response, reverse("ideas:graph"), fetch_redirect_response=False)
+        suggestion.refresh_from_db()
+        self.assertEqual(suggestion.status, SuggestionStatus.ACCEPTED)
+        self.assertEqual(suggestion.accepted_relation.provenance, "agent")
+
+    def test_rejection_does_not_create_relation(self):
+        source, target = make_idea(status=Status.CURRENT), make_idea()
+        suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=source, source=source, target=target, relation_type=RelationType.RELATED_TO,
+            source_content_hash="a", target_content_hash="b", classifier_model="test",
+        )
+        user = make_user(roles=["role_graph", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        self.client.post(reverse("ideas:graph_suggestion_review", args=[suggestion.pk, "reject"]))
+        suggestion.refresh_from_db()
+        self.assertEqual(suggestion.status, SuggestionStatus.REJECTED)
+        self.assertFalse(IdeaRelation.objects.exists())
+
+
+class FakeSemanticAPI:
+    embedding_model = "fake-embedding"
+    classifier_model = "fake-classifier"
+
+    def embed(self, text):
+        return [1.0] + [0.0] * 1535
+
+    def classify(self, source, candidates):
+        return [{
+            "candidate_id": candidates[0][0].pk,
+            "relation_type": "supports",
+            "confidence": 0.9,
+            "description": "The research supports the target.",
+            "evidence": "Both discuss the same measured outcome.",
+        }]
+
+
+class SemanticGraphTests(TestCase):
+    def test_idea_and_research_changes_mark_semantics_stale(self):
+        idea = make_idea()
+        state = idea.semantic_state
+        state.status = SemanticStatus.READY
+        state.save(update_fields=["status"])
+        ResearchEntry.objects.create(idea=idea, topic="New finding", model=make_ai_model())
+        state.refresh_from_db()
+        self.assertEqual(state.status, SemanticStatus.STALE)
+
+    def test_processing_creates_reviewable_suggestion(self):
+        target = make_idea(title="Target evidence")
+        target_state = target.semantic_state
+        target_text = semantic_text(target)
+        target_state.content_hash = content_hash(target_text)
+        target_state.embedding = [1.0] + [0.0] * 1535
+        target_state.embedding_model = "fake-embedding"
+        target_state.status = SemanticStatus.READY
+        target_state.processed_at = timezone.now()
+        target_state.save()
+        source = make_idea(title="Source evidence")
+        process_idea(source, api=FakeSemanticAPI())
+        suggestion = IdeaRelationSuggestion.objects.get()
+        self.assertEqual(suggestion.target, target)
+        self.assertEqual(suggestion.status, SuggestionStatus.PENDING)
+        self.assertEqual(suggestion.evidence, "Both discuss the same measured outcome.")
+        source.semantic_state.refresh_from_db()
+        self.assertEqual(source.semantic_state.status, SemanticStatus.READY)
+
+    def test_deleting_idea_with_research_does_not_recreate_state(self):
+        idea = make_idea()
+        ResearchEntry.objects.create(idea=idea, topic="Finding", model=make_ai_model())
+        idea_id = idea.pk
+        idea.delete()
+        self.assertFalse(IdeaSemanticState.objects.filter(idea_id=idea_id).exists())
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)

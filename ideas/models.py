@@ -7,6 +7,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils import timezone
+from pgvector.django import VectorField
 
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
 
@@ -283,6 +284,61 @@ class IdeaRelation(models.Model):
 class GraphRevision(models.Model):
     revision = models.PositiveBigIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class SemanticStatus(models.TextChoices):
+    STALE = "stale", "Stale"
+    PROCESSING = "processing", "Processing"
+    READY = "ready", "Ready"
+    FAILED = "failed", "Failed"
+
+
+class IdeaSemanticState(models.Model):
+    idea = models.OneToOneField(Idea, related_name="semantic_state", on_delete=models.CASCADE)
+    content_hash = models.CharField(max_length=64, blank=True)
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
+    embedding_model = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=16, choices=SemanticStatus.choices, default=SemanticStatus.STALE)
+    error = models.TextField(blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SuggestionStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    ACCEPTED = "accepted", "Accepted"
+    REJECTED = "rejected", "Rejected"
+    SUPERSEDED = "superseded", "Superseded"
+
+
+class IdeaRelationSuggestion(models.Model):
+    analyzed_idea = models.ForeignKey(Idea, related_name="semantic_analyses", on_delete=models.CASCADE)
+    source = models.ForeignKey(Idea, related_name="outgoing_relation_suggestions", on_delete=models.CASCADE)
+    target = models.ForeignKey(Idea, related_name="incoming_relation_suggestions", on_delete=models.CASCADE)
+    relation_type = models.CharField(max_length=24, choices=RelationType.choices)
+    description = models.TextField(blank=True)
+    evidence = models.TextField(blank=True)
+    confidence = models.FloatField(default=0.5)
+    similarity = models.FloatField(default=0.0)
+    status = models.CharField(max_length=16, choices=SuggestionStatus.choices, default=SuggestionStatus.PENDING)
+    source_content_hash = models.CharField(max_length=64)
+    target_content_hash = models.CharField(max_length=64)
+    classifier_model = models.CharField(max_length=100)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, related_name="relation_suggestions_reviewed", on_delete=models.SET_NULL)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    accepted_relation = models.ForeignKey(IdeaRelation, null=True, blank=True, related_name="originating_suggestions", on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-confidence", "-similarity", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "target", "relation_type"], name="unique_typed_relation_suggestion"),
+            models.CheckConstraint(condition=~models.Q(source=models.F("target")), name="relation_suggestion_not_self"),
+        ]
+
+    def __str__(self):
+        return f"{self.source} {self.get_relation_type_display()} {self.target} ({self.get_status_display()})"
 
 
 class Resource(models.Model):

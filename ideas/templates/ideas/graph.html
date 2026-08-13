@@ -28,6 +28,13 @@
   {% for edge in graph_data.edges %}<tr><td>{{ edge.source_label }}</td><td>{{ edge.label }}</td><td>{{ edge.target_label }}</td><td>{% if edge.editable %}<form method="post" action="{% url 'ideas:graph_relation_delete' edge.id|slice:'9:' %}">{% csrf_token %}<button class="btn small" type="submit">Remove</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="4">No relationships yet.</td></tr>{% endfor %}
   </tbody></table>
 </details>
+
+<details class="detail-section"{% if suggestions %} open{% endif %}><summary>Suggested relationships ({{ suggestions|length }})</summary>
+  <p class="dim">Generated from idea and research text. Review these before they become part of the knowledge graph.</p>
+  <table class="tracking"><thead><tr><th>Source</th><th>Relationship</th><th>Target</th><th>Evidence</th><th>Confidence</th><th></th></tr></thead><tbody>
+  {% for suggestion in suggestions %}<tr><td><a href="{{ suggestion.source.get_absolute_url }}">{{ suggestion.source }}</a></td><td>{{ suggestion.get_relation_type_display }}</td><td><a href="{{ suggestion.target.get_absolute_url }}">{{ suggestion.target }}</a></td><td>{{ suggestion.evidence|default:suggestion.description }}</td><td>{% widthratio suggestion.confidence 1 100 as confidence_percent %}{{ confidence_percent }}%</td><td class="suggestion-actions"><form method="post" action="{% url 'ideas:graph_suggestion_review' suggestion.pk 'accept' %}">{% csrf_token %}<button class="btn small primary" type="submit">Accept</button></form><form method="post" action="{% url 'ideas:graph_suggestion_review' suggestion.pk 'reject' %}">{% csrf_token %}<button class="btn small" type="submit">Reject</button></form></td></tr>{% empty %}<tr><td colspan="6">No suggestions awaiting review.</td></tr>{% endfor %}
+  </tbody></table>
+</details>
 {{ graph_data|json_script:"graph-data" }}
 <script src="/static/ideas/cytoscape-3.33.1.min.js"></script>
 <script src="/static/ideas/graph.js"></script>

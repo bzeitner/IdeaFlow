@@ -235,6 +235,16 @@ graph access plus permission to manage the source idea. `manage.py audit_graph`
 checks dependency cycles, and `manage.py rebuild_graph_revision` invalidates
 projection caches after operational repairs. Cytoscape.js is bundled locally.
 
+With PostgreSQL's `vector` extension enabled, changed idea and research text is
+automatically marked for semantic processing. The
+`process_semantic_graph` worker embeds it, retrieves nearby ideas with an HNSW
+cosine index, and asks a configurable OpenAI-compatible classifier for precise,
+evidence-backed relationship types. Results appear as suggestions in the Graph
+tab; accepting one promotes it to a canonical agent-provenance relationship,
+while rejection is remembered until the underlying content changes. Install
+`deploy/ideaflow-semantic-graph.{service,timer}` to process changes every five
+minutes. See `deploy/env.production.example` for model/API settings.
+
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
 lighter model (Haiku) while research/review/execute/critique use the heavy one.

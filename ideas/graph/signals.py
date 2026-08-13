@@ -2,7 +2,31 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from ideas.graph.revision import mark_graph_changed
-from ideas.models import Category, Idea, IdeaFeed, IdeaRelation, ResearchEntry, Resource, Stage
+from ideas.models import Category, Idea, IdeaFeed, IdeaRelation, IdeaSemanticState, ResearchEntry, Resource, SemanticStatus, Stage
+
+
+def mark_semantic_stale(idea_id):
+    # Research rows are also deleted while their parent Idea is cascading; do
+    # not recreate semantic state for an Idea that no longer exists.
+    if not Idea.objects.filter(pk=idea_id).exists():
+        return
+    IdeaSemanticState.objects.update_or_create(
+        idea_id=idea_id,
+        defaults={"status": SemanticStatus.STALE, "error": ""},
+    )
+
+
+@receiver(post_save, sender=Idea)
+def idea_semantics_changed(instance, **kwargs):
+    mark_semantic_stale(instance.pk)
+
+
+@receiver(post_save, sender=ResearchEntry)
+@receiver(post_delete, sender=ResearchEntry)
+def research_semantics_changed(instance, origin=None, **kwargs):
+    if isinstance(origin, Idea):
+        return
+    mark_semantic_stale(instance.idea_id)
 
 
 @receiver(post_save, sender=Idea)

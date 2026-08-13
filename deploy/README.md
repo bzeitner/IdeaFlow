@@ -191,6 +191,26 @@ systemctl enable --now ideaflow
 systemctl status ideaflow --no-pager      # should be active (running)
 ```
 
+To generate reviewable knowledge-graph relationships whenever idea research
+changes, first enable pgvector in the `ideaflow` database and configure the
+`IDEAFLOW_SEMANTIC_*` values in `.env`. Then install the worker timer:
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-semantic-graph.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-semantic-graph.timer
+```
+
+The web application only marks changed ideas stale. This timer performs the
+external API calls and places suggestions in the Graph tab for human review.
+Backfill existing ideas once after deployment:
+
+```bash
+# as ideaflow, in ~/IdeaFlow
+.venv/bin/python manage.py process_semantic_graph --all --limit 100000
+```
+
 If it fails, `journalctl -u ideaflow -n 50 --no-pager` shows why (almost always
 a `.env` value or DB password).
 

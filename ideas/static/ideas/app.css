@@ -220,6 +220,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .graph-detail { padding: 16px; border-left: 1px solid var(--line); }
 .graph-detail h3 { margin-top: 0; }
 .graph-relation-form { margin-top: 10px; }
+.suggestion-actions { display: flex; gap: 6px; }
 @media (max-width: 760px) {
   .graph-shell { grid-template-columns: 1fr; }
   .knowledge-graph { min-height: 480px; }

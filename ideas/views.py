@@ -3,14 +3,16 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Case, Count, F, IntegerField, Q, When
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from .feeds import is_http_url, recent_articles
 from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
 from .graph.projection import graph_projection
-from .models import Category, FeedItem, Idea, IdeaRelation, Profile, RelationType, Stage, Status
+from .models import Category, FeedItem, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -101,6 +103,7 @@ def graph(request):
             "include_archived": include_archived,
             "statuses": Status.choices,
             "relation_types": [("parent_of", "Parent of"), *RelationType.choices],
+            "suggestions": IdeaRelationSuggestion.objects.filter(status=SuggestionStatus.PENDING).select_related("analyzed_idea", "source", "target"),
         },
     )
 
@@ -132,6 +135,45 @@ def graph_relation_delete(request, pk):
     if request.method == "POST" and request.user.profile.can_manage_status(relation.source.status):
         relation.delete()
         messages.success(request, "Relationship removed.")
+    return redirect("ideas:graph")
+
+
+@role_required("role_graph")
+def graph_suggestion_review(request, pk, decision):
+    suggestion = get_object_or_404(
+        IdeaRelationSuggestion.objects.select_related("analyzed_idea", "source", "target"), pk=pk
+    )
+    if request.method != "POST" or decision not in {"accept", "reject"}:
+        return redirect("ideas:graph")
+    if not request.user.profile.can_manage_status(suggestion.analyzed_idea.status):
+        messages.error(request, "You cannot manage the source idea.")
+        return redirect("ideas:graph")
+    if suggestion.status != SuggestionStatus.PENDING:
+        messages.info(request, "That suggestion has already been reviewed.")
+        return redirect("ideas:graph")
+    with transaction.atomic():
+        if decision == "accept":
+            relation, _created = IdeaRelation.objects.get_or_create(
+                source=suggestion.source,
+                target=suggestion.target,
+                relation_type=suggestion.relation_type,
+                defaults={
+                    "description": suggestion.description,
+                    "confidence": max(1, min(5, round(suggestion.confidence * 5))),
+                    "provenance": RelationProvenance.AGENT,
+                    "created_by": request.user,
+                },
+            )
+            suggestion.accepted_relation = relation
+            suggestion.status = SuggestionStatus.ACCEPTED
+            message = "Relationship accepted."
+        else:
+            suggestion.status = SuggestionStatus.REJECTED
+            message = "Suggestion rejected."
+        suggestion.reviewed_by = request.user
+        suggestion.reviewed_at = timezone.now()
+        suggestion.save(update_fields=["status", "accepted_relation", "reviewed_by", "reviewed_at", "updated_at"])
+    messages.success(request, message)
     return redirect("ideas:graph")
 
 
