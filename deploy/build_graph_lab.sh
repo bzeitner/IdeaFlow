@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproducibly build the reviewed Gephi Lite revision into a deployable archive.
+# Build the pinned, reviewed Gephi Lite revision into a deployable archive.
 set -euo pipefail
 
 repo=https://github.com/gephi/gephi-lite.git
@@ -35,6 +35,6 @@ BASE_URL=/gephi/ npm run build
 
 mkdir -p "$output_dir"
 artifact="$output_dir/gephi-lite-1.0.2.tar.gz"
-tar -czf "$artifact" -C packages/gephi-lite/build .
+COPYFILE_DISABLE=1 tar -czf "$artifact" -C packages/gephi-lite/build .
 (cd "$output_dir" && sha256sum "$(basename "$artifact")" > "$(basename "$artifact").sha256")
 echo "$artifact"
