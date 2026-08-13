@@ -26,11 +26,6 @@ ALLOWED_SCHEMES = {"http", "https"}
 # page; 20k characters is well past where a summary stops improving.
 CONTENT_MAX_CHARS = 20_000
 
-# A feed's first fetch often hands back the publisher's whole archive. Keep
-# only the newest entries of that first payload — later fetches are unclamped,
-# so nothing published from here on is missed.
-FIRST_FETCH_ENTRIES = 50
-
 
 def _ip_or_none(host):
     try:
@@ -117,13 +112,20 @@ def ingest_entries(feed, entries, *, limit=None):
     exists. Returns the list of newly-created FeedItems (those needing a
     summary) — existing items are left untouched, which is what keeps each
     entry summarized only once. `limit` caps how many entries are considered,
-    taking them in feed order (newest first, by convention)."""
+    taking them in feed order (newest first, by convention). Entries older
+    than `feed.backfill_cutoff` are always skipped (undated entries are kept,
+    since there's no date to judge them by) — this bounds backfill on every
+    ingest, not just the first."""
     created = []
     if limit is not None:
         entries = list(entries)[:limit]
+    cutoff = feed.backfill_cutoff
     for entry in entries:
         guid = _guid(entry)
         if not guid:
+            continue
+        published = _published(entry)
+        if cutoff is not None and published is not None and published < cutoff:
             continue
         body = _content(entry)
         item, was_created = FeedItem.objects.get_or_create(
@@ -132,7 +134,7 @@ def ingest_entries(feed, entries, *, limit=None):
             defaults={
                 "link": (entry.get("link") or "")[:500],
                 "title": (entry.get("title") or "")[:300],
-                "published_at": _published(entry),
+                "published_at": published,
                 "content_hash": _hash(body),
                 "content": (body or "")[:CONTENT_MAX_CHARS],
             },
@@ -159,7 +161,6 @@ def fetch_and_ingest(feed):
         modified=feed.last_modified or None,
     )
     status = getattr(parsed, "status", None)
-    is_first_fetch = feed.last_fetched_at is None
     feed.last_fetched_at = timezone.now()
 
     if status == 304:
@@ -176,11 +177,10 @@ def fetch_and_ingest(feed):
         feed.title = (parsed.feed.get("title", "") or "")[:200]
     feed.save()
 
-    new_items = ingest_entries(
-        feed,
-        getattr(parsed, "entries", []),
-        limit=FIRST_FETCH_ENTRIES if is_first_fetch else None,
-    )
+    # Backfill is bounded by feed.backfill_cutoff (set once, at creation) on
+    # every ingest — not just the first — so there's no separate first-fetch
+    # limit here.
+    new_items = ingest_entries(feed, getattr(parsed, "entries", []))
     return status, new_items
 
 

@@ -246,6 +246,37 @@ class ApiFeedTests(TestCase):
         withbody = self.client.get("/api/feed-items/?content=1", **AUTH)
         self.assertEqual(withbody.json()["items"][0]["content"], "The whole post.")
 
+    def test_feed_items_content_0_is_false(self):
+        from .helpers import make_feed_item
+
+        make_feed_item(guid="a", content="The whole post.")
+        r = self.client.get("/api/feed-items/?content=0", **AUTH)
+        self.assertNotIn("content", r.json()["items"][0])
+
+    def test_feed_items_content_without_limit_gets_a_default_cap(self):
+        from unittest.mock import patch
+
+        from .helpers import make_feed, make_feed_item
+
+        feed = make_feed()
+        for guid in ("a", "b", "c"):
+            make_feed_item(feed=feed, guid=guid, content="body")
+        with patch("ideas.api.DEFAULT_CONTENT_LIMIT", 2):
+            r = self.client.get("/api/feed-items/?content=1", **AUTH)
+        self.assertEqual(len(r.json()["items"]), 2)
+
+    def test_feed_items_explicit_limit_beats_content_default(self):
+        from unittest.mock import patch
+
+        from .helpers import make_feed, make_feed_item
+
+        feed = make_feed()
+        for guid in ("a", "b", "c"):
+            make_feed_item(feed=feed, guid=guid, content="body")
+        with patch("ideas.api.DEFAULT_CONTENT_LIMIT", 1):
+            r = self.client.get("/api/feed-items/?content=1&limit=3", **AUTH)
+        self.assertEqual(len(r.json()["items"]), 3)
+
     def test_summarize_feed_item(self):
         from .helpers import make_feed_item
         from ideas.feeds import link_feed

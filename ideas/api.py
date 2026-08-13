@@ -41,6 +41,10 @@ _DETAIL_PREFETCH = (
     "children",
 )
 
+# ?content=1 on /api/feed-items/ pulls full stored bodies; without an
+# explicit ?limit that would return the whole (megabytes-large) corpus.
+DEFAULT_CONTENT_LIMIT = 100
+
 
 def _provided_token(request):
     auth = request.headers.get("Authorization", "")
@@ -308,13 +312,19 @@ def feed_item_list(request):
                 seen[item.feed_id] += 1
         items = capped
 
+    # ?content=1 includes each item's stored body; ?content=0 (or omitted)
+    # doesn't. Bodies are large, so a request for them gets a default page
+    # size unless the caller sets their own ?limit.
+    with_content = request.GET.get("content") not in (None, "", "0")
+
     # Page the queue (?limit=25&offset=50) — the full corpus is megabytes, and
     # a scoring run only ever wants the next handful.
     offset = _positive_int(request.GET.get("offset")) or 0
     limit = _positive_int(request.GET.get("limit"))
+    if limit is None and with_content:
+        limit = DEFAULT_CONTENT_LIMIT
     items = items[offset : offset + limit] if limit else items[offset:]
 
-    with_content = bool(request.GET.get("content"))
     if idea is not None:
         from django.db.models import Prefetch
 
