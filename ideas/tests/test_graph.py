@@ -142,6 +142,30 @@ class GraphViewTests(TestCase):
         self.assertEqual(response.json()["decision"], "accept")
         self.assertEqual(response.json()["edge"]["type"], RelationType.SUPPORTS)
 
+    def test_ajax_accept_dependency_cycle_returns_reviewable_error(self):
+        first = make_idea(status=Status.CURRENT)
+        second = make_idea()
+        IdeaRelation.objects.create(
+            source=second, target=first, relation_type=RelationType.DEPENDS_ON
+        )
+        suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=first, source=first, target=second,
+            relation_type=RelationType.DEPENDS_ON, confidence=0.95,
+            source_content_hash="a", target_content_hash="b", classifier_model="test",
+        )
+        user = make_user(roles=["role_graph", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:graph_suggestion_review", args=[suggestion.pk, "accept"]),
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("cycle", response.json()["error"].lower())
+        suggestion.refresh_from_db()
+        self.assertEqual(suggestion.status, SuggestionStatus.PENDING)
+
     def test_rejection_does_not_create_relation(self):
         source, target = make_idea(status=Status.CURRENT), make_idea()
         suggestion = IdeaRelationSuggestion.objects.create(

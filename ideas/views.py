@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, Count, F, IntegerField, Q, When
@@ -275,17 +276,27 @@ def graph_suggestion_review(request, pk, decision):
         return redirect("ideas:graph")
     with transaction.atomic():
         if decision == "accept":
-            relation, _created = IdeaRelation.objects.get_or_create(
-                source=suggestion.source,
-                target=suggestion.target,
-                relation_type=suggestion.relation_type,
-                defaults={
-                    "description": suggestion.description,
-                    "confidence": max(1, min(5, round(suggestion.confidence * 5))),
-                    "provenance": RelationProvenance.AGENT,
-                    "created_by": request.user,
-                },
-            )
+            try:
+                relation, _created = IdeaRelation.objects.get_or_create(
+                    source=suggestion.source,
+                    target=suggestion.target,
+                    relation_type=suggestion.relation_type,
+                    defaults={
+                        "description": suggestion.description,
+                        "confidence": max(1, min(5, round(suggestion.confidence * 5))),
+                        "provenance": RelationProvenance.AGENT,
+                        "created_by": request.user,
+                    },
+                )
+            except ValidationError as exc:
+                error = "; ".join(
+                    message for messages_list in exc.message_dict.values()
+                    for message in messages_list
+                )
+                if wants_json:
+                    return JsonResponse({"error": error}, status=409)
+                messages.error(request, error)
+                return redirect("ideas:graph")
             suggestion.accepted_relation = relation
             suggestion.status = SuggestionStatus.ACCEPTED
             message = "Relationship accepted."
