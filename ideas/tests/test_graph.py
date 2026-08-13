@@ -184,6 +184,7 @@ class FakeSemanticAPI:
     embedding_model = "fake-embedding"
     classifier_model = "fake-classifier"
     confidence = 0.9
+    relation_type = "supports"
 
     def embed(self, text):
         return [1.0] + [0.0] * 1535
@@ -191,7 +192,7 @@ class FakeSemanticAPI:
     def classify(self, source, candidates):
         return [{
             "candidate_id": candidates[0][0].pk,
-            "relation_type": "supports",
+            "relation_type": self.relation_type,
             "confidence": self.confidence,
             "description": "The research supports the target.",
             "evidence": "Both discuss the same measured outcome.",
@@ -256,6 +257,20 @@ class SemanticGraphTests(TestCase):
         self.assertEqual(
             IdeaRelationSuggestion.objects.get().status, SuggestionStatus.ACCEPTED
         )
+
+    def test_processing_does_not_recommend_dependency_cycle(self):
+        target = self.ready_target("Cycle target")
+        source = make_idea(title="Cycle source")
+        IdeaRelation.objects.create(
+            source=target, target=source, relation_type=RelationType.DEPENDS_ON
+        )
+        api = FakeSemanticAPI()
+        api.confidence = 0.95
+        api.relation_type = RelationType.DEPENDS_ON
+
+        process_idea(source, api=api)
+
+        self.assertFalse(IdeaRelationSuggestion.objects.exists())
 
     def test_deleting_idea_with_research_does_not_recreate_state(self):
         idea = make_idea()

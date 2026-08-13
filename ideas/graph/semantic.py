@@ -156,6 +156,32 @@ def accept_suggestion(suggestion):
     return True
 
 
+def is_cyclic_dependency(source_id, target_id, relation_type):
+    if relation_type != RelationType.DEPENDS_ON:
+        return False
+    return IdeaRelation(
+        source_id=source_id,
+        target_id=target_id,
+        relation_type=relation_type,
+    )._creates_dependency_cycle()
+
+
+def supersede_cyclic_suggestions():
+    count = 0
+    suggestions = IdeaRelationSuggestion.objects.filter(
+        status=SuggestionStatus.PENDING,
+        relation_type=RelationType.DEPENDS_ON,
+    )
+    for suggestion in suggestions:
+        if is_cyclic_dependency(
+            suggestion.source_id, suggestion.target_id, suggestion.relation_type
+        ):
+            suggestion.status = SuggestionStatus.SUPERSEDED
+            suggestion.save(update_fields=["status", "updated_at"])
+            count += 1
+    return count
+
+
 def auto_accept_pending(confidence_percent):
     threshold = confidence_percent / 100
     accepted = 0
@@ -189,6 +215,10 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
             source_id, normalized_target_id = normalized_target_id, source_id
             source_hash, target_hash = target_hash, source_hash
         lookup = {"source_id": source_id, "target_id": normalized_target_id, "relation_type": relation_type}
+        if is_cyclic_dependency(source_id, normalized_target_id, relation_type):
+            # A dependency that closes a path can never become canonical, so
+            # do not surface it as a recommendation.
+            continue
         seen.add((source_id, normalized_target_id, relation_type))
         existing = IdeaRelationSuggestion.objects.filter(**lookup).first()
         hashes_unchanged = existing and existing.source_content_hash == source_hash and existing.target_content_hash == target_hash

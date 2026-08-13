@@ -255,6 +255,9 @@ minutes. See `deploy/env.production.example` for model/API settings.
 Relationships above the configurable auto-accept confidence are promoted
 immediately. The default is 90%; exactly 90% remains pending. Administrators
 can change it under **Admin → Semantic graph settings**.
+Dependency recommendations that would create a cycle are discarded before
+review. `manage.py prune_cyclic_suggestions` cleans up any older pending cyclic
+recommendations created before this guard existed.
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
