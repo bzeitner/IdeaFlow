@@ -243,6 +243,13 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
    Then read bounded knowledge-graph context: ${IFCLI} graph-context ${ID}
    Use connected ideas to avoid duplicate research and identify dependencies,
    alternatives, or a better existing parent. Do not modify graph relationships.
+1a. If summary, notes, and resources are ALL empty or near-empty, the idea is
+    under-specified — do not invent scope from the title alone. Skip step 2's
+    deep research; in the report, state plainly that there isn't enough to
+    research yet and name exactly what's missing. When logging effort, set
+    --next-action to one specific, answerable clarifying question (not "please
+    add more detail"), --quality to 1-2, and --status to tracking. Otherwise,
+    continue to step 2 as normal.
 2. Research the decision, not just the topic. Use existing research first, then
    investigate market, competitors, feasibility, risks, and concrete next steps
    as relevant. Cite source URLs and separate facts from assumptions.

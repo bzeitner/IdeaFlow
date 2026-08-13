@@ -29,6 +29,13 @@ class AgentPromptTests(SimpleTestCase):
         self.assertNotIn("add-child", text)
         self.assertIn("graph-context 123", text)
 
+    def test_research_prompt_branches_on_a_thin_idea(self):
+        text = prompt("research")
+
+        self.assertIn("summary, notes, and resources are ALL empty", text)
+        self.assertIn("do not invent scope from the title alone", text)
+        self.assertIn("one specific, answerable clarifying question", text)
+
     def test_review_prompt_does_not_manufacture_a_next_action(self):
         text = prompt("review")
 
