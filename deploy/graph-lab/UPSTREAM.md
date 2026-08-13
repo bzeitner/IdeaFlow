@@ -12,3 +12,5 @@ checksummed artifact for `deploy/install_graph_lab.sh`.
 The build step removes upstream Google Fonts imports so the deployed UI remains
 self-hosted and works with Graph Lab's restrictive content security policy. The
 existing CSS fallback font stacks are left intact.
+Sanitized stylesheets receive a distinct `-ideaflow.css` filename so a browser
+or CDN cannot reuse the original upstream response from cache.

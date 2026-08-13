@@ -42,6 +42,15 @@ if grep -R -q 'fonts.googleapis.com' packages/gephi-lite/build; then
   echo "External Google Fonts import remains in the Graph Lab build." >&2
   exit 1
 fi
+# The upstream filename was hashed before the sanitization above. Give each
+# sanitized stylesheet a new immutable name so browsers/CDNs cannot reuse an
+# older upstream response that still contains the imports.
+for stylesheet in packages/gephi-lite/build/assets/*.css; do
+  old_name="$(basename "$stylesheet")"
+  new_name="${old_name%.css}-ideaflow.css"
+  mv "$stylesheet" "$(dirname "$stylesheet")/$new_name"
+  perl -0pi -e "s/\\Q$old_name\\E/$new_name/g" packages/gephi-lite/build/index.html
+done
 
 mkdir -p "$output_dir"
 artifact="$output_dir/gephi-lite-1.0.2.tar.gz"
