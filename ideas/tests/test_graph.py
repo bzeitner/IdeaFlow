@@ -125,6 +125,23 @@ class GraphViewTests(TestCase):
         self.assertEqual(suggestion.status, SuggestionStatus.ACCEPTED)
         self.assertEqual(suggestion.accepted_relation.provenance, "agent")
 
+    def test_ajax_accept_returns_edge_without_redirect(self):
+        source, target = make_idea(status=Status.CURRENT), make_idea()
+        suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=source, source=source, target=target,
+            relation_type=RelationType.SUPPORTS, source_content_hash="a",
+            target_content_hash="b", classifier_model="test",
+        )
+        user = make_user(roles=["role_graph", "role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:graph_suggestion_review", args=[suggestion.pk, "accept"]),
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["decision"], "accept")
+        self.assertEqual(response.json()["edge"]["type"], RelationType.SUPPORTS)
+
     def test_rejection_does_not_create_relation(self):
         source, target = make_idea(status=Status.CURRENT), make_idea()
         suggestion = IdeaRelationSuggestion.objects.create(

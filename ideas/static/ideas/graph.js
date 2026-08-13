@@ -39,5 +39,33 @@
   document.getElementById("graph-search").addEventListener("input", applyFilters);
   document.getElementById("graph-status").addEventListener("change", applyFilters);
   document.getElementById("graph-edge-type").addEventListener("change", applyFilters);
+  const suggestionList = document.getElementById("suggestion-list");
+  if (suggestionList) suggestionList.addEventListener("submit", async (event) => {
+    const form = event.target.closest("form[data-suggestion-review]");
+    if (!form) return;
+    event.preventDefault();
+    const row = form.closest("[data-suggestion-row]");
+    const buttons = row.querySelectorAll("button");
+    const status = document.getElementById("suggestion-review-status");
+    buttons.forEach((button) => { button.disabled = true; });
+    status.textContent = "Saving review…";
+    try {
+      const response = await fetch(form.action, {
+        method: "POST", body: new FormData(form), credentials: "same-origin",
+        headers: { "Accept": "application/json", "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not review suggestion.");
+      if (result.edge && cy.getElementById(result.edge.id).empty()) cy.add({ data: result.edge });
+      row.remove();
+      const remaining = suggestionList.querySelectorAll("[data-suggestion-row]").length;
+      document.getElementById("suggestion-count").textContent = remaining;
+      if (!remaining) suggestionList.innerHTML = '<tr id="suggestion-empty"><td colspan="6">No suggestions awaiting review.</td></tr>';
+      status.textContent = result.message;
+    } catch (error) {
+      buttons.forEach((button) => { button.disabled = false; });
+      status.textContent = error.message;
+    }
+  });
   function escapeHtml(value) { const div = document.createElement("div"); div.textContent = value == null ? "" : String(value); return div.innerHTML; }
 })();

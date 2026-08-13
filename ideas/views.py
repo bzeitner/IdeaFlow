@@ -255,15 +255,22 @@ def graph_relation_delete(request, pk):
 
 @role_required("role_graph")
 def graph_suggestion_review(request, pk, decision):
+    wants_json = request.headers.get("Accept") == "application/json"
     suggestion = get_object_or_404(
         IdeaRelationSuggestion.objects.select_related("analyzed_idea", "source", "target"), pk=pk
     )
     if request.method != "POST" or decision not in {"accept", "reject"}:
+        if wants_json:
+            return JsonResponse({"error": "Invalid review request."}, status=405)
         return redirect("ideas:graph")
     if not request.user.profile.can_manage_status(suggestion.analyzed_idea.status):
+        if wants_json:
+            return JsonResponse({"error": "You cannot manage the source idea."}, status=403)
         messages.error(request, "You cannot manage the source idea.")
         return redirect("ideas:graph")
     if suggestion.status != SuggestionStatus.PENDING:
+        if wants_json:
+            return JsonResponse({"error": "That suggestion has already been reviewed."}, status=409)
         messages.info(request, "That suggestion has already been reviewed.")
         return redirect("ideas:graph")
     with transaction.atomic():
@@ -288,6 +295,20 @@ def graph_suggestion_review(request, pk, decision):
         suggestion.reviewed_by = request.user
         suggestion.reviewed_at = timezone.now()
         suggestion.save(update_fields=["status", "accepted_relation", "reviewed_by", "reviewed_at", "updated_at"])
+    if wants_json:
+        payload = {"ok": True, "decision": decision, "message": message}
+        if decision == "accept":
+            payload["edge"] = {
+                "id": f"relation-{relation.pk}",
+                "source": f"idea-{relation.source_id}",
+                "target": f"idea-{relation.target_id}",
+                "type": relation.relation_type,
+                "label": relation.get_relation_type_display(),
+                "description": relation.description,
+                "confidence": relation.confidence,
+                "provenance": relation.provenance,
+            }
+        return JsonResponse(payload)
     messages.success(request, message)
     return redirect("ideas:graph")
 
