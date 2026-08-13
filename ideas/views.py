@@ -241,6 +241,14 @@ def tracking(request):
     elif attention == "no-next-action":
         ideas = ideas.filter(next_action="")
 
+    ideas = ideas.annotate(
+        tracking_child_count=Count(
+            "children",
+            filter=Q(children__status=Status.TRACKING),
+            distinct=True,
+        )
+    )
+
     sort = request.GET.get("sort", "family")
     orderings = {
         "family": (

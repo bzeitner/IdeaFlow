@@ -468,6 +468,30 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "Parent &amp; children", html=False)
         self.assertContains(response, "child-item")
 
+    def test_family_parent_shows_tracking_child_count_and_collapse_hook(self):
+        parent = make_idea(title="Parent", status=Status.TRACKING)
+        make_idea(title="Visible child", status=Status.TRACKING, parent=parent)
+        make_idea(title="Archived child", status=Status.ARCHIVED, parent=parent)
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        rendered_parent = next(
+            idea for idea in response.context["ideas"] if idea.pk == parent.pk
+        )
+        self.assertEqual(rendered_parent.tracking_child_count, 1)
+        self.assertContains(response, 'data-family-toggle="%s"' % parent.pk)
+        self.assertContains(response, "1 child")
+        self.assertContains(response, 'data-parent-id="%s"' % parent.pk)
+        self.assertContains(response, "ideas/tracking.js")
+
+    def test_child_toggle_is_only_shown_for_family_sort(self):
+        parent = make_idea(status=Status.TRACKING)
+        make_idea(status=Status.TRACKING, parent=parent)
+
+        response = self.client.get(reverse("ideas:tracking"), {"sort": "rank"})
+
+        self.assertNotContains(response, "data-family-toggle")
+
     def test_unknown_sort_falls_back_to_parent_child_grouping(self):
         response = self.client.get(reverse("ideas:tracking"), {"sort": "unknown"})
 

@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from ideas.forms import IdeaForm, ResearchEntryForm, ResearchEntryFormSet
-from ideas.models import Idea
+from ideas.models import Idea, Status
 
 from .helpers import make_ai_model, make_category, make_idea
 
@@ -38,6 +38,43 @@ class IdeaFormActiveOptionsTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         idea = form.save()
         self.assertEqual(Idea.objects.get(pk=idea.pk).title, "New idea")
+
+    def test_parent_options_are_tagged_for_default_browser_filtering(self):
+        top_level = make_idea(title="Top level")
+        child = make_idea(title="Child", parent=top_level)
+        archived = make_idea(title="Archived", status=Status.ARCHIVED)
+
+        html = str(IdeaForm()["parent"])
+
+        self.assertIn(f'value="{top_level.pk}" data-archived="false" data-has-parent="false"', html)
+        self.assertIn(f'value="{child.pk}" data-archived="false" data-has-parent="true"', html)
+        self.assertIn(f'value="{archived.pk}" data-archived="true" data-has-parent="false"', html)
+
+    def test_archived_or_child_parent_requires_corresponding_checkbox(self):
+        category = make_category()
+        grandparent = make_idea()
+        child = make_idea(parent=grandparent)
+        archived = make_idea(status=Status.ARCHIVED)
+        base = {
+            "title": "New idea", "category": category.pk, "interest_level": 3,
+            "status": Status.CURRENT, "rank": 0,
+        }
+        child_form = IdeaForm(data={**base, "parent": child.pk})
+        archived_form = IdeaForm(data={**base, "parent": archived.pk})
+        self.assertFalse(child_form.is_valid())
+        self.assertFalse(archived_form.is_valid())
+        self.assertTrue(IdeaForm(data={**base, "parent": child.pk, "include_child_parents": "on"}).is_valid())
+        self.assertTrue(IdeaForm(data={**base, "parent": archived.pk, "include_archived_parents": "on"}).is_valid())
+
+    def test_existing_exception_is_revealed_when_editing(self):
+        grandparent = make_idea()
+        archived_child = make_idea(parent=grandparent, status=Status.ARCHIVED)
+        idea = make_idea(parent=archived_child)
+
+        form = IdeaForm(instance=idea)
+
+        self.assertTrue(form.fields["include_archived_parents"].initial)
+        self.assertTrue(form.fields["include_child_parents"].initial)
 
 
 class ResearchEntryFormTests(TestCase):

@@ -37,9 +37,12 @@
       <summary>More details and settings</summary>
       <div class="advanced-fields-body">
         {% for field in form %}
-          {% if field.name != 'title' and field.name != 'summary' and field.name != 'category' and field.name != 'next_action' %}
+          {% if field.name != 'title' and field.name != 'summary' and field.name != 'category' and field.name != 'next_action' and field.name != 'include_archived_parents' and field.name != 'include_child_parents' %}
             <div class="field {% if field.name == 'interest_level' %}stars-field{% endif %}">
-              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {% if field.name == 'parent' %}
+                <div class="parent-picker">{{ field }}<div class="parent-picker-options"><label>{{ form.include_archived_parents }} {{ form.include_archived_parents.label }}</label><label>{{ form.include_child_parents }} {{ form.include_child_parents.label }}</label></div></div>
+              {% else %}{{ field }}{% endif %}
               {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
             </div>
           {% endif %}
@@ -64,6 +67,28 @@
       rows.addEventListener('click', function (event) {
         if (event.target.matches('[data-remove-resource]')) event.target.closest('.resource-row').remove();
       });
+    }());
+    (function () {
+      const select = document.getElementById('id_parent');
+      const includeArchived = document.getElementById('id_include_archived_parents');
+      const includeChildren = document.getElementById('id_include_child_parents');
+      if (!select || !includeArchived || !includeChildren) return;
+      const candidates = [...select.options].slice(1).map(function (option) {
+        return { value: option.value, label: option.textContent, archived: option.dataset.archived === 'true', hasParent: option.dataset.hasParent === 'true' };
+      });
+      function refreshParents() {
+        const selected = select.value;
+        select.options.length = 1;
+        candidates.forEach(function (candidate) {
+          if ((!candidate.archived || includeArchived.checked) && (!candidate.hasParent || includeChildren.checked)) {
+            select.add(new Option(candidate.label, candidate.value, false, candidate.value === selected));
+          }
+        });
+        if (![...select.options].some(function (option) { return option.value === selected; })) select.value = '';
+      }
+      includeArchived.addEventListener('change', refreshParents);
+      includeChildren.addEventListener('change', refreshParents);
+      refreshParents();
     }());
   </script>
 {% endblock %}

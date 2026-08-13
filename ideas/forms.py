@@ -3,10 +3,29 @@ from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage
+from .models import AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage, Status
+
+
+class ParentIdeaSelect(forms.Select):
+    """Expose candidate state so the browser can filter without another request."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        instance = getattr(value, "instance", None)
+        if instance is not None:
+            option["attrs"]["data-archived"] = str(instance.status == Status.ARCHIVED).lower()
+            option["attrs"]["data-has-parent"] = str(bool(instance.parent_id)).lower()
+        return option
 
 
 class IdeaForm(forms.ModelForm):
+    include_archived_parents = forms.BooleanField(
+        required=False, label="Include archived"
+    )
+    include_child_parents = forms.BooleanField(
+        required=False, label="Include children"
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Offer only active options, but never drop the one already on this idea —
@@ -22,6 +41,24 @@ class IdeaForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             parents = parents.exclude(pk__in=self._descendant_ids(self.instance))
         self.fields["parent"].queryset = parents.order_by("title")
+        self.fields["parent"].widget = ParentIdeaSelect(
+            choices=self.fields["parent"].choices
+        )
+        current_parent = getattr(self.instance, "parent", None)
+        if not self.is_bound and current_parent:
+            self.fields["include_archived_parents"].initial = current_parent.status == Status.ARCHIVED
+            self.fields["include_child_parents"].initial = bool(current_parent.parent_id)
+
+    def clean(self):
+        cleaned = super().clean()
+        parent = cleaned.get("parent")
+        if not parent:
+            return cleaned
+        if parent.status == Status.ARCHIVED and not self.cleaned_data.get("include_archived_parents"):
+            self.add_error("parent", "Select “Include archived” to use an archived parent.")
+        if parent.parent_id and not self.cleaned_data.get("include_child_parents"):
+            self.add_error("parent", "Select “Include children” to use an idea that already has a parent.")
+        return cleaned
 
     @staticmethod
     def _descendant_ids(idea):
