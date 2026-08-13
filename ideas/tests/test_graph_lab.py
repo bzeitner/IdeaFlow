@@ -2,10 +2,12 @@ from datetime import timedelta
 from xml.etree import ElementTree as ET
 
 from django.test import TestCase, override_settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.graph.capabilities import token_hash
+from ideas.graph.capabilities import consume_capability, token_hash
 from ideas.models import GraphAccessCapability, IdeaRelation, RelationType
 
 from .helpers import MODEL_BACKEND, make_idea, make_user
@@ -122,6 +124,17 @@ class GraphLabTests(TestCase):
         token = self.issue()["capability"]
         self.assertEqual(self.export(token).status_code, 200)
         self.assertEqual(self.export(token).status_code, 429)
+
+    def test_capability_lock_query_does_not_outer_join_profile(self):
+        token = self.issue()["capability"]
+        with CaptureQueriesContext(connection) as queries:
+            capability, error = consume_capability(token)
+        self.assertIsNone(error)
+        self.assertIsNotNone(capability)
+        capability_query = next(
+            query["sql"] for query in queries if "graphaccesscapability" in query["sql"].lower()
+        )
+        self.assertNotIn("ideas_profile", capability_query.lower())
 
     @override_settings(IDEAFLOW_GRAPH_EXPORT_MAX_NODES=1)
     def test_export_rejects_oversized_graph(self):

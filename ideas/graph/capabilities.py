@@ -31,8 +31,12 @@ def issue_capability(user, *, filters):
 @transaction.atomic
 def consume_capability(raw):
     try:
+        # Do not join the reverse one-to-one profile here: PostgreSQL rejects
+        # FOR UPDATE when an outer join includes its nullable side. Loading the
+        # profile separately preserves the capability row lock and works on
+        # both PostgreSQL and SQLite.
         capability = GraphAccessCapability.objects.select_for_update().select_related(
-            "user", "user__profile"
+            "user"
         ).get(token_hash=token_hash(raw))
     except GraphAccessCapability.DoesNotExist:
         return None, "invalid"
