@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -477,11 +479,24 @@ class Feed(models.Model):
     etag = models.CharField(max_length=300, blank=True)
     last_modified = models.CharField(max_length=100, blank=True)
     last_fetched_at = models.DateTimeField(null=True, blank=True)
+    backfill_cutoff = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Entries published before this are skipped on every ingest, not "
+            "just the first. Set once, at creation, to 30 days back."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["title", "url"]
+
+    def save(self, *args, **kwargs):
+        if self.pk is None and self.backfill_cutoff is None:
+            self.backfill_cutoff = timezone.now() - timedelta(days=30)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title or self.url

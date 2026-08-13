@@ -1,10 +1,12 @@
 import json
+from datetime import timedelta
 from io import StringIO
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError
 from django.test import TestCase
+from django.utils import timezone
 
 from ideas.feeds import ingest_entries, link_feed, record_feed_item_summary
 from ideas.models import FeedItem
@@ -84,6 +86,53 @@ class IngestTests(TestCase):
         make_feed_item(feed=feed, guid="dup")
         with self.assertRaises(IntegrityError):
             FeedItem.objects.create(feed=feed, guid="dup")
+
+    def test_backfill_cutoff_set_once_at_creation(self):
+        before = timezone.now() - timedelta(days=30, minutes=1)
+        feed = make_feed()
+        after = timezone.now() - timedelta(days=30) + timedelta(minutes=1)
+        self.assertIsNotNone(feed.backfill_cutoff)
+        self.assertTrue(before <= feed.backfill_cutoff <= after)
+
+    def test_backfill_cutoff_is_not_reset_on_later_saves(self):
+        feed = make_feed()
+        original_cutoff = feed.backfill_cutoff
+        feed.title = "Renamed"
+        feed.save()
+        feed.refresh_from_db()
+        self.assertEqual(feed.backfill_cutoff, original_cutoff)
+
+    def test_ingest_skips_entries_older_than_backfill_cutoff(self):
+        feed = make_feed()
+        old_time = feed.backfill_cutoff - timedelta(days=1)
+        new_time = feed.backfill_cutoff + timedelta(days=1)
+        created = ingest_entries(
+            feed,
+            [
+                entry(
+                    "old",
+                    published_parsed=old_time.utctimetuple(),
+                ),
+                entry(
+                    "new",
+                    published_parsed=new_time.utctimetuple(),
+                ),
+            ],
+        )
+        self.assertEqual([i.guid for i in created], ["new"])
+        self.assertEqual(feed.items.count(), 1)
+
+    def test_ingest_keeps_undated_entries_regardless_of_cutoff(self):
+        feed = make_feed()
+        created = ingest_entries(feed, [entry("undated")])
+        self.assertEqual([i.guid for i in created], ["undated"])
+
+    def test_ingest_applies_cutoff_on_every_call_not_just_the_first(self):
+        feed = make_feed()
+        old_time = feed.backfill_cutoff - timedelta(days=1)
+        ingest_entries(feed, [entry("a", published_parsed=old_time.utctimetuple())])
+        ingest_entries(feed, [entry("b", published_parsed=old_time.utctimetuple())])
+        self.assertEqual(feed.items.count(), 0)
 
 
 class SummaryTests(TestCase):
