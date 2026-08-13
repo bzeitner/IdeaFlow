@@ -14,6 +14,7 @@ from .models import (
     GraphAccessCapability,
     IdeaRelationSuggestion,
     IdeaSemanticState,
+    SemanticGraphSettings,
     Profile,
     Resource,
     ResearchEntry,
@@ -136,6 +137,26 @@ class IdeaSemanticStateAdmin(admin.ModelAdmin):
     list_filter = ("status", "embedding_model")
     search_fields = ("idea__title", "error")
     readonly_fields = ("content_hash", "embedding", "processed_at", "updated_at")
+
+
+@admin.register(SemanticGraphSettings)
+class SemanticGraphSettingsAdmin(admin.ModelAdmin):
+    fields = ("auto_accept_confidence_percent", "updated_at")
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        return not SemanticGraphSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from .graph.semantic import auto_accept_pending
+
+        accepted = auto_accept_pending(obj.auto_accept_confidence_percent)
+        if accepted:
+            self.message_user(request, f"Automatically accepted {accepted} pending relationship(s).")
 
 
 @admin.register(IdeaRelationSuggestion)

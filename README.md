@@ -252,6 +252,9 @@ tab; accepting one promotes it to a canonical agent-provenance relationship,
 while rejection is remembered until the underlying content changes. Install
 `deploy/ideaflow-semantic-graph.{service,timer}` to process changes every five
 minutes. See `deploy/env.production.example` for model/API settings.
+Relationships above the configurable auto-accept confidence are promoted
+immediately. The default is 90%; exactly 90% remains pending. Administrators
+can change it under **Admin → Semantic graph settings**.
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a

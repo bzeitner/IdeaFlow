@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.utils import timezone
 from pgvector.django import CosineDistance
@@ -14,7 +15,9 @@ from ideas.models import (
     IdeaRelation,
     IdeaRelationSuggestion,
     IdeaSemanticState,
+    RelationProvenance,
     RelationType,
+    SemanticGraphSettings,
     SemanticStatus,
     SuggestionStatus,
 )
@@ -129,8 +132,45 @@ def nearest_candidates(state, *, limit=None, min_similarity=None):
     return [item for item in ranked[:limit] if item[1] >= min_similarity]
 
 
+def accept_suggestion(suggestion):
+    """Promote one suggestion, returning False when model validation rejects it."""
+    try:
+        relation, _created = IdeaRelation.objects.get_or_create(
+            source=suggestion.source,
+            target=suggestion.target,
+            relation_type=suggestion.relation_type,
+            defaults={
+                "description": suggestion.description,
+                "confidence": max(1, min(5, round(suggestion.confidence * 5))),
+                "provenance": RelationProvenance.AGENT,
+            },
+        )
+    except ValidationError:
+        return False
+    suggestion.status = SuggestionStatus.ACCEPTED
+    suggestion.accepted_relation = relation
+    suggestion.reviewed_at = timezone.now()
+    suggestion.save(
+        update_fields=["status", "accepted_relation", "reviewed_at", "updated_at"]
+    )
+    return True
+
+
+def auto_accept_pending(confidence_percent):
+    threshold = confidence_percent / 100
+    accepted = 0
+    suggestions = IdeaRelationSuggestion.objects.filter(
+        status=SuggestionStatus.PENDING,
+        confidence__gt=threshold,
+    ).select_related("source", "target")
+    for suggestion in suggestions:
+        accepted += int(accept_suggestion(suggestion))
+    return accepted
+
+
 def _store_suggestions(source, source_state, candidates, relationships, classifier_model):
     candidate_map = {idea.pk: (idea, similarity) for idea, similarity in candidates}
+    auto_accept_threshold = SemanticGraphSettings.load().auto_accept_confidence_percent / 100
     seen = set()
     for result in relationships:
         try:
@@ -154,7 +194,7 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
         hashes_unchanged = existing and existing.source_content_hash == source_hash and existing.target_content_hash == target_hash
         if existing and existing.status == SuggestionStatus.REJECTED and hashes_unchanged:
             continue
-        IdeaRelationSuggestion.objects.update_or_create(
+        suggestion, _created = IdeaRelationSuggestion.objects.update_or_create(
             **lookup,
             defaults={
                 "description": str(result.get("description", ""))[:2000],
@@ -171,6 +211,10 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
                 "accepted_relation": None,
             },
         )
+        if confidence > auto_accept_threshold:
+            # Cycles and other invalid relationships stay pending rather than
+            # failing the entire semantic-processing batch.
+            accept_suggestion(suggestion)
     for pending in IdeaRelationSuggestion.objects.filter(analyzed_idea=source, status=SuggestionStatus.PENDING):
         if (pending.source_id, pending.target_id, pending.relation_type) not in seen:
             pending.status = SuggestionStatus.SUPERSEDED

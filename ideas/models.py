@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -314,6 +314,30 @@ class SemanticStatus(models.TextChoices):
     PROCESSING = "processing", "Processing"
     READY = "ready", "Ready"
     FAILED = "failed", "Failed"
+
+
+class SemanticGraphSettings(models.Model):
+    """Singleton settings editable by administrators for semantic enrichment."""
+
+    auto_accept_confidence_percent = models.PositiveSmallIntegerField(
+        default=90,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Relationships with confidence strictly greater than this percentage are accepted automatically.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Semantic graph settings"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        settings_row, _created = cls.objects.get_or_create(pk=1)
+        return settings_row
 
 
 class IdeaSemanticState(models.Model):

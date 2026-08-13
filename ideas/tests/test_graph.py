@@ -6,7 +6,7 @@ from django.utils import timezone
 from ideas.graph.projection import graph_context, graph_projection, neighborhood
 from ideas.graph.revision import current_revision
 from ideas.graph.semantic import content_hash, process_idea, semantic_text
-from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, ResearchEntry, SemanticStatus, Status, SuggestionStatus
+from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, ResearchEntry, SemanticGraphSettings, SemanticStatus, Status, SuggestionStatus
 
 from .helpers import MODEL_BACKEND, make_ai_model, make_idea, make_user
 
@@ -159,6 +159,7 @@ class GraphViewTests(TestCase):
 class FakeSemanticAPI:
     embedding_model = "fake-embedding"
     classifier_model = "fake-classifier"
+    confidence = 0.9
 
     def embed(self, text):
         return [1.0] + [0.0] * 1535
@@ -167,13 +168,24 @@ class FakeSemanticAPI:
         return [{
             "candidate_id": candidates[0][0].pk,
             "relation_type": "supports",
-            "confidence": 0.9,
+            "confidence": self.confidence,
             "description": "The research supports the target.",
             "evidence": "Both discuss the same measured outcome.",
         }]
 
 
 class SemanticGraphTests(TestCase):
+    def ready_target(self, title="Target evidence"):
+        target = make_idea(title=title)
+        state = target.semantic_state
+        state.content_hash = content_hash(semantic_text(target))
+        state.embedding = [1.0] + [0.0] * 1535
+        state.embedding_model = "fake-embedding"
+        state.status = SemanticStatus.READY
+        state.processed_at = timezone.now()
+        state.save()
+        return target
+
     def test_idea_and_research_changes_mark_semantics_stale(self):
         idea = make_idea()
         state = idea.semantic_state
@@ -184,15 +196,7 @@ class SemanticGraphTests(TestCase):
         self.assertEqual(state.status, SemanticStatus.STALE)
 
     def test_processing_creates_reviewable_suggestion(self):
-        target = make_idea(title="Target evidence")
-        target_state = target.semantic_state
-        target_text = semantic_text(target)
-        target_state.content_hash = content_hash(target_text)
-        target_state.embedding = [1.0] + [0.0] * 1535
-        target_state.embedding_model = "fake-embedding"
-        target_state.status = SemanticStatus.READY
-        target_state.processed_at = timezone.now()
-        target_state.save()
+        target = self.ready_target()
         source = make_idea(title="Source evidence")
         process_idea(source, api=FakeSemanticAPI())
         suggestion = IdeaRelationSuggestion.objects.get()
@@ -201,6 +205,33 @@ class SemanticGraphTests(TestCase):
         self.assertEqual(suggestion.evidence, "Both discuss the same measured outcome.")
         source.semantic_state.refresh_from_db()
         self.assertEqual(source.semantic_state.status, SemanticStatus.READY)
+
+    def test_confidence_over_admin_threshold_is_auto_accepted(self):
+        target = self.ready_target("Strong target")
+        SemanticGraphSettings.objects.update_or_create(
+            pk=1, defaults={"auto_accept_confidence_percent": 90}
+        )
+        api = FakeSemanticAPI()
+        api.confidence = 0.91
+
+        process_idea(make_idea(title="Strong source"), api=api)
+
+        suggestion = IdeaRelationSuggestion.objects.get(target=target)
+        self.assertEqual(suggestion.status, SuggestionStatus.ACCEPTED)
+        self.assertIsNotNone(suggestion.accepted_relation)
+        self.assertEqual(suggestion.accepted_relation.provenance, "agent")
+
+    def test_admin_threshold_is_strict_and_configurable(self):
+        self.ready_target("Configurable target")
+        SemanticGraphSettings.objects.update_or_create(
+            pk=1, defaults={"auto_accept_confidence_percent": 89}
+        )
+
+        process_idea(make_idea(title="Configurable source"), api=FakeSemanticAPI())
+
+        self.assertEqual(
+            IdeaRelationSuggestion.objects.get().status, SuggestionStatus.ACCEPTED
+        )
 
     def test_deleting_idea_with_research_does_not_recreate_state(self):
         idea = make_idea()
