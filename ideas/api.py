@@ -206,6 +206,7 @@ def idea_effort(request, pk):
             stage=payload.get("stage"),
             status=payload.get("status"),
             next_action=payload.get("next_action"),
+            queued_next_actions=payload.get("queued_next_actions") or [],
             exec_summary=payload.get("exec_summary"),
         )
     except (ValueError, LookupError) as exc:

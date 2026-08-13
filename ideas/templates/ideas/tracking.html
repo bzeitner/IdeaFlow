@@ -75,7 +75,7 @@
           <div class="row-actions">
             <a class="btn small" href="{% url 'ideas:edit' idea.pk %}">Edit</a>
             {% include "ideas/_move.html" with target='current' label='→ Current' %}
-            {% include "ideas/_move.html" with target='archived' label='Archive' %}
+            {% include "ideas/_move.html" with target='archived' label='Archive' ajax=True %}
           </div>
         </article>
       {% endfor %}

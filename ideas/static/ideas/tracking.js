@@ -49,4 +49,33 @@
       }
     });
   });
+
+  document.querySelectorAll("[data-tracking-status-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button[type='submit']");
+      if (button) button.disabled = true;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!payload.ok) throw new Error("Archive was not confirmed");
+        const row = form.closest(".tracking-item");
+        if (row) {
+          rowsById.delete(row.dataset.ideaId);
+          collapsed.delete(row.dataset.ideaId);
+          row.remove();
+          refreshVisibility();
+        }
+      } catch (_error) {
+        if (button) button.disabled = false;
+        form.submit();
+      }
+    });
+  });
 })();

@@ -568,6 +568,8 @@ def set_status(request, pk, status):
     if status in {s.value for s in Status}:
         idea.status = status
         idea.save(update_fields=["status", "updated_at"])
+        if request.headers.get("Accept") == "application/json":
+            return JsonResponse({"ok": True, "idea_id": idea.pk, "status": status})
         messages.success(
             request, f"Moved “{idea.title}” to {idea.get_status_display()}."
         )
@@ -576,18 +578,75 @@ def set_status(request, pk, status):
 
 @login_required
 def set_next_action(request, pk):
-    """Set the idea's next action from its detail page."""
+    """Replace the active queue item from the idea detail page."""
     if request.method != "POST":
         return redirect("ideas:detail", pk=pk)
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_status_role(request, idea.status)
     if denied:
         return denied
-    idea.next_action = request.POST.get("next_action", "").strip()
+    idea.replace_active_next_action(request.POST.get("next_action", ""))
     # A human next action is feedback — clear the pause counter.
     idea.agent_runs_since_feedback = 0
-    idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
+    idea.save(
+        update_fields=[
+            "next_action",
+            "next_actions",
+            "agent_runs_since_feedback",
+            "updated_at",
+        ]
+    )
     messages.success(request, "Next action saved.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def queue_next_action(request, pk):
+    """Add, remove, complete, or reorder an idea's queued next actions."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+
+    operation = request.POST.get("operation", "add")
+    queue = [str(item).strip() for item in idea.next_actions if str(item).strip()]
+    if not queue and idea.next_action.strip():
+        queue = [idea.next_action.strip()]
+    if operation == "add":
+        if idea.enqueue_next_action(request.POST.get("next_action", "")):
+            messages.success(request, "Next action queued.")
+        else:
+            messages.info(request, "Enter a new action that is not already queued.")
+    else:
+        try:
+            index = int(request.POST.get("index", ""))
+        except ValueError:
+            index = -1
+        if 0 <= index < len(queue):
+            if operation in {"complete", "remove"}:
+                queue.pop(index)
+                messages.success(
+                    request,
+                    "Next action completed." if operation == "complete" else "Next action removed.",
+                )
+            elif operation == "up" and index > 0:
+                queue[index - 1], queue[index] = queue[index], queue[index - 1]
+            elif operation == "down" and index < len(queue) - 1:
+                queue[index + 1], queue[index] = queue[index], queue[index + 1]
+            idea.next_actions = queue
+            idea.next_action = queue[0] if queue else ""
+
+    idea.agent_runs_since_feedback = 0
+    idea.save(
+        update_fields=[
+            "next_action",
+            "next_actions",
+            "agent_runs_since_feedback",
+            "updated_at",
+        ]
+    )
     return redirect("ideas:detail", pk=pk)
 
 
@@ -641,9 +700,16 @@ def quick_update(request, pk):
                 idea.stage = stage
                 idea.save(update_fields=["stage", "updated_at"])
         elif field == "next_action":
-            idea.next_action = value
+            idea.replace_active_next_action(value)
             idea.agent_runs_since_feedback = 0
-            idea.save(update_fields=["next_action", "agent_runs_since_feedback", "updated_at"])
+            idea.save(
+                update_fields=[
+                    "next_action",
+                    "next_actions",
+                    "agent_runs_since_feedback",
+                    "updated_at",
+                ]
+            )
         messages.success(request, f"Updated “{idea.title}”.")
     back = request.POST.get("next", "")
     return redirect(f"{reverse('ideas:tracking')}{back}")

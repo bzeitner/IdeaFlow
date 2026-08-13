@@ -105,6 +105,7 @@ def idea_to_dict(idea, *, detail=True):
 
         data["notes"] = idea.notes
         data["next_action"] = idea.next_action
+        data["next_actions"] = idea.next_action_queue
         data["repo"] = idea.repo
         data["parent"] = (
             {"id": idea.parent_id, "title": idea.parent.title} if idea.parent_id else None

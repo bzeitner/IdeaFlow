@@ -65,5 +65,8 @@ prompt_next_action_standard() {
 Next-action standard: include a concrete verb, target, expected result, and
 completion condition. Monitoring actions need a date or external trigger. If no
 defensible action exists, omit it and explain why; never invent placeholder work.
+The idea's `next_actions` array is ordered: `next_action` is its active first
+item. Preserve already queued actions. Use repeatable `--queue-next-action` only
+when the evidence supports additional concrete actions that should follow.
 PROMPT_STANDARDS
 }

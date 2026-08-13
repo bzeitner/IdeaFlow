@@ -120,6 +120,7 @@ def cmd_log_effort(a):
         "stage": a.stage,
         "status": a.status,
         "next_action": a.next_action,
+        "queued_next_actions": a.queue_next_action,
         "exec_summary": a.exec_summary,
     }
     if a.repo_url:
@@ -228,6 +229,12 @@ def build_parser():
     s.add_argument("--stage")
     s.add_argument("--status")
     s.add_argument("--next-action", dest="next_action")
+    s.add_argument(
+        "--queue-next-action",
+        action="append",
+        default=[],
+        help="Queue another action after the active one; repeatable.",
+    )
     s.add_argument(
         "--exec-summary",
         dest="exec_summary",

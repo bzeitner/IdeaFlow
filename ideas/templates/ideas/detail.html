@@ -53,21 +53,47 @@
       {% if idea.summary %}<p class="summary">{{ idea.summary|linebreaksbr }}</p>{% endif %}
 
       <div class="next-action">
-        <h4>Next action</h4>
-        {% if idea.next_action %}
-          <p class="next-action-text">{{ idea.next_action|linebreaksbr }}</p>
+        <h4>Next actions <span class="dim">({{ idea.next_action_queue|length }} queued)</span></h4>
+        {% if idea.next_action_queue %}
+          <ol class="next-action-queue">
+            {% for action in idea.next_action_queue %}
+              <li{% if forloop.first %} class="active-next-action"{% endif %}>
+                <div>
+                  {% if forloop.first %}<span class="next-tag">Active</span>{% endif %}
+                  <span class="next-action-text">{{ action|linebreaksbr }}</span>
+                </div>
+                {% if can_manage %}
+                  <div class="queue-actions">
+                    {% if not forloop.first %}
+                      <form method="post" action="{% url 'ideas:queue_next_action' idea.pk %}">{% csrf_token %}<input type="hidden" name="operation" value="up"><input type="hidden" name="index" value="{{ forloop.counter0 }}"><button class="btn small" type="submit">↑</button></form>
+                    {% endif %}
+                    {% if not forloop.last %}
+                      <form method="post" action="{% url 'ideas:queue_next_action' idea.pk %}">{% csrf_token %}<input type="hidden" name="operation" value="down"><input type="hidden" name="index" value="{{ forloop.counter0 }}"><button class="btn small" type="submit">↓</button></form>
+                    {% endif %}
+                    <form method="post" action="{% url 'ideas:queue_next_action' idea.pk %}">{% csrf_token %}<input type="hidden" name="operation" value="{% if forloop.first %}complete{% else %}remove{% endif %}"><input type="hidden" name="index" value="{{ forloop.counter0 }}"><button class="btn small" type="submit">{% if forloop.first %}Complete{% else %}Remove{% endif %}</button></form>
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
         {% else %}
-          <p class="dim">No next action set yet.</p>
+          <p class="dim">No next actions queued yet.</p>
         {% endif %}
         {% if can_manage %}
-          <details class="next-action-edit"{% if not idea.next_action %} open{% endif %}>
-            <summary>{% if idea.next_action %}Edit next action{% else %}Set the next action{% endif %}</summary>
+          <details class="next-action-edit"{% if not idea.next_action_queue %} open{% endif %}>
+            <summary>{% if idea.next_action_queue %}Edit active action{% else %}Set the first action{% endif %}</summary>
             <form method="post" action="{% url 'ideas:set_next_action' idea.pk %}" class="next-action-form">
               {% csrf_token %}
-              <textarea name="next_action" rows="2" placeholder="What's the single next action?">{{ idea.next_action }}</textarea>
-              <button class="btn primary" type="submit">Save next action</button>
+              <textarea name="next_action" rows="2" placeholder="What's the active next action?">{{ idea.next_action }}</textarea>
+              <button class="btn primary" type="submit">Save active action</button>
             </form>
           </details>
+          <form method="post" action="{% url 'ideas:queue_next_action' idea.pk %}" class="next-action-form queue-next-action-form">
+            {% csrf_token %}
+            <input type="hidden" name="operation" value="add">
+            <textarea name="next_action" rows="2" placeholder="Add another action to the queue"></textarea>
+            <button class="btn" type="submit">Queue action</button>
+          </form>
         {% endif %}
       </div>
     </section>

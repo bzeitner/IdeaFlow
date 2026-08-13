@@ -287,6 +287,21 @@ class SetStatusViewTests(TestCase):
         )
         self.assertRedirects(response, "/current/")
 
+    def test_json_status_update_supports_in_place_tracking_archive(self):
+        idea = make_idea(status=Status.TRACKING)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:set_status", args=[idea.pk, "archived"]),
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(), {"ok": True, "idea_id": idea.pk, "status": "archived"}
+        )
+
 
 class UserManagementViewTests(TestCase):
     def test_non_admin_is_denied(self):
@@ -431,7 +446,8 @@ class NextActionTests(TestCase):
         self.client.force_login(user, backend=MODEL_BACKEND)
         r = self.client.get(reverse("ideas:detail", args=[idea.pk]))
         self.assertContains(r, "next-action-form")
-        self.assertContains(r, "single next action")
+        self.assertContains(r, "No next actions queued yet.")
+        self.assertContains(r, "Queue action")
 
     def test_set_next_action(self):
         idea = make_idea(status=Status.CURRENT)
@@ -444,6 +460,41 @@ class NextActionTests(TestCase):
         self.assertRedirects(r, reverse("ideas:detail", args=[idea.pk]))
         idea.refresh_from_db()
         self.assertEqual(idea.next_action, "Email three prospects")
+        self.assertEqual(idea.next_actions, ["Email three prospects"])
+
+    def test_actions_can_be_queued_reordered_and_completed(self):
+        idea = make_idea(status=Status.CURRENT, next_action="First")
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        url = reverse("ideas:queue_next_action", args=[idea.pk])
+
+        self.client.post(url, {"operation": "add", "next_action": "Second"})
+        self.client.post(url, {"operation": "add", "next_action": "Third"})
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_actions, ["First", "Second", "Third"])
+        self.assertEqual(idea.next_action, "First")
+
+        self.client.post(url, {"operation": "up", "index": 2})
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_actions, ["First", "Third", "Second"])
+
+        self.client.post(url, {"operation": "complete", "index": 0})
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_actions, ["Third", "Second"])
+        self.assertEqual(idea.next_action, "Third")
+
+    def test_queue_mutation_requires_status_role(self):
+        idea = make_idea(status=Status.CURRENT, next_action="First")
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        self.client.post(
+            reverse("ideas:queue_next_action", args=[idea.pk]),
+            {"operation": "add", "next_action": "Not allowed"},
+        )
+
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action_queue, ["First"])
 
     def test_set_next_action_denied_without_status_role(self):
         idea = make_idea(status=Status.CURRENT)
@@ -512,6 +563,7 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "1 child")
         self.assertContains(response, 'data-parent-id="%s"' % parent.pk)
         self.assertContains(response, "ideas/tracking.js")
+        self.assertContains(response, "data-tracking-status-form")
 
     def test_child_toggle_is_only_shown_for_family_sort(self):
         parent = make_idea(status=Status.TRACKING)

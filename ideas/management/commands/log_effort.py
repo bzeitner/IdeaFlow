@@ -56,6 +56,13 @@ class Command(BaseCommand):
             "--next-action", dest="next_action", help="Set the idea's next action."
         )
         parser.add_argument(
+            "--queue-next-action",
+            dest="queued_next_actions",
+            action="append",
+            default=[],
+            help="Queue another action after the active one; repeatable.",
+        )
+        parser.add_argument(
             "--exec-summary",
             dest="exec_summary",
             help="Set the human-readable latest effort summary and recommendations.",
@@ -90,6 +97,7 @@ class Command(BaseCommand):
                 stage=options["stage"],
                 status=options["status"],
                 next_action=options["next_action"],
+                queued_next_actions=options["queued_next_actions"],
                 exec_summary=options["exec_summary"],
             )
         except (ValueError, LookupError) as exc:

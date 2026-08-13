@@ -235,6 +235,13 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
   .graph-detail { border-left: 0; border-top: 1px solid var(--line); }
   .graph-controls { flex-wrap: wrap; }
 }
+.next-action-queue { margin: 0; padding-left: 24px; }
+.next-action-queue li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.next-action-queue li:last-child { border-bottom: 0; }
+.next-action-queue .active-next-action { color: var(--accent); }
+.queue-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.queue-actions form { margin: 0; }
+.queue-next-action-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .overview-section { border-top: 0; margin-top: 8px; }
 .section-title { margin: 18px 0 4px; font-size: 16px; }
 .research-heading { margin-top: 16px; }

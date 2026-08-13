@@ -60,6 +60,15 @@ class IdeaForm(forms.ModelForm):
             self.add_error("parent", "Select “Include children” to use an idea that already has a parent.")
         return cleaned
 
+    def save(self, commit=True):
+        idea = super().save(commit=False)
+        if "next_action" in self.cleaned_data:
+            idea.replace_active_next_action(self.cleaned_data["next_action"])
+        if commit:
+            idea.save()
+            self.save_m2m()
+        return idea
+
     @staticmethod
     def _descendant_ids(idea):
         """The idea's own id plus every id beneath it, so none can be its parent."""
@@ -97,7 +106,7 @@ class IdeaForm(forms.ModelForm):
             "title": "Idea Title",
             "summary": "Idea Summary",
             "interest_level": "Interest Level",
-            "next_action": "Next Action",
+            "next_action": "Active Next Action",
             "exec_summary": "Latest Effort Summary",
             "repo": "Target repo (owner/name or URL)",
             "is_public": "Public (visible to everyone signed in)",

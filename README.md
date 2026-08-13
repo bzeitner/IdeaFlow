@@ -190,7 +190,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
-| `POST /api/ideas/<id>/effort/` | Record an effort report |
+| `POST /api/ideas/<id>/effort/` | Record an effort report; `next_action` replaces the active action and `queued_next_actions` appends actions |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
 | `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
 | `GET /api/graph/search/` | Search graph ideas (`?q=<text>`) |
@@ -295,9 +295,13 @@ runs a structured read-only portfolio reflection. If no ideas match, or all are
 paused/archived, it reports the reason and exits without launching an agent.
 Flags: `--review`, `--force`,
 `--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
-detail page prompts for that single next action (also settable by the review
-agent via `log-effort --next-action`). After two agent runs without human input,
+detail page identifies the active next action (also settable by the review agent
+via `log-effort --next-action`). After two agent runs without human input,
 an idea pauses until a person adds a next action or chooses **Continue work**.
+Ideas can hold an ordered queue of next actions. The first item remains the
+active `next_action` used by task selection; the detail page can add, reorder,
+complete, or remove later items. Agents may append concrete follow-ups with the
+repeatable `--queue-next-action` option without replacing the active item.
 
 The POST body's only required field is `topic`; everything else is optional. It returns the
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no

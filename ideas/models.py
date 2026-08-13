@@ -148,7 +148,12 @@ class Idea(models.Model):
     notes = models.TextField(blank=True)
     next_action = models.TextField(
         blank=True,
-        help_text="The single next step to take, once the idea has been researched.",
+        help_text="The active (first) item in the queued next actions.",
+    )
+    next_actions = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Ordered queue of next actions; the first item is active.",
     )
     exec_summary = models.TextField(
         blank=True,
@@ -214,6 +219,39 @@ class Idea(models.Model):
     @property
     def is_archived(self):
         return self.status == Status.ARCHIVED
+
+    @property
+    def next_action_queue(self):
+        queue = [str(item).strip() for item in self.next_actions if str(item).strip()]
+        if not queue and self.next_action.strip():
+            return [self.next_action.strip()]
+        return queue
+
+    def replace_active_next_action(self, value):
+        """Replace the queue head while retaining actions queued behind it."""
+        value = (value or "").strip()
+        queue = self.next_action_queue
+        if value:
+            if queue:
+                queue[0] = value
+            else:
+                queue = [value]
+        elif queue:
+            queue.pop(0)
+        self.next_actions = queue
+        self.next_action = queue[0] if queue else ""
+
+    def enqueue_next_action(self, value):
+        value = (value or "").strip()
+        if not value:
+            return False
+        queue = self.next_action_queue
+        if value in queue:
+            return False
+        queue.append(value)
+        self.next_actions = queue
+        self.next_action = queue[0]
+        return True
 
     @property
     def pr_url(self):

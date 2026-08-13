@@ -135,6 +135,31 @@ class ApiEffortTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(idea.resources.get().url, "https://github.com/x/y")
 
+    def test_effort_can_append_queued_next_actions(self):
+        idea = make_idea(next_action="Active")
+        response = self._post(
+            idea,
+            {
+                "topic": "Planned follow-ups",
+                "model": "other",
+                "queued_next_actions": ["Second", "Third"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Active")
+        self.assertEqual(idea.next_actions, ["Active", "Second", "Third"])
+        self.assertEqual(response.json()["idea"]["next_actions"], ["Active", "Second", "Third"])
+
+    def test_queued_next_actions_must_be_a_list(self):
+        idea = make_idea()
+        response = self._post(
+            idea,
+            {"topic": "Bad queue", "model": "other", "queued_next_actions": "nope"},
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_moves_stage_and_status(self):
         idea = make_idea(status=Status.CURRENT)
         stage = make_stage(name="Prototyping")

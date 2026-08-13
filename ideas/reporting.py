@@ -71,6 +71,7 @@ def record_effort(
     stage=None,
     status=None,
     next_action=None,
+    queued_next_actions=None,
     exec_summary=None,
 ):
     """Create a ResearchEntry for `idea`, plus an optional result Resource and an
@@ -82,6 +83,10 @@ def record_effort(
     """
     if not topic:
         raise ValueError("topic is required.")
+    if queued_next_actions is not None and not isinstance(
+        queued_next_actions, (list, tuple)
+    ):
+        raise ValueError("queued_next_actions must be a list.")
     entry = ResearchEntry.objects.create(
         idea=idea,
         topic=topic,
@@ -108,8 +113,11 @@ def record_effort(
         idea.status = status
         changed.append("status")
     if next_action is not None:
-        idea.next_action = next_action
-        changed.append("next_action")
+        idea.replace_active_next_action(next_action)
+        changed.extend(["next_action", "next_actions"])
+    for queued_action in queued_next_actions or []:
+        if idea.enqueue_next_action(queued_action) and "next_actions" not in changed:
+            changed.extend(["next_action", "next_actions"])
     if exec_summary is not None:
         idea.exec_summary = exec_summary
         changed.append("exec_summary")

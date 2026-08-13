@@ -24,6 +24,11 @@ urlpatterns = [
     path("<int:pk>/status/<str:status>/", views.set_status, name="set_status"),
     path("<int:pk>/next-action/", views.set_next_action, name="set_next_action"),
     path(
+        "<int:pk>/next-actions/queue/",
+        views.queue_next_action,
+        name="queue_next_action",
+    ),
+    path(
         "<int:pk>/suggested-children/create/",
         views.create_suggested_child,
         name="create_suggested_child",
