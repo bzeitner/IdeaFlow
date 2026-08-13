@@ -11,6 +11,13 @@ Research IdeaFlow idea **$ARGUMENTS**. Talk to IdeaFlow only through the client
 1. Read the idea as JSON: `./tools/ideaflow dump-idea $ARGUMENTS`
    Work from its real title, summary, notes, resources, and any existing
    `research_entries` — do not guess what the idea is. If it 404s, stop and say so.
+1a. If summary, notes, and resources are ALL empty or near-empty, the idea is
+    under-specified — do not invent scope from the title alone. Skip step 2's
+    deep research; in the report, state plainly that there isn't enough to
+    research yet and name exactly what's missing. When logging effort, set
+    `--next-action` to one specific, answerable clarifying question (not
+    "please add more detail"), `--quality` to 1-2, and `--status` to
+    `tracking`. Otherwise, continue to step 2 as normal.
 2. Research it thoroughly. Use web search/fetch for market, competitors,
    feasibility, and concrete next steps, as appropriate to the idea.
 3. Register any RSS/Atom feeds you come across (blogs, news, release feeds,
