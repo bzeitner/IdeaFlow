@@ -44,7 +44,7 @@ class GraphLabTests(TestCase):
 
     def test_launcher_requires_role_and_has_isolated_origin_controls(self):
         response = self.client.get(reverse("ideas:graph_lab"))
-        self.assertContains(response, 'sandbox="allow-scripts allow-same-origin allow-downloads"')
+        self.assertContains(response, 'sandbox="allow-scripts allow-same-origin allow-downloads allow-forms"')
         self.assertContains(response, GRAPH_LAB["IDEAFLOW_GRAPH_LAB_ORIGIN"])
         self.assertNotContains(response, "GraphCapability")
         self.assertIn("frame-src https://graph-lab.example.com", response["Content-Security-Policy"])

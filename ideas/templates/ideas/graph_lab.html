@@ -14,7 +14,7 @@
   <button class="btn primary" type="submit">Load graph</button>
   <span id="graph-lab-status" class="dim" role="status">Preparing Graph Lab…</span>
 </form>
-<iframe id="graph-lab-frame" class="graph-lab-frame" src="{{ graph_lab_origin }}/" sandbox="allow-scripts allow-same-origin allow-downloads" referrerpolicy="no-referrer" title="IdeaFlow Graph Lab"></iframe>
+<iframe id="graph-lab-frame" class="graph-lab-frame" src="{{ graph_lab_origin }}/" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms" referrerpolicy="no-referrer" title="IdeaFlow Graph Lab"></iframe>
 <p class="dim">Graph Lab is read-only. Review and approve relationships in the IdeaFlow Graph tab.</p>
 <script src="{% static 'ideas/graph_lab.js' %}"></script>
 {% endblock %}

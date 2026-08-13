@@ -312,6 +312,8 @@ Operational controls:
 - Gephi Lite 1.0.2 generates runtime validators with `new Function`, so
   `unsafe-eval` is intentionally confined to the isolated Graph Lab origin.
   Do not add external script origins or copy this policy to IdeaFlow.
+- Gephi's forms are permitted only within the isolated same origin; external
+  form destinations remain blocked by `form-action 'self'`.
 
 > **Alternative (no Cloudflare proxy):** if you'd rather use Let's Encrypt, grey-cloud
 > the DNS record first, run `apt install certbot python3-certbot-nginx && certbot --nginx`,
