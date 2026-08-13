@@ -39,6 +39,8 @@ class AgentPromptTests(SimpleTestCase):
         self.assertNotIn("Always set --next-action", text)
         self.assertNotIn("add-child", text)
         self.assertIn("graph-context 123", text)
+        self.assertIn("resources and next action", text)
+        self.assertIn("remove-resource <idea-id> <resource-id>", text)
 
     def test_execute_prompt_requires_verification_and_a_nonempty_report(self):
         text = prompt("execute")
@@ -60,6 +62,8 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("Write the complete markdown review", text)
         self.assertIn("<report-path> is non-empty", text)
         self.assertNotIn("Assume there are problems", text)
+        self.assertIn("resources and next action", text)
+        self.assertIn("If there's no open PR, stop", text)
 
     def test_feed_scoring_prompt_is_neutral_and_idea_specific(self):
         text = (ROOT / "score_items.sh").read_text()

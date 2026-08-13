@@ -12,6 +12,7 @@ Configure via environment:
 Commands:
   ideaflow list-ideas [--status current|tracking|archived]
   ideaflow dump-idea <id>
+  ideaflow remove-resource <idea-id> <resource-id>
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
@@ -85,6 +86,10 @@ def cmd_list_ideas(a):
 
 def cmd_dump_idea(a):
     return _request("GET", f"/ideas/{a.id}/")
+
+
+def cmd_remove_resource(a):
+    return _request("DELETE", f"/ideas/{a.idea_id}/resources/{a.resource_id}/")
 
 
 def cmd_graph(a):
@@ -186,6 +191,13 @@ def build_parser():
     s = sub.add_parser("dump-idea")
     s.add_argument("id", type=int)
     s.set_defaults(func=cmd_dump_idea)
+
+    s = sub.add_parser(
+        "remove-resource", help="Remove a stale resource from an idea."
+    )
+    s.add_argument("idea_id", type=int)
+    s.add_argument("resource_id", type=int)
+    s.set_defaults(func=cmd_remove_resource)
 
     s = sub.add_parser("graph", help="Read the projected knowledge graph.")
     s.add_argument("--archived", action="store_true")

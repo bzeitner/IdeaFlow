@@ -1,10 +1,11 @@
 """Token-authed JSON API for agents that can't reach the DB directly.
 
-Three endpoints, all guarded by a single shared token in IDEAFLOW_API_TOKEN:
+Core idea endpoints, all guarded by a single shared token in IDEAFLOW_API_TOKEN:
 
     GET  /api/ideas/                 list ideas (optional ?status=)
     GET  /api/ideas/<pk>/            one idea, with resources + research entries
     POST /api/ideas/<pk>/effort/     record a work-effort report (ResearchEntry)
+    DELETE /api/ideas/<pk>/resources/<resource_pk>/ remove a stale resource
 
 The token goes in an `Authorization: Bearer <token>` (or `X-API-Token`) header.
 Unset token disables the whole API, so it stays off until you opt in.
@@ -24,7 +25,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, Resource, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -90,6 +91,17 @@ def idea_detail(request, pk):
         pk=pk,
     )
     return JsonResponse(idea_to_dict(idea, detail=True))
+
+
+@require_api_token
+def idea_resource(request, pk, resource_pk):
+    """Remove one resource after an agent has verified it is no longer active."""
+    if request.method != "DELETE":
+        return HttpResponseNotAllowed(["DELETE"])
+    resource = get_object_or_404(Resource, pk=resource_pk, idea_id=pk)
+    deleted = {"id": resource.pk, "label": resource.label, "url": resource.url}
+    resource.delete()
+    return JsonResponse({"deleted": deleted})
 
 
 @require_api_token
@@ -454,6 +466,11 @@ urlpatterns = [
     path("graph/search/", graph_search_view, name="api_graph_search"),
     path("ideas/", idea_list, name="api_idea_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path(
+        "ideas/<int:pk>/resources/<int:resource_pk>/",
+        idea_resource,
+        name="api_idea_resource",
+    ),
     path("ideas/<int:pk>/graph-context/", idea_graph_context, name="api_idea_graph_context"),
     path("ideas/<int:pk>/effort/", idea_effort, name="api_idea_effort"),
     path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),

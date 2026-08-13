@@ -19,7 +19,7 @@ from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSe
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -384,7 +384,9 @@ def tracking(request):
     if stage:
         ideas = ideas.filter(stage__slug=stage)
     if attention == "paused":
-        ideas = ideas.filter(agent_runs_since_feedback__gte=3)
+        ideas = ideas.filter(
+            agent_runs_since_feedback__gte=AGENT_RUNS_BEFORE_FEEDBACK
+        )
     elif attention == "no-next-action":
         ideas = ideas.filter(next_action="")
 

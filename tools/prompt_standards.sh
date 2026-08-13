@@ -21,6 +21,17 @@ Shared operating standards:
 PROMPT_STANDARDS
 }
 
+prompt_pr_resource_standard() {
+  cat <<'PROMPT_STANDARDS'
+PR resource standard: inspect every GitHub pull-request URL in the idea's
+resources and next action with `gh pr view <url> --json state`. Only act on or
+review a PR observed as OPEN. For each resource observed as CLOSED or MERGED,
+remove it with
+`ideaflow remove-resource <idea-id> <resource-id>`. Never infer status or remove
+a resource when the lookup fails. Do this before choosing or reviewing a PR.
+PROMPT_STANDARDS
+}
+
 prompt_effort_quality_scale() {
   cat <<'PROMPT_STANDARDS'
 Rating standard: effort measures work performed (1 trivial, 3 moderate,

@@ -274,10 +274,10 @@ class AgentPauseTests(TestCase):
         from ideas.reporting import record_effort
 
         idea = make_idea()
-        for _ in range(3):
+        for _ in range(2):
             record_effort(idea, topic="t", model="other")
         idea.refresh_from_db()
-        self.assertEqual(idea.agent_runs_since_feedback, 3)
+        self.assertEqual(idea.agent_runs_since_feedback, 2)
         self.assertTrue(idea.is_paused)
 
 

@@ -63,11 +63,32 @@ class ApiReadTests(TestCase):
         self.assertEqual(body["title"], "Deep")
         self.assertEqual(body["notes"], "secret notes")
         self.assertEqual(body["resources"][0]["url"], "https://example.com")
+        self.assertIsInstance(body["resources"][0]["id"], int)
         self.assertIn("research_entries", body)
 
     def test_detail_404_for_unknown_idea(self):
         response = self.client.get("/api/ideas/999999/", **AUTH)
         self.assertEqual(response.status_code, 404)
+
+    def test_delete_resource_is_scoped_to_idea(self):
+        idea = make_idea()
+        other = make_idea(title="Other")
+        resource = idea.resources.create(
+            label="PR", url="https://github.com/x/y/pull/1"
+        )
+
+        wrong = self.client.delete(
+            f"/api/ideas/{other.pk}/resources/{resource.pk}/", **AUTH
+        )
+        self.assertEqual(wrong.status_code, 404)
+        self.assertTrue(idea.resources.filter(pk=resource.pk).exists())
+
+        response = self.client.delete(
+            f"/api/ideas/{idea.pk}/resources/{resource.pk}/", **AUTH
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["deleted"]["id"], resource.pk)
+        self.assertFalse(idea.resources.filter(pk=resource.pk).exists())
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
@@ -330,7 +351,7 @@ class ApiPauseAndRatingTests(TestCase):
         from .helpers import make_idea as mk
 
         idea = mk()
-        idea.agent_runs_since_feedback = 3
+        idea.agent_runs_since_feedback = 2
         idea.save()
         r = self._post(f"/api/ideas/{idea.pk}/effort/", {"topic": "t", "model": "other"})
         self.assertEqual(r.status_code, 409)

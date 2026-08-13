@@ -12,6 +12,7 @@ def _lookup(obj):
 
 def resource_to_dict(resource):
     return {
+        "id": resource.id,
         "label": resource.label,
         "url": resource.url,
         "created_at": resource.created_at.isoformat(),

@@ -18,7 +18,7 @@ STANDING_ADMIN_EMAIL = "bzeitner@gmail.com"
 # a human (adding a next action or clicking "Continue work").
 FEED_CAP = 5
 RESEARCH_FEED_CAP = 10
-AGENT_RUNS_BEFORE_FEEDBACK = 3
+AGENT_RUNS_BEFORE_FEEDBACK = 2
 # Most child ideas an agent may create under one parent (it can suggest more
 # to a human beyond that).
 AGENT_CHILD_LIMIT = 5

@@ -53,6 +53,7 @@ BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 SHARED_STANDARDS="$(prompt_shared_standards)"
+PR_RESOURCE_STANDARD="$(prompt_pr_resource_standard)"
 EFFORT_QUALITY_STANDARD="$(prompt_effort_quality_scale)"
 CHILD_STANDARD="$(prompt_child_suggestion_standard)"
 NEXT_ACTION_STANDARD="$(prompt_next_action_standard)"
@@ -142,8 +143,9 @@ falsify the change's correctness, but do not invent findings or assume every PR
 must be rejected. Use "${IFCLI}" for IdeaFlow and gh for the PR.
 Steps:
 
-1. ${IFCLI} dump-idea ${ID}. Find the open PR URL in its resources or next_action.
-   If there's no PR, stop and say so.
+1. ${IFCLI} dump-idea ${ID}. Apply the PR resource standard below to every
+   listed pull request, then refresh the idea. Find an open PR URL in its
+   resources or next_action. If there's no open PR, stop and say so.
    Read ${IFCLI} graph-context ${ID} for dependencies and related implementations
    that may supply comparison evidence. Review only the assigned PR and do not
    modify graph relationships.
@@ -172,6 +174,7 @@ Steps:
    request-changes, comment-with-nits, or approve.
 
 ${SHARED_STANDARDS}
+${PR_RESOURCE_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 PROMPT
 elif [[ "$MODE" == "review" ]]; then
@@ -183,6 +186,8 @@ Steps:
 
 1. Read the idea, its existing research, its linked "feeds", and its
    "recent_articles" (summarized feed items): ${IFCLI} dump-idea ${ID}
+   Apply the PR resource standard below to every listed pull request, then
+   refresh the idea before continuing the review.
    Then read bounded knowledge-graph context: ${IFCLI} graph-context ${ID}
    Use it to avoid duplicating connected work, identify dependencies and
    alternatives, and reuse relevant findings. It does not broaden this task's
@@ -230,6 +235,7 @@ ${NEXT_ACTION_STANDARD}
 ${CHILD_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 ${SHARED_STANDARDS}
+${PR_RESOURCE_STANDARD}
 PROMPT
 else
   read -r -d '' PROMPT <<PROMPT || true

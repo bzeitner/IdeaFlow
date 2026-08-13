@@ -500,7 +500,7 @@ class TrackingWorkflowTests(TestCase):
 
     def test_quick_update_saves_next_action_and_clears_pause(self):
         idea = make_idea(
-            status=Status.TRACKING, next_action="", agent_runs_since_feedback=3
+            status=Status.TRACKING, next_action="", agent_runs_since_feedback=2
         )
         response = self.client.post(
             reverse("ideas:quick_update", args=[idea.pk]),
@@ -592,7 +592,7 @@ class PauseControlTests(TestCase):
 
     def test_paused_banner_and_continue_work(self):
         idea = make_idea(status=Status.CURRENT)
-        idea.agent_runs_since_feedback = 3
+        idea.agent_runs_since_feedback = 2
         idea.save()
         self._login_current()
         r = self.client.get(reverse("ideas:detail", args=[idea.pk]))

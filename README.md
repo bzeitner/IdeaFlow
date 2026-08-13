@@ -188,6 +188,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | --- | --- |
 | `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
+| `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
@@ -280,7 +281,9 @@ idea's target `repo`, makes the change, opens a PR, and schedules a **critical
 PR review** as the next action; `critique` runs a deliberately critical persona
 over that PR. Both run on your laptop with your `gh` auth. The review agent also
 keeps each idea's **executive summary** current (shown on the detail page, where
-each effort's in-depth write-up is collapsed behind a click).
+each effort's in-depth write-up is collapsed behind a click). Review and critique
+agents check every listed GitHub PR and remove its resource after `gh` reports it
+closed or merged; failed lookups are left untouched.
 
 `research_all.sh` researches ideas with no research yet and **reviews**
 already-researched ideas only when they have a clear next action. Researched
@@ -291,7 +294,8 @@ paused/archived, it reports the reason and exits without launching an agent.
 Flags: `--review`, `--force`,
 `--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
 detail page prompts for that single next action (also settable by the review
-agent via `log-effort --next-action`).
+agent via `log-effort --next-action`). After two agent runs without human input,
+an idea pauses until a person adds a next action or chooses **Continue work**.
 
 The POST body's only required field is `topic`; everything else is optional. It returns the
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no
