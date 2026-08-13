@@ -52,6 +52,7 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("a partial PR", text)
         self.assertIn("Write a markdown implementation report", text)
         self.assertIn("<report-path> is non-empty", text)
+        self.assertIn("--exec-summary", text)
 
     def test_critique_prompt_is_evidence_driven_and_can_approve(self):
         text = prompt("critique")
@@ -64,6 +65,7 @@ class AgentPromptTests(SimpleTestCase):
         self.assertNotIn("Assume there are problems", text)
         self.assertIn("resources and next action", text)
         self.assertIn("If there's no open PR, stop", text)
+        self.assertIn("--exec-summary", text)
 
     def test_feed_scoring_prompt_is_neutral_and_idea_specific(self):
         text = (ROOT / "score_items.sh").read_text()
@@ -83,6 +85,8 @@ class AgentPromptTests(SimpleTestCase):
                 self.assertIn("Shared operating standards:", text)
                 self.assertIn("Idempotency:", text)
                 self.assertIn("Accuracy:", text)
+                self.assertIn("Human summary standard:", text)
+                self.assertIn("Recommended next steps:", text)
 
     def test_reflection_prompt_is_structured_and_read_only(self):
         env = {**os.environ, "IDEAFLOW_API_TOKEN": "prompt-test"}

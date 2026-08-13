@@ -32,6 +32,18 @@ a resource when the lookup fails. Do this before choosing or reviewing a PR.
 PROMPT_STANDARDS
 }
 
+prompt_human_summary_standard() {
+  cat <<'PROMPT_STANDARDS'
+Human summary standard: every successful effort must replace --exec-summary
+with a standalone, executive-level account of this latest effort, written for a
+human who has not read the detailed report. Use this structure:
+Outcome: <2-4 concise sentences covering what was done, learned, and decided>
+Recommended next steps:
+- <specific recommendation, or "No action recommended" with the reason>
+Include at most 3 ordered recommendations and keep facts distinct from advice.
+PROMPT_STANDARDS
+}
+
 prompt_effort_quality_scale() {
   cat <<'PROMPT_STANDARDS'
 Rating standard: effort measures work performed (1 trivial, 3 moderate,

@@ -150,8 +150,8 @@ class Idea(models.Model):
     )
     exec_summary = models.TextField(
         blank=True,
-        help_text="Executive summary of the effort's current state (kept up to "
-        "date by the review agent).",
+        help_text="Human-readable summary of the latest effort's outcome and "
+        "recommended next steps (kept current by agents).",
     )
     repo = models.CharField(
         max_length=200,

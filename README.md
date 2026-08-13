@@ -279,9 +279,11 @@ a shared item can be essential to one idea and irrelevant to another.
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical
 PR review** as the next action; `critique` runs a deliberately critical persona
-over that PR. Both run on your laptop with your `gh` auth. The review agent also
-keeps each idea's **executive summary** current (shown on the detail page, where
-each effort's in-depth write-up is collapsed behind a click). Review and critique
+over that PR. Both run on your laptop with your `gh` auth. Every successful agent
+effort replaces the idea's **Latest effort summary** with a concise outcome and
+up to three recommended next steps for human readers (shown at the top of the
+detail page, where each effort's in-depth write-up is collapsed behind a click).
+Review and critique
 agents check every listed GitHub PR and remove its resource after `gh` reports it
 closed or merged; failed lookups are left untouched.
 

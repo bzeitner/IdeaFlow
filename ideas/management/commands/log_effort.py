@@ -58,7 +58,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--exec-summary",
             dest="exec_summary",
-            help="Set the idea's executive summary of current state.",
+            help="Set the human-readable latest effort summary and recommendations.",
         )
 
     def handle(self, *args, **options):

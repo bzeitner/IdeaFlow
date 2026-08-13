@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
@@ -92,6 +93,32 @@ class DetailViewTests(TestCase):
         response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, idea.title)
+        self.assertContains(response, "No effort summary has been recorded yet.")
+
+    def test_header_shows_last_update_date_and_time(self):
+        idea = make_idea(status=Status.CURRENT)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        expected = date(timezone.localtime(idea.updated_at), "M j, Y g:i A T")
+        self.assertContains(response, f"updated {expected}")
+
+    def test_latest_effort_summary_is_presented_for_humans(self):
+        idea = make_idea(status=Status.CURRENT)
+        idea.exec_summary = (
+            "Outcome: The validation completed.\n"
+            "Recommended next steps:\n- Run the pilot."
+        )
+        idea.save()
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        self.assertContains(response, "Latest effort summary")
+        self.assertContains(response, "Recommended next steps:")
 
     def test_mismatched_status_role_is_denied(self):
         idea = make_idea(status=Status.CURRENT)

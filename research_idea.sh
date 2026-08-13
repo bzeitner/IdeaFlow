@@ -54,6 +54,7 @@ BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 SHARED_STANDARDS="$(prompt_shared_standards)"
 PR_RESOURCE_STANDARD="$(prompt_pr_resource_standard)"
+HUMAN_SUMMARY_STANDARD="$(prompt_human_summary_standard)"
 EFFORT_QUALITY_STANDARD="$(prompt_effort_quality_scale)"
 CHILD_STANDARD="$(prompt_child_suggestion_standard)"
 NEXT_ACTION_STANDARD="$(prompt_next_action_standard)"
@@ -127,6 +128,7 @@ local git + gh (you have write access) for the repo. Steps:
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        --repo-url '<PR_URL>' --repo-label 'PR' \\
        --status tracking \\
+       --exec-summary '<latest effort outcome and recommended next steps>' \\
        --next-action 'Critical PR review: <PR_URL>'
    (This links the PR and schedules the critical review as the next task.)
 8. Completion checklist: one non-duplicate PR exists, required checks passed,
@@ -134,6 +136,7 @@ local git + gh (you have write access) for the repo. Steps:
    the actual PR. Print the PR URL and a two-line summary.
 
 ${SHARED_STANDARDS}
+${HUMAN_SUMMARY_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 PROMPT
 elif [[ "$MODE" == "critique" ]]; then
@@ -168,6 +171,7 @@ Steps:
        --model ${MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
+       --exec-summary '<latest effort outcome and recommended next steps>' \\
        --next-action '<fix named blockers; address named nits; or merge the PR>'
 7. Completion checklist: the PR review is posted once, ${REPORT} is non-empty,
    the effort is logged, and its next action matches the verdict. Print one of:
@@ -175,6 +179,7 @@ Steps:
 
 ${SHARED_STANDARDS}
 ${PR_RESOURCE_STANDARD}
+${HUMAN_SUMMARY_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 PROMPT
 elif [[ "$MODE" == "review" ]]; then
@@ -219,7 +224,7 @@ Steps:
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        [--next-action '<specific action with completion condition>'] \\
-       --exec-summary '<2-4 sentences: current state, evidence, and disposition>'
+       --exec-summary '<latest effort outcome and recommended next steps>'
    Update the idea's stage/status if the review warrants it: advance a promising
    one (--stage <slug>), or --status archived for a dead end, --status tracking
    to keep watching. Only change what your review actually justifies.
@@ -236,6 +241,7 @@ ${CHILD_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 ${SHARED_STANDARDS}
 ${PR_RESOURCE_STANDARD}
+${HUMAN_SUMMARY_STANDARD}
 PROMPT
 else
   read -r -d '' PROMPT <<PROMPT || true
@@ -272,7 +278,7 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
        --effort <1-5, how much work> \\
        --quality <1-5, your confidence in the findings> \\
        --tokens <approx tokens used> \\
-       --exec-summary '<2-4 sentences: finding, evidence, and disposition>' \\
+       --exec-summary '<latest effort outcome and recommended next steps>' \\
        --status <tracking-or-archived> \\
        [--next-action '<specific action with completion condition>']
    If the idea has a natural next stage, add --stage <slug> too.
@@ -288,6 +294,7 @@ ${NEXT_ACTION_STANDARD}
 ${CHILD_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 ${SHARED_STANDARDS}
+${HUMAN_SUMMARY_STANDARD}
 PROMPT
 fi
 

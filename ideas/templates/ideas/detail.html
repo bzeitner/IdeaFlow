@@ -11,7 +11,7 @@
       {% include "ideas/_pill.html" with obj=idea.stage %}
       <span class="pill">{{ idea.get_status_display }}</span>
       {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
-      <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y" }}</span>
+      <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y g:i A T" }}</span>
     </div>
 
     {% if idea.parent %}
@@ -21,12 +21,14 @@
       <p class="parent-line dim">Repo: <code>{{ idea.repo }}</code></p>
     {% endif %}
 
-    {% if idea.exec_summary %}
-      <div class="exec-summary">
-        <h4>Executive summary</h4>
+    <div class="exec-summary">
+      <h4>Latest effort summary</h4>
+      {% if idea.exec_summary %}
         <p>{{ idea.exec_summary|linebreaksbr }}</p>
-      </div>
-    {% endif %}
+      {% else %}
+        <p class="dim">No effort summary has been recorded yet.</p>
+      {% endif %}
+    </div>
 
     {% if can_manage %}
       <div class="detail-primary-actions">

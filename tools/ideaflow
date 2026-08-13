@@ -228,7 +228,11 @@ def build_parser():
     s.add_argument("--stage")
     s.add_argument("--status")
     s.add_argument("--next-action", dest="next_action")
-    s.add_argument("--exec-summary", dest="exec_summary")
+    s.add_argument(
+        "--exec-summary",
+        dest="exec_summary",
+        help="Latest effort outcome and recommended next steps for humans.",
+    )
     s.set_defaults(func=cmd_log_effort)
 
     s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
