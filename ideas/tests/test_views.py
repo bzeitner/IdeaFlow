@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.test import TestCase
 from django.template.defaultfilters import date
 from django.urls import reverse
@@ -524,6 +526,21 @@ class TrackingWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["filters"]["sort"], "family")
+
+    def test_last_update_sort_lists_newest_first(self):
+        older = make_idea(title="Older", status=Status.TRACKING)
+        newer = make_idea(title="Newer", status=Status.TRACKING)
+        Idea.objects.filter(pk=older.pk).update(
+            updated_at=timezone.now() - timedelta(days=1)
+        )
+
+        response = self.client.get(reverse("ideas:tracking"), {"sort": "updated"})
+
+        self.assertEqual(
+            [idea.title for idea in response.context["ideas"]], ["Newer", "Older"]
+        )
+        self.assertContains(response, "Last update (newest first)")
+        self.assertContains(response, '<option value="updated" selected>', html=False)
 
     def test_quick_update_saves_next_action_and_clears_pause(self):
         idea = make_idea(
