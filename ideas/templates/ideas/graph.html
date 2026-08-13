@@ -1,4 +1,5 @@
 {% extends "ideas/base.html" %}
+{% load static %}
 {% block title %}Knowledge Graph · IdeaFlow{% endblock %}
 {% block content %}
 <div class="page-head graph-head">
@@ -37,6 +38,6 @@
   </tbody></table>
 </details>
 {{ graph_data|json_script:"graph-data" }}
-<script src="/static/ideas/cytoscape-3.33.1.min.js"></script>
-<script src="/static/ideas/graph.js"></script>
+<script src="{% static 'ideas/cytoscape-3.33.1.min.js' %}"></script>
+<script src="{% static 'ideas/graph.js' %}"></script>
 {% endblock %}
