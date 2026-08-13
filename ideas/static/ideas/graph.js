@@ -56,7 +56,11 @@
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not review suggestion.");
-      if (result.edge && cy.getElementById(result.edge.id).empty()) cy.add({ data: result.edge });
+      if (result.edge && cy.getElementById(result.edge.id).empty()) {
+        const sourceExists = cy.getElementById(result.edge.source).nonempty();
+        const targetExists = cy.getElementById(result.edge.target).nonempty();
+        if (sourceExists && targetExists) cy.add({ data: result.edge });
+      }
       row.remove();
       const remaining = suggestionList.querySelectorAll("[data-suggestion-row]").length;
       document.getElementById("suggestion-count").textContent = remaining;
