@@ -653,7 +653,10 @@ def queue_next_action(request, pk):
 
 @login_required
 def update_repeat_result(request, pk, result_pk):
+    wants_json = request.headers.get("Accept") == "application/json"
     if request.method != "POST":
+        if wants_json:
+            return JsonResponse({"error": "Invalid request."}, status=405)
         return redirect("ideas:detail", pk=pk)
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_status_role(request, idea.status)
@@ -664,7 +667,13 @@ def update_repeat_result(request, pk, result_pk):
     if status in RepeatResultStatus.values:
         result.status = status
         result.save(update_fields=["status", "updated_at"])
+        if wants_json:
+            return JsonResponse(
+                {"ok": True, "result_id": result.pk, "status": result.status}
+            )
         messages.success(request, "Result status updated.")
+    elif wants_json:
+        return JsonResponse({"error": "Invalid result status."}, status=400)
     return redirect("ideas:detail", pk=pk)
 
 

@@ -569,6 +569,20 @@ class RepeatTaskViewTests(TestCase):
         result.refresh_from_db()
         self.assertEqual(result.status, "actioned")
 
+        ajax_response = self.client.post(
+            reverse("ideas:update_repeat_result", args=[idea.pk, result.pk]),
+            {"status": "interested"},
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(ajax_response.status_code, 200)
+        self.assertEqual(
+            ajax_response.json(),
+            {"ok": True, "result_id": result.pk, "status": "interested"},
+        )
+        result.refresh_from_db()
+        self.assertEqual(result.status, "interested")
+        self.assertContains(response, "data-repeat-result-form")
+
     def test_repeat_task_can_be_paused_and_resumed(self):
         idea = make_idea(status=Status.CURRENT, repeat_enabled=True, repeat_goal="Find leads")
         user = make_user(roles=["role_current"])
