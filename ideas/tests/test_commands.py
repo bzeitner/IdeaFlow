@@ -1,9 +1,10 @@
 import json
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from ideas.models import ResearchEntry, Status
 
@@ -102,3 +103,63 @@ class LogEffortTests(TestCase):
             fh.write(text)
         self.addCleanup(lambda: __import__("os").remove(path))
         return path
+
+
+class ExtractOpenQuestionsTests(TestCase):
+    def test_dry_run_then_backfills_markdown_questions(self):
+        from ideas.reporting import record_effort
+
+        idea = make_idea()
+        entry, _resource = record_effort(
+            idea,
+            topic="Historical report",
+            model="other",
+            context="## Open Questions\n- Which market should we choose?\n\n## Risks\nLow.",
+        )
+        entry.open_questions = []
+        entry.save(update_fields=["open_questions"])
+
+        preview = run("extract_open_questions", "--dry-run")
+        entry.refresh_from_db()
+        self.assertIn("Which market should we choose?", preview)
+        self.assertEqual(entry.open_questions, [])
+
+        result = run("extract_open_questions")
+        entry.refresh_from_db()
+        self.assertIn("updated 1 entry", result)
+        self.assertEqual(entry.open_questions, ["Which market should we choose?"])
+
+    @override_settings(IDEAFLOW_SEMANTIC_API_KEY="test-key")
+    @patch("ideas.management.commands.extract_open_questions.SemanticAPI._post")
+    def test_optional_ai_extracts_only_high_confidence_questions(self, post):
+        from ideas.reporting import record_effort
+
+        idea = make_idea()
+        entry, _resource = record_effort(
+            idea,
+            topic="Unstructured report",
+            model="other",
+            context="We still need the owner to decide whether the budget is acceptable.",
+        )
+        post.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "questions": [
+                                    {"question": "Is the proposed budget acceptable?", "confidence": 0.95},
+                                    {"question": "Could research help?", "confidence": 0.2},
+                                ]
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+
+        run("extract_open_questions", "--use-ai", "--idea", str(idea.pk))
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.open_questions, ["Is the proposed budget acceptable?"])
+        post.assert_called_once()

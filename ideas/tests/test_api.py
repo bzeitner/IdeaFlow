@@ -198,6 +198,81 @@ class ApiEffortTests(TestCase):
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiResearchQuestionTests(TestCase):
+    def _entry(self, idea, **kwargs):
+        from ideas.reporting import record_effort
+
+        entry, _resource = record_effort(
+            idea, topic="Historical research", model="other", **kwargs
+        )
+        return entry
+
+    def test_requires_api_token(self):
+        idea = make_idea()
+        entry = self._entry(idea)
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/research/{entry.pk}/open-questions/",
+            data=json.dumps({"questions": ["Decide?"]}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_additively_merges_without_changing_human_answers(self):
+        idea = make_idea()
+        entry = self._entry(idea, open_questions=["Existing question?"])
+        entry.question_answers = {"0": "Existing answer"}
+        entry.save(update_fields=["question_answers"])
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/research/{entry.pk}/open-questions/",
+            data=json.dumps(
+                {"questions": ["Existing question?", "New human decision?"]}
+            ),
+            content_type="application/json",
+            **AUTH,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        entry.refresh_from_db()
+        self.assertEqual(
+            entry.open_questions,
+            ["Existing question?", "New human decision?"],
+        )
+        self.assertEqual(entry.question_answers, {"0": "Existing answer"})
+
+    def test_entry_must_belong_to_idea(self):
+        idea = make_idea()
+        other = make_idea(title="Other")
+        entry = self._entry(other)
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/research/{entry.pk}/open-questions/",
+            data=json.dumps({"questions": ["Decide?"]}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_archived_idea_is_read_only(self):
+        idea = make_idea(status=Status.ARCHIVED)
+        entry = self._entry(idea)
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/research/{entry.pk}/open-questions/",
+            data=json.dumps({"questions": ["Decide?"]}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+        self.assertEqual(response.status_code, 409)
+        entry.refresh_from_db()
+        self.assertEqual(entry.open_questions, [])
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
 class ApiRepeatResultTests(TestCase):
     def _post(self, idea, payload):
         return self.client.post(

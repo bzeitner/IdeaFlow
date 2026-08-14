@@ -27,7 +27,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, RepeatResult, Resource, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, RepeatResult, ResearchEntry, Resource, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -266,6 +266,46 @@ def idea_effort(request, pk):
         },
         status=201,
     )
+
+
+@require_api_token
+def research_open_questions(request, pk, entry_pk):
+    """Merge structured questions into an existing, idea-scoped research entry."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk)
+    if idea.is_archived:
+        return JsonResponse(
+            {"error": "Archived ideas cannot be changed through the agent API."},
+            status=409,
+        )
+    entry = get_object_or_404(ResearchEntry, pk=entry_pk, idea=idea)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    questions = payload.get("questions") if isinstance(payload, dict) else None
+    if not isinstance(questions, list) or len(questions) > 50:
+        return JsonResponse(
+            {"error": "questions must be a list of at most 50 items."}, status=400
+        )
+    clean = []
+    for raw in questions:
+        question = str(raw).strip()
+        if not question:
+            continue
+        if len(question) > 500:
+            return JsonResponse(
+                {"error": "Each question must be at most 500 characters."}, status=400
+            )
+        if question not in clean:
+            clean.append(question)
+    existing = [str(item).strip() for item in entry.open_questions if str(item).strip()]
+    merged = existing + [question for question in clean if question not in existing]
+    if merged != existing:
+        entry.open_questions = merged
+        entry.save(update_fields=["open_questions"])
+    return JsonResponse({"research_entry": research_entry_to_dict(entry)})
 
 
 @require_api_token
@@ -527,6 +567,11 @@ urlpatterns = [
     ),
     path("ideas/<int:pk>/graph-context/", idea_graph_context, name="api_idea_graph_context"),
     path("ideas/<int:pk>/effort/", idea_effort, name="api_idea_effort"),
+    path(
+        "ideas/<int:pk>/research/<int:entry_pk>/open-questions/",
+        research_open_questions,
+        name="api_research_open_questions",
+    ),
     path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),
     path(
         "ideas/<int:pk>/suggest-children/",

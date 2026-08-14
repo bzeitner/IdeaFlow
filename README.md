@@ -194,6 +194,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report; supports `open_questions`, replaces `next_action`, and appends `queued_next_actions` |
+| `POST /api/ideas/<id>/research/<entry-id>/open-questions/` | Additively merge extracted questions into an existing non-archived research entry |
 | `POST /api/ideas/<id>/repeat-results/` | Store a completed repeat run (`{results: [{title, url?, details?}]}`), deduplicate URLs, and advance its schedule |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
 | `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
@@ -311,6 +312,34 @@ Agents record questions that genuinely require human input with repeatable
 answer fields. Saving an answer counts as human feedback, resumes paused agent
 work, and exposes the answer in `research_entries.question_answers` on the next
 `dump-idea` call.
+
+To backfill older reports, first preview deterministic extraction from Markdown
+sections, then save it:
+
+```bash
+.venv/bin/python manage.py extract_open_questions --dry-run --limit 1000
+.venv/bin/python manage.py extract_open_questions --limit 1000
+```
+
+Add `--use-ai` to inspect prose that lacks a recognizable Open Questions
+section; this uses `IDEAFLOW_SEMANTIC_API_KEY` and the configured classifier
+model. Use `--idea ID` to scope a run, or `--all` to merge newly detected
+questions into entries that already have structured questions.
+
+For the same workflow from a local checkout against the deployed API, use the
+standalone script. It reads `IDEAFLOW_API_TOKEN` and semantic settings from the
+environment or the repository `.env`, previews by default, skips archived ideas,
+and only writes when `--apply` is explicit:
+
+```bash
+./tools/extract_open_questions_remote.py --use-ai --limit 1000
+./tools/extract_open_questions_remote.py --use-ai --limit 1000 --apply
+```
+
+The shared API token is a system agent credential rather than an individual UI
+user identity. The server authenticates every request, scopes each research
+entry to its idea, rejects archived mutations, and only allows additive question
+merges; it cannot overwrite research text or human answers.
 
 ### Repeatable tasks and result tracking
 
