@@ -45,6 +45,9 @@ ufw --force enable
 timedatectl set-timezone UTC
 ```
 
+The host and PostgreSQL remain on UTC for predictable storage and operations.
+Django renders user-facing timestamps in `America/Los_Angeles` (PST/PDT).
+
 ---
 
 ## 2. Create the app user

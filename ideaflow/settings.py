@@ -152,7 +152,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Store datetimes in UTC (USE_TZ=True) and render them in Pacific Time.
+# The IANA zone correctly switches between PST and PDT.
+TIME_ZONE = 'America/Los_Angeles'
 
 USE_I18N = True
 

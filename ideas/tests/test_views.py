@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.test import TestCase
 from django.template.defaultfilters import date
 from django.urls import reverse
@@ -88,6 +89,9 @@ class TabAccessTests(TestCase):
 
 
 class DetailViewTests(TestCase):
+    def test_app_displays_dates_in_pacific_time(self):
+        self.assertEqual(settings.TIME_ZONE, "America/Los_Angeles")
+
     def test_matching_status_role_can_view(self):
         idea = make_idea(status=Status.CURRENT)
         user = make_user(roles=["role_current"])

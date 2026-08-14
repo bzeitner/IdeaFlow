@@ -173,6 +173,9 @@ For an agent running in this repo — it talks straight to the DB, no auth neede
 
 ### Remote: JSON HTTP API
 
+IdeaFlow stores timezone-aware datetimes in UTC and displays them in Pacific
+Time (`America/Los_Angeles`, automatically selecting PST or PDT).
+
 For an agent that can't reach the DB directly. Set a token to enable it (empty = disabled):
 
 ```
