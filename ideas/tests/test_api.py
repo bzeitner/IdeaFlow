@@ -122,6 +122,42 @@ class ApiEffortTests(TestCase):
         self.assertEqual(entry.tokens_used, 12345)
         self.assertEqual(entry.model.slug, "claude-opus-4-8")
 
+    def test_records_and_serializes_open_questions(self):
+        idea = make_idea()
+        response = self._post(
+            idea,
+            {
+                "topic": "Needs a decision",
+                "model": "other",
+                "open_questions": ["Which market should we prioritize?"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        entry = ResearchEntry.objects.get()
+        self.assertEqual(entry.open_questions, ["Which market should we prioritize?"])
+        self.assertEqual(
+            response.json()["research_entry"]["open_questions"],
+            ["Which market should we prioritize?"],
+        )
+
+    def test_extracts_open_questions_from_markdown_report(self):
+        idea = make_idea()
+        response = self._post(
+            idea,
+            {
+                "topic": "Research report",
+                "model": "other",
+                "context": "## Evidence\nFound it.\n\n## Open questions\n- Which region?\n- What budget?\n\n## Risks\nNone.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            ResearchEntry.objects.get().open_questions,
+            ["Which region?", "What budget?"],
+        )
+
     def test_attaches_a_result_resource(self):
         idea = make_idea()
         response = self._post(

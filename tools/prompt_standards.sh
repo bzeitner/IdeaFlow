@@ -18,6 +18,11 @@ Shared operating standards:
     succeeded unless you observed it succeed. Preserve unrelated user work.
   * Completion: verify every required write-back, then report the outcome,
     remaining risks, and next action (if one is justified).
+  * Human answers: inspect prior research_entries.question_answers before acting
+    and treat them as current human input. When the completed effort still has a
+    specific question only a human can answer, pass one `--open-question` flag
+    per question to log-effort. Do not repeat questions already answered, and do
+    not use open questions for facts the agent can research itself.
 PROMPT_STANDARDS
 }
 

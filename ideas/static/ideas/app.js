@@ -63,4 +63,36 @@
       }
     });
   });
+
+  document.querySelectorAll("[data-question-answer-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button[type='submit']");
+      const saveStatus = form.querySelector("[data-answer-status]");
+      button.disabled = true;
+      saveStatus.textContent = " Saving…";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        form.remove();
+        const container = document.querySelector("[data-open-questions]");
+        if (container && !container.querySelector("[data-question-answer-form]")) {
+          container.remove();
+        }
+      } catch (error) {
+        button.disabled = false;
+        saveStatus.textContent = ` ${error.message}`;
+      } finally {
+        actionStarted = false;
+      }
+    });
+  });
 })();

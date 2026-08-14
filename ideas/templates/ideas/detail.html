@@ -170,6 +170,30 @@
 
     <section class="detail-section">
     <h3 class="section-title">Research and activity</h3>
+    {% if research_with_open_questions %}
+      <div class="open-questions" data-open-questions>
+        <h4>Open research questions</h4>
+        <p class="dim">Your answers will be included in the context for the next agent run.</p>
+        {% for entry in research_with_open_questions %}
+          {% if can_manage %}
+          <form method="post" action="{% url 'ideas:answer_research_questions' idea.pk entry.pk %}" class="open-question-form" data-question-answer-form>
+            {% csrf_token %}
+            <div class="dim">From {{ entry.topic }} · {{ entry.occurred_at|date:"M j, Y g:i A" }}</div>
+            {% for item in entry.unanswered_question_items %}
+              <label>
+                <span>{{ item.question }}</span>
+                <textarea name="answer_{{ item.index }}" rows="2" placeholder="Your answer"></textarea>
+              </label>
+            {% endfor %}
+            <button class="btn primary" type="submit">Save answers</button>
+            <span class="dim" data-answer-status aria-live="polite"></span>
+          </form>
+          {% else %}
+            <div class="open-question-form"><div class="dim">From {{ entry.topic }} · {{ entry.occurred_at|date:"M j, Y g:i A" }}</div><ul>{% for item in entry.unanswered_question_items %}<li>{{ item.question }}</li>{% endfor %}</ul></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
     <h4>Feeds <span class="dim">({{ idea_feeds|length }}/{{ idea.feed_cap }})</span></h4>
     {% if idea_feeds %}
       <ul class="feed-links">

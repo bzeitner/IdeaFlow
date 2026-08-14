@@ -19,7 +19,7 @@ from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSe
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, Stage, Status, SuggestionStatus
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -476,6 +476,9 @@ def detail(request, pk):
     idea_feeds = idea.idea_feeds.select_related("feed").order_by(
         F("rating").desc(nulls_last=True), "-created_at"
     )
+    research_with_open_questions = [
+        entry for entry in idea.research_entries.all() if entry.unanswered_question_items
+    ]
     return render(
         request,
         "ideas/detail.html",
@@ -487,6 +490,7 @@ def detail(request, pk):
             "idea_feeds": idea_feeds,
             "articles": recent_articles(idea),
             "repeat_result_statuses": RepeatResultStatus.choices,
+            "research_with_open_questions": research_with_open_questions,
             "suggested_children": [
                 line for line in idea.suggested_children.splitlines() if line.strip()
             ],
@@ -674,6 +678,43 @@ def update_repeat_result(request, pk, result_pk):
         messages.success(request, "Result status updated.")
     elif wants_json:
         return JsonResponse({"error": "Invalid result status."}, status=400)
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def answer_research_questions(request, pk, entry_pk):
+    wants_json = request.headers.get("Accept") == "application/json"
+    if request.method != "POST":
+        if wants_json:
+            return JsonResponse({"error": "Invalid request."}, status=405)
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    entry = get_object_or_404(ResearchEntry, pk=entry_pk, idea=idea)
+    questions = entry.open_questions if isinstance(entry.open_questions, list) else []
+    answers = entry.question_answers.copy() if isinstance(entry.question_answers, dict) else {}
+    saved = 0
+    for index, question in enumerate(questions):
+        if not str(question).strip():
+            continue
+        answer = request.POST.get(f"answer_{index}", "").strip()
+        if answer:
+            answers[str(index)] = answer
+            saved += 1
+    if not saved:
+        if wants_json:
+            return JsonResponse({"error": "Enter at least one answer."}, status=400)
+        messages.info(request, "Enter at least one answer.")
+        return redirect("ideas:detail", pk=pk)
+    entry.question_answers = answers
+    entry.save(update_fields=["question_answers"])
+    idea.agent_runs_since_feedback = 0
+    idea.save(update_fields=["agent_runs_since_feedback", "updated_at"])
+    if wants_json:
+        return JsonResponse({"ok": True, "saved": saved})
+    messages.success(request, "Research answers saved for the next run.")
     return redirect("ideas:detail", pk=pk)
 
 

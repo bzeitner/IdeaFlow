@@ -493,6 +493,16 @@ class ResearchEntry(models.Model):
     topic = models.CharField(max_length=200)
     focus = models.CharField(max_length=200, blank=True)
     context = models.TextField(blank=True)
+    open_questions = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Specific questions the next agent run needs a human to answer.",
+    )
+    question_answers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Human answers keyed by the open question's zero-based index.",
+    )
     occurred_at = models.DateTimeField(
         default=timezone.now, help_text="When the research happened."
     )
@@ -520,6 +530,19 @@ class ResearchEntry(models.Model):
     @property
     def quality_stars(self):
         return "★" * self.quality + "☆" * (5 - self.quality)
+
+    @property
+    def open_question_items(self):
+        answers = self.question_answers if isinstance(self.question_answers, dict) else {}
+        return [
+            {"index": index, "question": question, "answer": answers.get(str(index), "")}
+            for index, question in enumerate(self.open_questions)
+            if str(question).strip()
+        ]
+
+    @property
+    def unanswered_question_items(self):
+        return [item for item in self.open_question_items if not item["answer"].strip()]
 
 
 class RepeatResultStatus(models.TextChoices):

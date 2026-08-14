@@ -177,6 +177,15 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
   list-style: none; display: inline-block; margin-top: 6px; }
 .effort-detail summary::-webkit-details-marker { display: none; }
 .effort-detail summary:hover { text-decoration: underline; }
+.open-questions { background: var(--warm-bg); border: 1px solid var(--warm-line);
+  border-radius: 10px; padding: 12px 14px; margin: 10px 0 18px; }
+.open-questions h4 { margin: 0 0 4px; }
+.open-question-form { border-top: 1px solid var(--warm-line); margin-top: 10px;
+  padding-top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.open-question-form label { width: 100%; display: flex; flex-direction: column; gap: 5px;
+  font-weight: 600; }
+.open-question-form textarea { width: 100%; box-sizing: border-box; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; font: inherit; font-weight: 400; background: #fff; }
 
 /* Parent / child ideas (detail) */
 .parent-line { margin: 8px 0 0; }

@@ -41,6 +41,11 @@ urlpatterns = [
     ),
     path("<int:pk>/quick-update/", views.quick_update, name="quick_update"),
     path("<int:pk>/research/new/", views.add_research, name="add_research"),
+    path(
+        "<int:pk>/research/<int:entry_pk>/answers/",
+        views.answer_research_questions,
+        name="answer_research_questions",
+    ),
     path("<int:pk>/continue-work/", views.continue_work, name="continue_work"),
     path("users/", views.user_management, name="user_management"),
 ]

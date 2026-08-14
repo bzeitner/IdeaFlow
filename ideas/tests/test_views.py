@@ -542,6 +542,62 @@ class NextActionTests(TestCase):
         self.assertEqual(idea.next_action, "")
 
 
+class ResearchQuestionViewTests(TestCase):
+    def test_open_question_is_displayed_and_answer_is_saved_for_next_run(self):
+        from ideas.reporting import record_effort
+
+        idea = make_idea(status=Status.CURRENT, agent_runs_since_feedback=2)
+        entry, _resource = record_effort(
+            idea,
+            topic="Market choice",
+            model="other",
+            open_questions=["Which customer segment should we prioritize?"],
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        detail = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(detail, "Open research questions")
+        self.assertContains(detail, "Which customer segment should we prioritize?")
+        self.assertContains(detail, "data-question-answer-form")
+
+        response = self.client.post(
+            reverse("ideas:answer_research_questions", args=[idea.pk, entry.pk]),
+            {"answer_0": "Focus on independent retailers first."},
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "saved": 1})
+        entry.refresh_from_db()
+        idea.refresh_from_db()
+        self.assertEqual(
+            entry.question_answers,
+            {"0": "Focus on independent retailers first."},
+        )
+        self.assertEqual(idea.agent_runs_since_feedback, 0)
+
+        detail = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertNotContains(detail, "Which customer segment should we prioritize?")
+
+    def test_wrong_status_role_cannot_answer_question(self):
+        from ideas.reporting import record_effort
+
+        idea = make_idea(status=Status.CURRENT)
+        entry, _resource = record_effort(
+            idea, topic="Question", model="other", open_questions=["Decide?"]
+        )
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:answer_research_questions", args=[idea.pk, entry.pk]),
+            {"answer_0": "No"},
+        )
+        self.assertRedirects(response, reverse("ideas:home"), fetch_redirect_response=False)
+        entry.refresh_from_db()
+        self.assertEqual(entry.question_answers, {})
+
+
 class RepeatTaskViewTests(TestCase):
     def test_repeat_task_uses_results_table_instead_of_effort_summary(self):
         idea = make_idea(

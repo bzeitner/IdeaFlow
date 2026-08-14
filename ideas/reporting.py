@@ -7,12 +7,34 @@ command and the `/api/.../effort/` view call it, so the two paths behave
 identically.
 """
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
 from .models import AIModel, ResearchEntry, Resource, Stage, Status
 
 VALID_STATUS = {s.value for s in Status}
+
+
+def extract_open_questions(context):
+    """Extract bullet/numbered items from a Markdown Open Questions section."""
+    questions = []
+    in_section = False
+    for line in (context or "").splitlines():
+        if re.match(r"^\s{0,3}#{1,6}\s+open questions?\s*:?\s*$", line, re.I):
+            in_section = True
+            continue
+        if in_section and re.match(r"^\s{0,3}#{1,6}\s+", line):
+            break
+        if not in_section:
+            continue
+        match = re.match(r"^\s*(?:[-*+] |\d+[.)] )(.*\S)\s*$", line)
+        if match:
+            question = match.group(1).strip()
+            if question.lower().rstrip(".") not in {"none", "n/a"}:
+                questions.append(question)
+    return questions
 
 
 def resolve_ai_model(value):
@@ -73,6 +95,7 @@ def record_effort(
     next_action=None,
     queued_next_actions=None,
     exec_summary=None,
+    open_questions=None,
 ):
     """Create a ResearchEntry for `idea`, plus an optional result Resource and an
     optional stage/status move / next-action update. Returns
@@ -87,11 +110,17 @@ def record_effort(
         queued_next_actions, (list, tuple)
     ):
         raise ValueError("queued_next_actions must be a list.")
+    if open_questions is not None and not isinstance(open_questions, (list, tuple)):
+        raise ValueError("open_questions must be a list.")
+    clean_questions = [str(question).strip() for question in (open_questions or []) if str(question).strip()]
+    if not clean_questions:
+        clean_questions = extract_open_questions(context)
     entry = ResearchEntry.objects.create(
         idea=idea,
         topic=topic,
         focus=focus or "",
         context=context or "",
+        open_questions=clean_questions,
         occurred_at=occurred_at or timezone.now(),
         effort=_star(effort, "effort"),
         quality=_star(quality, "quality"),

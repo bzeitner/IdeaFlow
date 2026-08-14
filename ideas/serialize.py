@@ -25,6 +25,12 @@ def research_entry_to_dict(entry):
         "topic": entry.topic,
         "focus": entry.focus,
         "context": entry.context,
+        "open_questions": entry.open_questions,
+        "question_answers": [
+            {"question": item["question"], "answer": item["answer"]}
+            for item in entry.open_question_items
+            if item["answer"].strip()
+        ],
         "effort": entry.effort,
         "quality": entry.quality,
         "model": _lookup(entry.model),

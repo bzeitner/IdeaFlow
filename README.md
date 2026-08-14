@@ -193,7 +193,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
-| `POST /api/ideas/<id>/effort/` | Record an effort report; `next_action` replaces the active action and `queued_next_actions` appends actions |
+| `POST /api/ideas/<id>/effort/` | Record an effort report; supports `open_questions`, replaces `next_action`, and appends `queued_next_actions` |
 | `POST /api/ideas/<id>/repeat-results/` | Store a completed repeat run (`{results: [{title, url?, details?}]}`), deduplicate URLs, and advance its schedule |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
 | `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
@@ -306,6 +306,11 @@ Ideas can hold an ordered queue of next actions. The first item remains the
 active `next_action` used by task selection; the detail page can add, reorder,
 complete, or remove later items. Agents may append concrete follow-ups with the
 repeatable `--queue-next-action` option without replacing the active item.
+Agents record questions that genuinely require human input with repeatable
+`--open-question` options. Unanswered questions appear on the idea page with
+answer fields. Saving an answer counts as human feedback, resumes paused agent
+work, and exposes the answer in `research_entries.question_answers` on the next
+`dump-idea` call.
 
 ### Repeatable tasks and result tracking
 

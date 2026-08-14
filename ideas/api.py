@@ -249,6 +249,7 @@ def idea_effort(request, pk):
             next_action=payload.get("next_action"),
             queued_next_actions=payload.get("queued_next_actions") or [],
             exec_summary=payload.get("exec_summary"),
+            open_questions=payload.get("open_questions") or [],
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

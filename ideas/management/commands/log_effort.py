@@ -67,6 +67,13 @@ class Command(BaseCommand):
             dest="exec_summary",
             help="Set the human-readable latest effort summary and recommendations.",
         )
+        parser.add_argument(
+            "--open-question",
+            dest="open_questions",
+            action="append",
+            default=[],
+            help="Question requiring human input; repeatable.",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -99,6 +106,7 @@ class Command(BaseCommand):
                 next_action=options["next_action"],
                 queued_next_actions=options["queued_next_actions"],
                 exec_summary=options["exec_summary"],
+                open_questions=options["open_questions"],
             )
         except (ValueError, LookupError) as exc:
             raise CommandError(str(exc))

@@ -304,7 +304,8 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
        --tokens <approx tokens used> \\
        --exec-summary '<latest effort outcome and recommended next steps>' \\
        --status <tracking-or-archived> \\
-       [--next-action '<specific action with completion condition>']
+       [--next-action '<specific action with completion condition>'] \\
+       [--open-question '<specific question requiring human input>']
    If the idea has a natural next stage, add --stage <slug> too.
 7. If distinct sub-directions deserve their own tracking, follow the child-idea
    standard below and submit suggestions through:
