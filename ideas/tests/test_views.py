@@ -712,6 +712,28 @@ class TrackingWorkflowTests(TestCase):
             response, f'href="{waiting.get_absolute_url()}#open-questions"'
         )
 
+    def test_default_sort_places_open_questions_first(self):
+        from ideas.reporting import record_effort
+
+        ordinary = make_idea(title="Ordinary", status=Status.TRACKING, rank=1)
+        waiting = make_idea(
+            title="Waiting for human", status=Status.TRACKING, rank=99
+        )
+        record_effort(
+            waiting,
+            topic="Decision",
+            model="other",
+            open_questions=["Approve the budget?"],
+        )
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertEqual(response.context["filters"]["sort"], "questions")
+        self.assertEqual(
+            [idea.pk for idea in response.context["ideas"]],
+            [waiting.pk, ordinary.pk],
+        )
+
     def test_default_sort_groups_parents_with_their_children(self):
         later_parent = make_idea(
             title="Later parent", status=Status.TRACKING, rank=20
@@ -728,7 +750,7 @@ class TrackingWorkflowTests(TestCase):
             parent=earlier_parent,
         )
 
-        response = self.client.get(reverse("ideas:tracking"))
+        response = self.client.get(reverse("ideas:tracking"), {"sort": "family"})
 
         self.assertEqual(response.context["filters"]["sort"], "family")
         self.assertEqual(
@@ -743,7 +765,7 @@ class TrackingWorkflowTests(TestCase):
         make_idea(title="Visible child", status=Status.TRACKING, parent=parent)
         make_idea(title="Archived child", status=Status.ARCHIVED, parent=parent)
 
-        response = self.client.get(reverse("ideas:tracking"))
+        response = self.client.get(reverse("ideas:tracking"), {"sort": "family"})
 
         rendered_parent = next(
             idea for idea in response.context["ideas"] if idea.pk == parent.pk
@@ -763,11 +785,11 @@ class TrackingWorkflowTests(TestCase):
 
         self.assertNotContains(response, "data-family-toggle")
 
-    def test_unknown_sort_falls_back_to_parent_child_grouping(self):
+    def test_unknown_sort_falls_back_to_open_questions(self):
         response = self.client.get(reverse("ideas:tracking"), {"sort": "unknown"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["filters"]["sort"], "family")
+        self.assertEqual(response.context["filters"]["sort"], "questions")
 
     def test_last_update_sort_lists_newest_first(self):
         older = make_idea(title="Older", status=Status.TRACKING)

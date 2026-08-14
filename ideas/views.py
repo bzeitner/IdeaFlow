@@ -400,8 +400,15 @@ def tracking(request):
         )
     )
 
-    sort = request.GET.get("sort", "family")
+    sort = request.GET.get("sort", "questions")
     orderings = {
+        "questions": (
+            "family_rank",
+            "family_id",
+            "family_position",
+            "rank",
+            "id",
+        ),
         "family": (
             "family_rank",
             "family_id",
@@ -415,8 +422,8 @@ def tracking(request):
         "oldest": ("updated_at", "rank"),
     }
     if sort not in orderings:
-        sort = "family"
-    if sort == "family":
+        sort = "questions"
+    if sort in {"questions", "family"}:
         ideas = ideas.annotate(
             family_rank=Case(
                 When(parent__isnull=True, then=F("rank")),
@@ -435,6 +442,11 @@ def tracking(request):
             ),
         )
     ideas = ideas.order_by(*orderings[sort])
+    if sort == "questions":
+        # JSON answers are interpreted by the model property so behavior stays
+        # consistent on SQLite and PostgreSQL. Stable sorting retains the
+        # family/rank ordering above within each priority group.
+        ideas = sorted(ideas, key=lambda idea: idea.open_question_count == 0)
     return render(
         request,
         "ideas/tracking.html",

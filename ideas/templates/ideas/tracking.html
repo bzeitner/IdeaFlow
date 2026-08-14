@@ -28,6 +28,7 @@
       <option value="no-next-action"{% if filters.attention == 'no-next-action' %} selected{% endif %}>Missing next action</option>
     </select>
     <select name="sort" aria-label="Sort ideas">
+      <option value="questions"{% if filters.sort == 'questions' %} selected{% endif %}>Human input needed</option>
       <option value="family"{% if filters.sort == 'family' %} selected{% endif %}>Parent &amp; children</option>
       <option value="rank"{% if filters.sort == 'rank' %} selected{% endif %}>Rank</option>
       <option value="interest"{% if filters.sort == 'interest' %} selected{% endif %}>Interest</option>
@@ -35,7 +36,7 @@
       <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
     </select>
     <button class="btn primary" type="submit" data-filter-apply>Apply</button>
-    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'family' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
   </form>
 
   {% if ideas %}
