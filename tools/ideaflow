@@ -128,6 +128,12 @@ def cmd_log_effort(a):
     return _request("POST", f"/ideas/{a.id}/effort/", body=body)
 
 
+def cmd_log_repeat_results(a):
+    with open(a.results_file, encoding="utf-8") as fh:
+        results = json.load(fh)
+    return _request("POST", f"/ideas/{a.id}/repeat-results/", body={"results": results})
+
+
 def cmd_feed_items(a):
     params = {
         "feed": a.feed,
@@ -241,6 +247,11 @@ def build_parser():
         help="Latest effort outcome and recommended next steps for humans.",
     )
     s.set_defaults(func=cmd_log_effort)
+
+    s = sub.add_parser("log-repeat-results", help="Record one completed repeat run.")
+    s.add_argument("id", type=int)
+    s.add_argument("--results-file", required=True, help="JSON array of result objects.")
+    s.set_defaults(func=cmd_log_repeat_results)
 
     s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
     s.add_argument("id", type=int)

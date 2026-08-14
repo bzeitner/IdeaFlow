@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -177,6 +179,15 @@ class Idea(models.Model):
         help_text="Manually cap how many feeds this idea keeps. Leave blank to "
         "use the default (5, or 10 for research categories).",
     )
+    repeat_enabled = models.BooleanField(default=False)
+    repeat_paused = models.BooleanField(default=False)
+    repeat_goal = models.TextField(
+        blank=True,
+        help_text="Measurable goal for each repeat run, such as finding local job leads.",
+    )
+    repeat_target_count = models.PositiveSmallIntegerField(default=5)
+    repeat_interval_days = models.PositiveSmallIntegerField(default=1)
+    last_repeat_run_at = models.DateTimeField(null=True, blank=True)
     proposed_by_agent = models.BooleanField(
         default=False,
         help_text="Created by a research agent (child ideas). Counts toward the "
@@ -226,6 +237,16 @@ class Idea(models.Model):
         if not queue and self.next_action.strip():
             return [self.next_action.strip()]
         return queue
+
+    @property
+    def repeat_is_due(self):
+        if not self.repeat_enabled or self.repeat_paused or self.is_archived:
+            return False
+        if not self.last_repeat_run_at:
+            return True
+        return self.last_repeat_run_at <= timezone.now() - timedelta(
+            days=self.repeat_interval_days
+        )
 
     def replace_active_next_action(self, value):
         """Replace the queue head while retaining actions queued behind it."""
@@ -499,6 +520,38 @@ class ResearchEntry(models.Model):
     @property
     def quality_stars(self):
         return "★" * self.quality + "☆" * (5 - self.quality)
+
+
+class RepeatResultStatus(models.TextChoices):
+    NEW = "new", "New"
+    INTERESTED = "interested", "Interested"
+    ACTIONED = "actioned", "Applied / Actioned"
+    DISMISSED = "dismissed", "Dismissed"
+
+
+class RepeatResult(models.Model):
+    idea = models.ForeignKey(Idea, related_name="repeat_results", on_delete=models.CASCADE)
+    title = models.CharField(max_length=300)
+    url = models.URLField(max_length=1000, blank=True)
+    details = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16, choices=RepeatResultStatus.choices, default=RepeatResultStatus.NEW
+    )
+    found_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-found_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idea", "url"],
+                condition=~models.Q(url=""),
+                name="unique_repeat_result_url_per_idea",
+            )
+        ]
+
+    def __str__(self):
+        return self.title
 
 
 class Feed(models.Model):

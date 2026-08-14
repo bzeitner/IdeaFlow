@@ -16,16 +16,18 @@ from collections import defaultdict
 from functools import wraps
 
 from django.conf import settings
+from django.db import transaction
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import path
 from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, Resource, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, RepeatResult, Resource, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -39,6 +41,7 @@ _DETAIL_PREFETCH = (
     "research_entries",
     "research_entries__model",
     "children",
+    "repeat_results",
 )
 
 # ?content=1 on /api/feed-items/ pulls full stored bodies; without an
@@ -106,6 +109,44 @@ def idea_resource(request, pk, resource_pk):
     deleted = {"id": resource.pk, "label": resource.label, "url": resource.url}
     resource.delete()
     return JsonResponse({"deleted": deleted})
+
+
+@require_api_token
+@transaction.atomic
+def idea_repeat_results(request, pk):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk, repeat_enabled=True)
+    if idea.is_archived:
+        return JsonResponse({"error": "Idea is archived."}, status=409)
+    if idea.repeat_paused:
+        return JsonResponse({"error": "Repeat task is paused."}, status=409)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    results = payload.get("results")
+    if not isinstance(results, list) or len(results) > 100:
+        return JsonResponse({"error": "results must be a list of at most 100 items."}, status=400)
+    created = []
+    for item in results:
+        if not isinstance(item, dict) or not (item.get("title") or "").strip():
+            return JsonResponse({"error": "Every result requires a title."}, status=400)
+        title = item["title"].strip()[:300]
+        url = (item.get("url") or "").strip()[:1000]
+        details = (item.get("details") or "").strip()
+        if url:
+            result, was_created = RepeatResult.objects.get_or_create(
+                idea=idea, url=url, defaults={"title": title, "details": details}
+            )
+        else:
+            result = RepeatResult.objects.create(idea=idea, title=title, details=details)
+            was_created = True
+        if was_created:
+            created.append(result.pk)
+    idea.last_repeat_run_at = timezone.now()
+    idea.save(update_fields=["last_repeat_run_at", "updated_at"])
+    return JsonResponse({"created": created, "received": len(results), "completed_at": idea.last_repeat_run_at.isoformat()}, status=201)
 
 
 @require_api_token
@@ -477,6 +518,7 @@ urlpatterns = [
     path("graph/search/", graph_search_view, name="api_graph_search"),
     path("ideas/", idea_list, name="api_idea_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path("ideas/<int:pk>/repeat-results/", idea_repeat_results, name="api_idea_repeat_results"),
     path(
         "ideas/<int:pk>/resources/<int:resource_pk>/",
         idea_resource,

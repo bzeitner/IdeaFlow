@@ -523,6 +523,50 @@ class NextActionTests(TestCase):
         self.assertEqual(idea.next_action, "")
 
 
+class RepeatTaskViewTests(TestCase):
+    def test_repeat_task_uses_results_table_instead_of_effort_summary(self):
+        idea = make_idea(
+            status=Status.CURRENT,
+            repeat_enabled=True,
+            repeat_goal="Find five good local job leads",
+            exec_summary="This should not be the primary display.",
+        )
+        result = idea.repeat_results.create(
+            title="Local Python role", url="https://jobs.example/1", details="Hybrid"
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        self.assertContains(response, "Repeat task results")
+        self.assertContains(response, "Local Python role")
+        self.assertNotContains(response, "Latest effort summary")
+
+        self.client.post(
+            reverse("ideas:update_repeat_result", args=[idea.pk, result.pk]),
+            {"status": "actioned"},
+        )
+        result.refresh_from_db()
+        self.assertEqual(result.status, "actioned")
+
+    def test_repeat_task_can_be_paused_and_resumed(self):
+        idea = make_idea(status=Status.CURRENT, repeat_enabled=True, repeat_goal="Find leads")
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        url = reverse("ideas:toggle_repeat_pause", args=[idea.pk])
+
+        self.client.post(url)
+        idea.refresh_from_db()
+        self.assertTrue(idea.repeat_paused)
+        self.assertFalse(idea.repeat_is_due)
+
+        self.client.post(url)
+        idea.refresh_from_db()
+        self.assertFalse(idea.repeat_paused)
+        self.assertTrue(idea.repeat_is_due)
+
+
 class TrackingWorkflowTests(TestCase):
     def setUp(self):
         self.user = make_user(roles=["role_tracking"])

@@ -21,14 +21,14 @@
       <p class="parent-line dim">Repo: <code>{{ idea.repo }}</code></p>
     {% endif %}
 
-    <div class="exec-summary">
+    {% if not idea.repeat_enabled %}<div class="exec-summary">
       <h4>Latest effort summary</h4>
       {% if idea.exec_summary %}
         <p>{{ idea.exec_summary|urlize|linebreaksbr }}</p>
       {% else %}
         <p class="dim">No effort summary has been recorded yet.</p>
       {% endif %}
-    </div>
+    </div>{% endif %}
 
     {% if can_manage %}
       <div class="detail-primary-actions">
@@ -47,6 +47,20 @@
           </form>
         {% endif %}
       </div>
+    {% endif %}
+
+    {% if idea.repeat_enabled %}
+      <section class="detail-section repeat-results-section">
+        <h3 class="section-title">Repeat task results</h3>
+        <p><strong>Goal:</strong> {{ idea.repeat_goal }}</p>
+        <p class="dim">Target {{ idea.repeat_target_count }} result{{ idea.repeat_target_count|pluralize }} every {{ idea.repeat_interval_days }} day{{ idea.repeat_interval_days|pluralize }} · Last run {% if idea.last_repeat_run_at %}{{ idea.last_repeat_run_at|date:"M j, Y g:i A T" }}{% else %}never{% endif %} · {% if idea.repeat_paused %}<strong>Paused</strong>{% else %}Active{% endif %}</p>
+        {% if can_manage %}<form method="post" action="{% url 'ideas:toggle_repeat_pause' idea.pk %}">{% csrf_token %}<button class="btn small" type="submit">{% if idea.repeat_paused %}Resume repeat task{% else %}Pause repeat task{% endif %}</button></form>{% endif %}
+        {% if idea.repeat_results.all %}
+          <div class="table-wrap"><table class="repeat-results"><thead><tr><th>Found</th><th>Result</th><th>Details</th><th>Status</th></tr></thead><tbody>
+          {% for result in idea.repeat_results.all %}<tr><td>{{ result.found_at|date:"M j, Y" }}</td><td>{% if result.url %}<a href="{{ result.url }}" target="_blank" rel="noopener">{{ result.title }}</a>{% else %}{{ result.title }}{% endif %}</td><td>{{ result.details|urlize|linebreaksbr }}</td><td>{% if can_manage %}<form method="post" action="{% url 'ideas:update_repeat_result' idea.pk result.pk %}">{% csrf_token %}<select name="status" onchange="this.form.submit()">{% for value, label in repeat_result_statuses %}<option value="{{ value }}"{% if result.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></form>{% else %}{{ result.get_status_display }}{% endif %}</td></tr>{% endfor %}
+          </tbody></table></div>
+        {% else %}<p class="dim">No results have been collected yet.</p>{% endif %}
+      </section>
     {% endif %}
 
     <section class="detail-section overview-section">

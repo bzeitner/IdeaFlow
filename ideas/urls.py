@@ -29,6 +29,12 @@ urlpatterns = [
         name="queue_next_action",
     ),
     path(
+        "<int:pk>/repeat-results/<int:result_pk>/",
+        views.update_repeat_result,
+        name="update_repeat_result",
+    ),
+    path("<int:pk>/repeat/pause/", views.toggle_repeat_pause, name="toggle_repeat_pause"),
+    path(
         "<int:pk>/suggested-children/create/",
         views.create_suggested_child,
         name="create_suggested_child",

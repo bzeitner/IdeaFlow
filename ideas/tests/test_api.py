@@ -160,6 +160,49 @@ class ApiEffortTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiRepeatResultTests(TestCase):
+    def _post(self, idea, payload):
+        return self.client.post(
+            f"/api/ideas/{idea.pk}/effort/",
+            data=json.dumps(payload), content_type="application/json", **AUTH,
+        )
+
+    def test_records_deduplicated_results_and_completes_run(self):
+        idea = make_idea(repeat_enabled=True, repeat_goal="Find five job leads")
+        payload = {
+            "results": [
+                {"title": "Engineer", "url": "https://jobs.example/1", "details": "Local"},
+                {"title": "Duplicate", "url": "https://jobs.example/1"},
+            ]
+        }
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/repeat-results/",
+            data=json.dumps(payload), content_type="application/json", **AUTH,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(idea.repeat_results.count(), 1)
+        idea.refresh_from_db()
+        self.assertIsNotNone(idea.last_repeat_run_at)
+        self.assertFalse(idea.repeat_is_due)
+
+    def test_non_repeatable_idea_cannot_receive_results(self):
+        idea = make_idea()
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/repeat-results/",
+            data=json.dumps({"results": []}), content_type="application/json", **AUTH,
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_paused_repeat_task_rejects_results(self):
+        idea = make_idea(repeat_enabled=True, repeat_paused=True, repeat_goal="Find leads")
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/repeat-results/",
+            data=json.dumps({"results": []}), content_type="application/json", **AUTH,
+        )
+        self.assertEqual(response.status_code, 409)
+
     def test_moves_stage_and_status(self):
         idea = make_idea(status=Status.CURRENT)
         stage = make_stage(name="Prototyping")

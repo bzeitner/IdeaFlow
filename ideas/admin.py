@@ -17,6 +17,7 @@ from .models import (
     SemanticGraphSettings,
     Profile,
     Resource,
+    RepeatResult,
     ResearchEntry,
     Stage,
 )
@@ -95,6 +96,12 @@ class IdeaFeedInline(admin.TabularInline):
     fields = ("feed", "rating")
 
 
+class RepeatResultInline(admin.TabularInline):
+    model = RepeatResult
+    extra = 0
+    fields = ("title", "url", "status", "found_at")
+
+
 @admin.register(Idea)
 class IdeaAdmin(admin.ModelAdmin):
     list_display = ("title", "category", "parent", "status", "stage", "interest_level", "is_public", "rank")
@@ -103,7 +110,15 @@ class IdeaAdmin(admin.ModelAdmin):
     search_fields = ("title", "summary", "notes")
     list_select_related = ("category", "stage", "parent")
     autocomplete_fields = ("parent",)
-    inlines = [ResourceInline, ResearchEntryInline, IdeaFeedInline]
+    inlines = [ResourceInline, ResearchEntryInline, RepeatResultInline, IdeaFeedInline]
+
+
+@admin.register(RepeatResult)
+class RepeatResultAdmin(admin.ModelAdmin):
+    list_display = ("title", "idea", "status", "found_at")
+    list_filter = ("status",)
+    search_fields = ("title", "details", "url", "idea__title")
+    list_select_related = ("idea",)
 
 
 @admin.register(ResearchEntry)

@@ -65,3 +65,33 @@ class TaskSelectionStateTests(SimpleTestCase):
 
         self.assertEqual(output, "")
         self.assertEqual(state["reason"], "no_ideas")
+
+    def test_due_repeat_task_is_selected_even_when_paused(self):
+        listing = [{"id": 7, "status": "tracking", "title": "Daily leads"}]
+        details = {
+            7: {
+                "is_paused": True,
+                "title": "Daily leads",
+                "research_entries": [],
+                "next_action": "",
+                "repeat_task": {"enabled": True, "is_due": True},
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertIn("7 repeat Daily leads", output)
+        self.assertEqual(state["reason"], "actionable")
+
+    def test_manually_paused_repeat_task_is_not_selected(self):
+        listing = [{"id": 8, "status": "tracking", "title": "Paused repeat"}]
+        details = {
+            8: {
+                "title": "Paused repeat", "is_paused": False,
+                "research_entries": [{"id": 1}], "next_action": "",
+                "repeat_task": {"enabled": True, "paused": True, "is_due": False},
+            }
+        }
+        output, state = self.run_selector(listing, details)
+        self.assertEqual(output, "")
+        self.assertEqual(state["reason"], "idle")

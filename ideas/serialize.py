@@ -106,6 +106,20 @@ def idea_to_dict(idea, *, detail=True):
         data["notes"] = idea.notes
         data["next_action"] = idea.next_action
         data["next_actions"] = idea.next_action_queue
+        data["repeat_task"] = {
+            "enabled": idea.repeat_enabled,
+            "paused": idea.repeat_paused,
+            "goal": idea.repeat_goal,
+            "target_count": idea.repeat_target_count,
+            "interval_days": idea.repeat_interval_days,
+            "last_run_at": idea.last_repeat_run_at.isoformat() if idea.last_repeat_run_at else None,
+            "is_due": idea.repeat_is_due,
+        }
+        data["repeat_results"] = [
+            {"id": r.id, "title": r.title, "url": r.url, "details": r.details,
+             "status": r.status, "found_at": r.found_at.isoformat()}
+            for r in idea.repeat_results.all()
+        ]
         data["repo"] = idea.repo
         data["parent"] = (
             {"id": idea.parent_id, "title": idea.parent.title} if idea.parent_id else None

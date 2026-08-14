@@ -50,6 +50,17 @@ def main():
         if it.get("status") != "archived" and not detail[it["id"]].get("is_paused")
     ]
 
+    # Repeat tasks have their own completion clock and intentionally do not use
+    # the ordinary human-feedback pause counter.
+    for it in listed_ideas:
+        i = it["id"]
+        repeat = detail[i].get("repeat_task") or {}
+        if it.get("status") != "archived" and repeat.get("enabled") and not repeat.get("paused") and repeat.get("is_due"):
+            selected_repeat = (i, "repeat")
+            break
+    else:
+        selected_repeat = None
+
     def has_research(i):
         return bool(detail[i].get("research_entries"))
 
@@ -62,6 +73,9 @@ def main():
         if i not in seen:
             selected.append((i, mode))
             seen.add(i)
+
+    if selected_repeat:
+        add(*selected_repeat)
 
     idle_ids = []
     if force:

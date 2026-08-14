@@ -242,6 +242,10 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .queue-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .queue-actions form { margin: 0; }
 .queue-next-action-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.table-wrap { overflow-x: auto; }
+.repeat-results { width: 100%; border-collapse: collapse; }
+.repeat-results th, .repeat-results td { padding: 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.repeat-results select { min-width: 130px; }
 .overview-section { border-top: 0; margin-top: 8px; }
 .section-title { margin: 18px 0 4px; font-size: 16px; }
 .research-heading { margin-top: 16px; }

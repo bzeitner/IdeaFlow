@@ -18,6 +18,14 @@ def prompt(mode):
 
 
 class AgentPromptTests(SimpleTestCase):
+    def test_repeat_prompt_collects_structured_results_without_padding(self):
+        text = prompt("repeat")
+
+        self.assertIn("repeat_task goal", text)
+        self.assertIn("Do not pad", text)
+        self.assertIn("log-repeat-results 123", text)
+        self.assertIn("not log a normal effort", text)
+
     def test_research_prompt_requires_a_decision_and_current_summary(self):
         text = prompt("research")
 

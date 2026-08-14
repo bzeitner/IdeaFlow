@@ -19,7 +19,7 @@ from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSe
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, Stage, Status, SuggestionStatus
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, Stage, Status, SuggestionStatus
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -463,7 +463,7 @@ def archive(request):
 def detail(request, pk):
     idea = get_object_or_404(
         Idea.objects.select_related("parent").prefetch_related(
-            "resources", "research_entries", "research_entries__model", "children"
+            "resources", "research_entries", "research_entries__model", "children", "repeat_results"
         ),
         pk=pk,
     )
@@ -486,6 +486,7 @@ def detail(request, pk):
             "can_manage": can_manage,
             "idea_feeds": idea_feeds,
             "articles": recent_articles(idea),
+            "repeat_result_statuses": RepeatResultStatus.choices,
             "suggested_children": [
                 line for line in idea.suggested_children.splitlines() if line.strip()
             ],
@@ -647,6 +648,37 @@ def queue_next_action(request, pk):
             "updated_at",
         ]
     )
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def update_repeat_result(request, pk, result_pk):
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    result = get_object_or_404(RepeatResult, pk=result_pk, idea=idea)
+    status = request.POST.get("status")
+    if status in RepeatResultStatus.values:
+        result.status = status
+        result.save(update_fields=["status", "updated_at"])
+        messages.success(request, "Result status updated.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def toggle_repeat_pause(request, pk):
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk, repeat_enabled=True)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    idea.repeat_paused = not idea.repeat_paused
+    idea.save(update_fields=["repeat_paused", "updated_at"])
+    messages.success(request, "Repeat task paused." if idea.repeat_paused else "Repeat task resumed.")
     return redirect("ideas:detail", pk=pk)
 
 

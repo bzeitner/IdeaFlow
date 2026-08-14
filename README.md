@@ -191,6 +191,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report; `next_action` replaces the active action and `queued_next_actions` appends actions |
+| `POST /api/ideas/<id>/repeat-results/` | Store a completed repeat run (`{results: [{title, url?, details?}]}`), deduplicate URLs, and advance its schedule |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
 | `GET /api/graph/neighborhood/` | Bounded neighborhood (`?idea=<id>&depth=1&max_nodes=50`) |
 | `GET /api/graph/search/` | Search graph ideas (`?q=<text>`) |
@@ -302,6 +303,29 @@ Ideas can hold an ordered queue of next actions. The first item remains the
 active `next_action` used by task selection; the detail page can add, reorder,
 complete, or remove later items. Agents may append concrete follow-ups with the
 repeatable `--queue-next-action` option without replacing the active item.
+
+### Repeatable tasks and result tracking
+
+Enable **Repeat this task** on an idea, provide a measurable per-run goal, a
+target result count, and an interval in days (use `1` for daily). When due,
+`research_all.sh` selects it in `repeat` mode even if ordinary idea work is
+paused. The agent records a structured JSON batch through
+`tools/ideaflow log-repeat-results`; non-empty URLs are deduplicated per idea and
+the completion timestamp prevents another run until the interval elapses.
+
+Repeatable ideas show a results table instead of the latest-effort summary.
+People with the idea's normal status role can classify each row as New,
+Interested, Applied / Actioned, or Dismissed. IdeaFlow remains the source of
+truth so these mutations retain its existing authentication and role checks.
+The same role can pause or resume repeat runs independently of the ordinary
+agent-feedback pause; while paused, the scheduler skips the task and the repeat
+results API rejects write-backs.
+
+Google Sheets is best added as an optional one-way export or narrowly scoped
+sync adapter, not as primary storage. A future adapter should use a dedicated
+service account, store the sheet ID in server configuration, map rows by the
+IdeaFlow result ID, allowlist writable columns, and perform all synchronization
+server-side. Never expose Google credentials to browsers or research agents.
 
 The POST body's only required field is `topic`; everything else is optional. It returns the
 created entry plus the refreshed idea (`201`). The token is a single shared secret with no

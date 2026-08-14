@@ -19,6 +19,8 @@ class ParentIdeaSelect(forms.Select):
 
 
 class IdeaForm(forms.ModelForm):
+    repeat_target_count = forms.IntegerField(required=False, min_value=1, initial=5)
+    repeat_interval_days = forms.IntegerField(required=False, min_value=1, initial=1)
     include_archived_parents = forms.BooleanField(
         required=False, label="Include archived"
     )
@@ -51,6 +53,10 @@ class IdeaForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        cleaned["repeat_target_count"] = cleaned.get("repeat_target_count") or 5
+        cleaned["repeat_interval_days"] = cleaned.get("repeat_interval_days") or 1
+        if cleaned.get("repeat_enabled") and not (cleaned.get("repeat_goal") or "").strip():
+            self.add_error("repeat_goal", "A repeatable task requires a measurable goal.")
         parent = cleaned.get("parent")
         if not parent:
             return cleaned
@@ -101,6 +107,11 @@ class IdeaForm(forms.ModelForm):
             "repo",
             "is_public",
             "feed_limit_override",
+            "repeat_enabled",
+            "repeat_paused",
+            "repeat_goal",
+            "repeat_target_count",
+            "repeat_interval_days",
         ]
         labels = {
             "title": "Idea Title",
@@ -111,12 +122,18 @@ class IdeaForm(forms.ModelForm):
             "repo": "Target repo (owner/name or URL)",
             "is_public": "Public (visible to everyone signed in)",
             "feed_limit_override": "Feed limit override",
+            "repeat_enabled": "Repeat this task",
+            "repeat_paused": "Pause repeat runs",
+            "repeat_goal": "Goal for each run",
+            "repeat_target_count": "Target results per run",
+            "repeat_interval_days": "Run every (days)",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),
             "notes": forms.Textarea(attrs={"rows": 3}),
             "next_action": forms.Textarea(attrs={"rows": 2}),
             "exec_summary": forms.Textarea(attrs={"rows": 5}),
+            "repeat_goal": forms.Textarea(attrs={"rows": 3}),
             "interest_level": forms.RadioSelect,
         }
 
