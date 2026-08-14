@@ -1,4 +1,5 @@
 {% extends "ideas/base.html" %}
+{% load static %}
 {% block title %}Tracking · IdeaFlow{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -33,7 +34,7 @@
       <option value="updated"{% if filters.sort == 'updated' %} selected{% endif %}>Last update (newest first)</option>
       <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
     </select>
-    <button class="btn primary" type="submit">Apply</button>
+    <button class="btn primary" type="submit" data-filter-apply>Apply</button>
     {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'family' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
   </form>
 
@@ -83,5 +84,5 @@
   {% else %}
     <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}">Clear filters</a></p>
   {% endif %}
-  <script src="/static/ideas/tracking.js"></script>
+  <script src="{% static 'ideas/tracking.js' %}"></script>
 {% endblock %}

@@ -600,7 +600,8 @@ class TrackingWorkflowTests(TestCase):
         response = self.client.get(reverse("ideas:tracking"))
 
         self.assertContains(response, "data-auto-submit-filters")
-        self.assertContains(response, "ideas/tracking.js")
+        self.assertContains(response, "data-filter-apply")
+        self.assertContains(response, 'src="/static/ideas/tracking.')
 
     def test_default_sort_groups_parents_with_their_children(self):
         later_parent = make_idea(
@@ -642,7 +643,7 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, 'data-family-toggle="%s"' % parent.pk)
         self.assertContains(response, "1 child")
         self.assertContains(response, 'data-parent-id="%s"' % parent.pk)
-        self.assertContains(response, "ideas/tracking.js")
+        self.assertContains(response, 'src="/static/ideas/tracking.')
         self.assertContains(response, "data-tracking-status-form")
 
     def test_child_toggle_is_only_shown_for_family_sort(self):
