@@ -188,6 +188,21 @@ class IdeaCreateViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Capture an Idea")
 
+    def test_form_groups_repeat_and_advanced_settings(self):
+        user = make_user(roles=["role_add_ideas"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:create"))
+        content = response.content.decode()
+
+        self.assertContains(response, "Repeat task")
+        self.assertContains(response, "Organization")
+        self.assertContains(response, "Priority and planning")
+        self.assertContains(response, "Agent context")
+        self.assertContains(response, "Visibility")
+        self.assertLess(content.index("Repeat task"), content.index("Links and resources"))
+        self.assertLess(content.index("Links and resources"), content.index("More details and settings"))
+
     def test_valid_post_creates_idea(self):
         # Also grant role_current so the post-save redirect to the idea's own
         # detail page (status="current") lands on a 200, not another redirect.

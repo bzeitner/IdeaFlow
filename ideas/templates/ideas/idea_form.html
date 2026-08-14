@@ -21,6 +21,23 @@
       {% endif %}
     {% endfor %}
 
+    <fieldset class="repeat-settings" data-repeat-settings>
+      <legend>Repeat task</legend>
+      <div class="repeat-toggle-row">
+        <label class="checkbox-field">{{ form.repeat_enabled }} <span>{{ form.repeat_enabled.label }}</span></label>
+        <span class="dim">Run a measurable collection task on a schedule and track structured results.</span>
+      </div>
+      {{ form.repeat_enabled.errors }}
+      <div class="repeat-settings-body" data-repeat-settings-body>
+        <div class="field field-wide"><label for="{{ form.repeat_goal.id_for_label }}">{{ form.repeat_goal.label }}</label>{{ form.repeat_goal }}{% if form.repeat_goal.help_text %}<small class="dim">{{ form.repeat_goal.help_text }}</small>{% endif %}{{ form.repeat_goal.errors }}</div>
+        <div class="compact-field-grid">
+          <div class="field field-compact"><label for="{{ form.repeat_target_count.id_for_label }}">{{ form.repeat_target_count.label }}</label>{{ form.repeat_target_count }}{{ form.repeat_target_count.errors }}</div>
+          <div class="field field-compact"><label for="{{ form.repeat_interval_days.id_for_label }}">{{ form.repeat_interval_days.label }}</label>{{ form.repeat_interval_days }}{{ form.repeat_interval_days.errors }}</div>
+        </div>
+        <label class="checkbox-field">{{ form.repeat_paused }} <span>{{ form.repeat_paused.label }}</span></label>{{ form.repeat_paused.errors }}
+      </div>
+    </fieldset>
+
     <fieldset class="resource-list" data-resource-formset>
       <legend>Links and resources</legend>
       {{ formset.management_form }}
@@ -34,25 +51,41 @@
     </fieldset>
 
     <details class="advanced-fields"{% if idea or form.errors %} open{% endif %}>
-      <summary>More details and settings</summary>
+      <summary>More details and settings <span class="dim">Organization, priority, agents, and visibility</span></summary>
       <div class="advanced-fields-body">
-        {% for field in form %}
-          {% if field.name != 'title' and field.name != 'summary' and field.name != 'category' and field.name != 'next_action' and field.name != 'include_archived_parents' and field.name != 'include_child_parents' %}
-            <div class="field {% if field.name == 'interest_level' %}stars-field{% endif %}">
+        <section class="settings-group"><h3>Organization</h3><div class="settings-grid">
+        {% for field in form %}{% if field.name == 'parent' or field.name == 'status' or field.name == 'stage' %}
+            <div class="field{% if field.name == 'parent' %} field-wide{% endif %}">
               <label for="{{ field.id_for_label }}">{{ field.label }}</label>
               {% if field.name == 'parent' %}
                 <div class="parent-picker">{{ field }}<div class="parent-picker-options"><label>{{ form.include_archived_parents }} {{ form.include_archived_parents.label }}</label><label>{{ form.include_child_parents }} {{ form.include_child_parents.label }}</label></div></div>
               {% else %}{{ field }}{% endif %}
               {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
             </div>
-          {% endif %}
-        {% endfor %}
+        {% endif %}{% endfor %}</div></section>
+        <section class="settings-group"><h3>Priority and planning</h3><div class="settings-grid">
+        {% for field in form %}{% if field.name == 'interest_level' or field.name == 'rank' or field.name == 'feed_limit_override' %}<div class="field{% if field.name == 'interest_level' %} stars-field field-wide{% else %} field-compact{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
+        </div></section>
+        <section class="settings-group"><h3>Agent context</h3><div class="settings-grid">
+        {% for field in form %}{% if field.name == 'repo' or field.name == 'notes' or field.name == 'exec_summary' %}<div class="field field-wide"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
+        </div></section>
+        <section class="settings-group"><h3>Visibility</h3><label class="checkbox-field">{{ form.is_public }} <span>{{ form.is_public.label }}</span></label>{{ form.is_public.errors }}</section>
       </div>
     </details>
 
     <div class="card-actions"><button class="btn primary" type="submit">Save Idea</button><a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a></div>
   </form>
   <script>
+    (function () {
+      const repeat = document.querySelector('[data-repeat-settings]');
+      if (repeat) {
+        const enabled = repeat.querySelector('#id_repeat_enabled');
+        const body = repeat.querySelector('[data-repeat-settings-body]');
+        function refreshRepeat() { body.hidden = !enabled.checked; }
+        enabled.addEventListener('change', refreshRepeat);
+        refreshRepeat();
+      }
+    }());
     (function () {
       const box = document.querySelector('[data-resource-formset]');
       if (!box) return;
