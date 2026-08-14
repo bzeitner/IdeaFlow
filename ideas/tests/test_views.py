@@ -537,6 +537,12 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "Matching roadmap")
         self.assertNotContains(response, "Other idea")
 
+    def test_filters_are_marked_for_immediate_application(self):
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertContains(response, "data-auto-submit-filters")
+        self.assertContains(response, "ideas/tracking.js")
+
     def test_default_sort_groups_parents_with_their_children(self):
         later_parent = make_idea(
             title="Later parent", status=Status.TRACKING, rank=20

@@ -8,7 +8,7 @@
     </div>
   </div>
 
-  <form method="get" class="tracking-filters">
+  <form method="get" class="tracking-filters" data-auto-submit-filters>
     <label class="filter-search">
       <span class="sr-only">Search ideas</span>
       <input type="search" name="q" value="{{ filters.q }}" placeholder="Search ideas…">
@@ -80,8 +80,8 @@
         </article>
       {% endfor %}
     </div>
-    <script src="/static/ideas/tracking.js"></script>
   {% else %}
     <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}">Clear filters</a></p>
   {% endif %}
+  <script src="/static/ideas/tracking.js"></script>
 {% endblock %}
