@@ -367,7 +367,9 @@ def current(request):
 
 @role_required("role_tracking")
 def tracking(request):
-    ideas = Idea.objects.filter(status=Status.TRACKING).prefetch_related("resources")
+    ideas = Idea.objects.filter(status=Status.TRACKING).prefetch_related(
+        "resources", "research_entries"
+    )
     query = request.GET.get("q", "").strip()
     category = request.GET.get("category", "")
     stage = request.GET.get("stage", "")

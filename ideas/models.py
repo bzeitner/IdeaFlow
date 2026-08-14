@@ -232,6 +232,14 @@ class Idea(models.Model):
         return self.status == Status.ARCHIVED
 
     @property
+    def open_question_count(self):
+        """Number of research questions still awaiting human input."""
+        return sum(
+            len(entry.unanswered_question_items)
+            for entry in self.research_entries.all()
+        )
+
+    @property
     def next_action_queue(self):
         queue = [str(item).strip() for item in self.next_actions if str(item).strip()]
         if not queue and self.next_action.strip():

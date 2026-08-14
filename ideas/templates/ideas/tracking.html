@@ -41,7 +41,7 @@
   {% if ideas %}
     <div class="tracking-list">
       {% for idea in ideas %}
-        <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused %} needs-attention{% endif %}" data-idea-id="{{ idea.pk }}"{% if idea.parent_id %} data-parent-id="{{ idea.parent_id }}"{% endif %}>
+        <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused or idea.open_question_count %} needs-attention{% endif %}" data-idea-id="{{ idea.pk }}"{% if idea.parent_id %} data-parent-id="{{ idea.parent_id }}"{% endif %}>
           <div class="tracking-item-main">
             <div class="card-head">
               <h3>{% if idea.parent_id %}<span class="child-marker" aria-label="Child idea">↳</span> {% endif %}<span class="idea-id dim">#{{ idea.id }}</span> <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a>{% if filters.sort == 'family' and idea.tracking_child_count %} <button class="family-toggle" type="button" aria-expanded="true" data-family-toggle="{{ idea.pk }}"><span class="family-toggle-icon" aria-hidden="true">▾</span><span>{{ idea.tracking_child_count }} {% if idea.tracking_child_count == 1 %}child{% else %}children{% endif %}</span></button>{% endif %}</h3>
@@ -51,6 +51,7 @@
               {% include "ideas/_pill.html" with obj=idea.category %}
               {% include "ideas/_pill.html" with obj=idea.stage %}
               {% if idea.is_paused %}<span class="pill attention-pill">Paused</span>{% endif %}
+              {% if idea.open_question_count %}<a class="pill question-pill" href="{{ idea.get_absolute_url }}#open-questions">❓ Human input needed ({{ idea.open_question_count }})</a>{% endif %}
               <span class="dim">Updated {{ idea.updated_at|date:"M j, Y" }}</span>
               {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener">Open PR ↗</a>{% endif %}
             </div>

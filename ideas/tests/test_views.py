@@ -677,6 +677,41 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "data-filter-apply")
         self.assertContains(response, 'src="/static/ideas/tracking.')
 
+    def test_unanswered_research_questions_show_linked_indicator(self):
+        from ideas.reporting import record_effort
+
+        waiting = make_idea(title="Needs answer", status=Status.TRACKING)
+        entry, _resource = record_effort(
+            waiting,
+            topic="Open decisions",
+            model="other",
+            open_questions=["Which region?", "What budget?"],
+        )
+        answered = make_idea(title="Already answered", status=Status.TRACKING)
+        answered_entry, _resource = record_effort(
+            answered,
+            topic="Resolved decision",
+            model="other",
+            open_questions=["Which audience?"],
+        )
+        answered_entry.question_answers = {"0": "Retailers"}
+        answered_entry.save(update_fields=["question_answers"])
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        rendered_waiting = next(
+            idea for idea in response.context["ideas"] if idea.pk == waiting.pk
+        )
+        rendered_answered = next(
+            idea for idea in response.context["ideas"] if idea.pk == answered.pk
+        )
+        self.assertEqual(rendered_waiting.open_question_count, 2)
+        self.assertEqual(rendered_answered.open_question_count, 0)
+        self.assertContains(response, "Human input needed (2)")
+        self.assertContains(
+            response, f'href="{waiting.get_absolute_url()}#open-questions"'
+        )
+
     def test_default_sort_groups_parents_with_their_children(self):
         later_parent = make_idea(
             title="Later parent", status=Status.TRACKING, rank=20
