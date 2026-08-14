@@ -19,8 +19,12 @@ class ParentIdeaSelect(forms.Select):
 
 
 class IdeaForm(forms.ModelForm):
-    repeat_target_count = forms.IntegerField(required=False, min_value=1, initial=5)
-    repeat_interval_days = forms.IntegerField(required=False, min_value=1, initial=1)
+    repeat_target_count = forms.IntegerField(
+        required=False, min_value=1, initial=5, label="Target results per run"
+    )
+    repeat_interval_days = forms.IntegerField(
+        required=False, min_value=1, initial=1, label="Run every (days)"
+    )
     include_archived_parents = forms.BooleanField(
         required=False, label="Include archived"
     )

@@ -67,7 +67,9 @@
         {% for field in form %}{% if field.name == 'interest_level' or field.name == 'rank' or field.name == 'feed_limit_override' %}<div class="field{% if field.name == 'interest_level' %} stars-field field-wide{% else %} field-compact{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
         </div></section>
         <section class="settings-group"><h3>Agent context</h3><div class="settings-grid">
-        {% for field in form %}{% if field.name == 'repo' or field.name == 'notes' or field.name == 'exec_summary' %}<div class="field field-wide"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
+        <div class="field field-wide"><label for="{{ form.repo.id_for_label }}">{{ form.repo.label }}</label>{{ form.repo }}{% if form.repo.help_text %}<small class="dim">{{ form.repo.help_text }}</small>{% endif %}{{ form.repo.errors }}</div>
+        <div class="field field-wide"><label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>{{ form.notes }}{{ form.notes.errors }}</div>
+        <div class="field field-wide"><label for="{{ form.exec_summary.id_for_label }}">{{ form.exec_summary.label }}</label>{{ form.exec_summary }}{% if form.exec_summary.help_text %}<small class="dim">{{ form.exec_summary.help_text }}</small>{% endif %}{{ form.exec_summary.errors }}</div>
         </div></section>
         <section class="settings-group"><h3>Visibility</h3><label class="checkbox-field">{{ form.is_public }} <span>{{ form.is_public.label }}</span></label>{{ form.is_public.errors }}</section>
       </div>
