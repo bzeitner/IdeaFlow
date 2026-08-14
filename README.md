@@ -298,7 +298,7 @@ idea instead of re-analyzing them. If eligible ideas exist but all are idle, it
 runs a structured read-only portfolio reflection. If no ideas match, or all are
 paused/archived, it reports the reason and exits without launching an agent.
 Flags: `--review`, `--force`,
-`--reflect`, `--status`, `--delay`, `--dry-run`. Once an idea has research, its
+`--reflect`, `--status`, `--dry-run`. Once an idea has research, its
 detail page identifies the active next action (also settable by the review agent
 via `log-effort --next-action`). After two agent runs without human input,
 an idea pauses until a person adds a next action or chooses **Continue work**.

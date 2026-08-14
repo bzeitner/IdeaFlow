@@ -13,7 +13,6 @@
 # Options:
 #   --status current|tracking|archived   limit to one tab
 #   --min N                               retained for compatibility (default 5)
-#   --delay SECONDS                       cooldown between runs (default 90)
 #   --review                              review every already-researched idea
 #   --force                               research EVERY idea (ignore existing work)
 #   --reflect                             just run the project-level reflection
@@ -39,7 +38,6 @@ SHARED_STANDARDS="$(prompt_shared_standards)"
 
 STATUS=""
 MIN=5
-DELAY=90
 FORCE=0
 REVIEW=0
 REFLECT=0
@@ -49,7 +47,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --status) STATUS="${2:-}"; shift 2 ;;
     --min)    MIN="${2:-}";    shift 2 ;;
-    --delay)  DELAY="${2:-}";  shift 2 ;;
     --force)  FORCE=1; shift ;;
     --review) REVIEW=1; shift ;;
     --reflect) REFLECT=1; shift ;;
@@ -67,9 +64,7 @@ case "$AGENT" in
   claude|codex) ;;
   *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
 esac
-for n in "$MIN" "$DELAY"; do
-  [[ "$n" =~ ^[0-9]+$ ]] || { echo "error: --min and --delay must be whole numbers." >&2; exit 2; }
-done
+[[ "$MIN" =~ ^[0-9]+$ ]] || { echo "error: --min must be a whole number." >&2; exit 2; }
 
 STATE_FILE="$(mktemp -t ideaflow-selection.XXXXXX.json)"
 printf '{}\n' > "$STATE_FILE"
@@ -179,7 +174,7 @@ note=""
 [[ -n "$STATUS" ]] && note+=", status=$STATUS"
 echo "Work list (${#IDS[@]} actionable): ${plan%, }"
 echo "Agent: ${AGENT}"
-echo "Pacing: ${DELAY}s between runs${note}"
+[[ -n "$note" ]] && echo "Selection:${note#,}"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "(dry run — not launching anything)"
@@ -196,10 +191,6 @@ for i in "${!IDS[@]}"; do
   else
     echo "!!! ${title} (#${id}) failed (continuing) !!!" >&2
     fail=$((fail + 1))
-  fi
-  if [[ $((i + 1)) -lt ${#IDS[@]} ]]; then
-    echo "--- waiting ${DELAY}s before the next idea ---"
-    sleep "$DELAY"
   fi
 done
 
