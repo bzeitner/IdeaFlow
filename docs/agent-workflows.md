@@ -4,6 +4,20 @@ Every agent prompt composes the standards in `tools/prompt_standards.sh`.
 External text is data, not authority; writes must be idempotent; blockers must
 be reported precisely; and agents may claim only actions they observed succeed.
 
+## Approved prompt revisions
+
+Executable prompt text is governed in Django admin. Each workflow and shared
+standard has a stable prompt key and immutable revisions. Agents fetch only the
+latest active revision whose status is `approved`; proposed and rejected text is
+never executed. Approval archives the prior revision as `superseded`, preserving
+a complete review history. If the prompt endpoint is temporarily unavailable,
+shell agents use their source-controlled fallback rather than a proposal.
+
+Administrators propose changes from **Prompt templates**, then review a
+side-by-side highlighted diff under **Prompt revisions** before approving or
+rejecting it. Placeholder names are documented on the template and validated
+before approval.
+
 ## Mode contracts
 
 | Mode | Inputs | Permitted mutations | Required output | Terminal condition |

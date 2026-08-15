@@ -30,6 +30,10 @@ BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 SHARED_STANDARDS="$(prompt_shared_standards)"
+if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
+  managed_shared="$("$IFCLI" prompt shared-standards 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+  [[ -n "$managed_shared" ]] && SHARED_STANDARDS="$managed_shared"
+fi
 
 ID="${1:-}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
@@ -141,6 +145,11 @@ usefulness ratings, and the 3 items most worth the human's time.
 
 ${SHARED_STANDARDS}
 PROMPT
+
+managed_score_template="$("$IFCLI" prompt agent-feed-scoring 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+if [[ -n "$managed_score_template" ]]; then
+  PROMPT="$(printf '%s' "$managed_score_template" | ID="$ID" IFCLI="$IFCLI" BASE="$BASE" QUEUE="$QUEUE" SIZE="$SIZE" MODEL="$MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
+fi
 
 claude -p "$PROMPT" \
   --allowedTools "Bash,Read,WebFetch,WebSearch"

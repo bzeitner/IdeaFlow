@@ -21,6 +21,7 @@ from ideas.models import (
     SemanticStatus,
     SuggestionStatus,
 )
+from ideas.prompts import approved_prompt
 
 EMBEDDING_DIMENSIONS = 1536
 CLASSIFIABLE_TYPES = {choice for choice, _label in RelationType.choices}
@@ -85,13 +86,12 @@ class SemanticAPI:
             f"CANDIDATE {idea.pk}\n{semantic_text(idea)[:5000]}" for idea, _similarity in candidates
         )
         allowed = ", ".join(sorted(CLASSIFIABLE_TYPES))
-        prompt = f"""Identify only clear, useful semantic relationships between SOURCE and the candidates.
-Allowed types: {allowed}. Direction matters: source depends_on target means SOURCE needs TARGET; source enables target means SOURCE makes TARGET possible; source supports/contradicts target means SOURCE's evidence supports/contradicts TARGET. Use related_to only for a strong connection that has no more precise type. Omit weak links.
-Return JSON with a single `relationships` array. Each item must contain candidate_id (integer), relation_type, confidence (0..1), description (one sentence), and evidence (a short paraphrase of the research basis; never invent evidence).
-
-SOURCE {source.pk}\n{semantic_text(source)[:10000]}
-
-{candidate_text}"""
+        prompt = approved_prompt("semantic-relationship-classifier").format(
+            allowed=allowed,
+            source_id=source.pk,
+            source_text=semantic_text(source)[:10000],
+            candidate_text=candidate_text,
+        )
         data = self._post(
             "/chat/completions",
             {

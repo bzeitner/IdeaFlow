@@ -35,6 +35,10 @@ AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 SHARED_STANDARDS="$(prompt_shared_standards)"
+if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
+  managed_shared="$("$IFCLI" prompt shared-standards 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+  [[ -n "$managed_shared" ]] && SHARED_STANDARDS="$managed_shared"
+fi
 
 STATUS=""
 MIN=5
@@ -112,6 +116,12 @@ modify IdeaFlow, create ideas, add suggestions, register feeds, or log efforts.
 
 ${SHARED_STANDARDS}
 PROMPT
+  if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
+    managed_reflection="$("$IFCLI" prompt agent-portfolio-reflection 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+    if [[ -n "$managed_reflection" ]]; then
+      prompt="$(printf '%s' "$managed_reflection" | reason="$reason" STATE_FILE="$STATE_FILE" IFCLI="$IFCLI" BASE="$BASE" SHARED_STANDARDS="$SHARED_STANDARDS" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
+    fi
+  fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf '%s\n' "$prompt"
     return 0

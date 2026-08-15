@@ -234,6 +234,24 @@ The inputs, allowed mutations, outputs, terminal conditions, and shared safety
 standards for every mode are documented in
 [`docs/agent-workflows.md`](docs/agent-workflows.md).
 
+### Prompt governance
+
+Administrators manage executable AI prompts under **Manage → Prompt templates**.
+Every template has a stable runtime key, documented placeholders, and an
+immutable revision history. **Propose change** copies the current approved text
+into a new proposal; the proposal review page displays the approved and proposed
+versions side by side with additions, deletions, and changed text highlighted.
+Only an explicit **Approve proposal** action makes a revision executable. The
+previous approved version is retained as superseded, while rejected proposals
+remain reviewable. Prompt revision bodies cannot be edited in place.
+
+The registry covers research, review, execution, critique, repeat tasks,
+portfolio reflection, feed scoring, shared agent standards, semantic relationship
+classification, and open-question extraction. Agent scripts fetch only active,
+approved revisions through the authenticated API and retain source-controlled
+fallbacks for availability during a deployment or API outage. The admin UI also
+adds mouse-over descriptions to fields, models, columns, and action controls.
+
 **Knowledge graph.** Users with the Knowledge Graph role get a Graph tab that
 projects parent-child links and typed idea relationships directly from canonical
 PostgreSQL data. Agents read bounded context with `./tools/ideaflow graph-context

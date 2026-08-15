@@ -59,6 +59,20 @@ EFFORT_QUALITY_STANDARD="$(prompt_effort_quality_scale)"
 CHILD_STANDARD="$(prompt_child_suggestion_standard)"
 NEXT_ACTION_STANDARD="$(prompt_next_action_standard)"
 
+managed_prompt() {
+  local key="$1" fallback="$2" value=""
+  if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
+    value="$("$IFCLI" prompt "$key" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+  fi
+  printf '%s' "${value:-$fallback}"
+}
+SHARED_STANDARDS="$(managed_prompt shared-standards "$SHARED_STANDARDS")"
+PR_RESOURCE_STANDARD="$(managed_prompt pr-resource-standard "$PR_RESOURCE_STANDARD")"
+HUMAN_SUMMARY_STANDARD="$(managed_prompt human-summary-standard "$HUMAN_SUMMARY_STANDARD")"
+EFFORT_QUALITY_STANDARD="$(managed_prompt effort-quality-standard "$EFFORT_QUALITY_STANDARD")"
+CHILD_STANDARD="$(managed_prompt child-suggestion-standard "$CHILD_STANDARD")"
+NEXT_ACTION_STANDARD="$(managed_prompt next-action-standard "$NEXT_ACTION_STANDARD")"
+
 if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
   echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
   exit 1
@@ -321,6 +335,15 @@ ${EFFORT_QUALITY_STANDARD}
 ${SHARED_STANDARDS}
 ${HUMAN_SUMMARY_STANDARD}
 PROMPT
+fi
+
+# Approved prompt revisions are executable configuration. Render the managed
+# mode template with the same runtime values used by the source fallback.
+if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
+  managed_mode_template="$("$IFCLI" prompt "agent-${MODE}" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
+  if [[ -n "$managed_mode_template" ]]; then
+    PROMPT="$(printf '%s' "$managed_mode_template" | ID="$ID" IFCLI="$IFCLI" BASE="$BASE" REPORT="$REPORT" MODEL="$MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" PR_RESOURCE_STANDARD="$PR_RESOURCE_STANDARD" HUMAN_SUMMARY_STANDARD="$HUMAN_SUMMARY_STANDARD" EFFORT_QUALITY_STANDARD="$EFFORT_QUALITY_STANDARD" CHILD_STANDARD="$CHILD_STANDARD" NEXT_ACTION_STANDARD="$NEXT_ACTION_STANDARD" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
+  fi
 fi
 
 if [[ "$PRINT_PROMPT" -eq 1 ]]; then

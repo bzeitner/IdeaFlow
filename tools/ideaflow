@@ -80,6 +80,10 @@ def cmd_config(a):
     return _request("GET", "/config/")
 
 
+def cmd_prompt(a):
+    return _request("GET", f"/prompts/{a.key}/")
+
+
 def cmd_list_ideas(a):
     return _request("GET", "/ideas/", params={"status": a.status})
 
@@ -191,6 +195,10 @@ def build_parser():
 
     s = sub.add_parser("config", help="Task->model routing + model tiers.")
     s.set_defaults(func=cmd_config)
+
+    s = sub.add_parser("prompt", help="Fetch one active approved prompt revision.")
+    s.add_argument("key")
+    s.set_defaults(func=cmd_prompt)
 
     s = sub.add_parser("list-ideas")
     s.add_argument("--status")

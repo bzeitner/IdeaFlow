@@ -281,6 +281,12 @@ ln -sfn /etc/nginx/sites-available/ideaflow-graph-lab /etc/nginx/sites-enabled/i
 
 Run the normal `deploy/update.sh` before enabling Graph Lab. It applies the
 `GraphAccessCapability` migration, runs `collectstatic`, and restarts Django.
+
+Prompt governance is installed by migration `0025_prompt_governance`. It seeds
+approved v1 revisions from the source-controlled agent prompts. Subsequent
+prompt changes are proposed and reviewed in Django admin; deploying application
+code does not approve a pending prompt revision. `collectstatic` installs the
+admin tooltip and diff-review styling used by that interface.
 Then set these values in `/home/ideaflow/IdeaFlow/.env` and restart:
 
 ```dotenv

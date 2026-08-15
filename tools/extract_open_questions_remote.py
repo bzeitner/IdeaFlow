@@ -65,16 +65,12 @@ def markdown_questions(context):
     return questions
 
 
-def ai_questions(entries, *, api_key, api_base, model):
+def ai_questions(entries, *, api_key, api_base, model, prompt_template):
     reports = "\n\n".join(
         f"ENTRY {entry['id']}\nTopic: {entry['topic']}\n{entry['context'][:MAX_REPORT_CHARS]}"
         for entry in entries
     )
-    prompt = f"""Extract only unresolved questions that require a human decision or private context from these historical reports.
-Exclude researchable facts, rhetorical/resolved questions, and vague requests for more information.
-Return JSON with `entries`, an array of objects containing entry_id and questions. Each question item has question and confidence (0..1). Include every entry, using an empty questions array when appropriate.
-
-{reports}"""
+    prompt = prompt_template.format(reports=reports)
     data = request_json(
         f"{api_base.rstrip('/')}/chat/completions",
         token=api_key,
@@ -156,8 +152,19 @@ def main():
             sys.exit("error: IDEAFLOW_SEMANTIC_API_KEY is required with --use-ai.")
         api_base = os.environ.get("IDEAFLOW_SEMANTIC_API_BASE", "https://api.openai.com/v1")
         model = os.environ.get("IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL", "gpt-4.1-mini")
+        prompt_template = request_json(
+            f"{base}/api/prompts/open-question-batch/", token=token
+        )["content"]
         for batch in chunks(ambiguous, args.batch_size):
-            findings.update(ai_questions(batch, api_key=api_key, api_base=api_base, model=model))
+            findings.update(
+                ai_questions(
+                    batch,
+                    api_key=api_key,
+                    api_base=api_base,
+                    model=model,
+                    prompt_template=prompt_template,
+                )
+            )
 
     found = updated = 0
     by_id = {entry["id"]: entry for entry in candidates}

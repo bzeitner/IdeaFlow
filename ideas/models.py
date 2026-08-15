@@ -1,4 +1,5 @@
 from datetime import timedelta
+from string import Formatter
 
 from datetime import timedelta
 
@@ -6,7 +7,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
@@ -407,6 +408,96 @@ class SemanticGraphSettings(models.Model):
     def load(cls):
         settings_row, _created = cls.objects.get_or_create(pk=1)
         return settings_row
+
+
+class PromptRevisionStatus(models.TextChoices):
+    PROPOSED = "proposed", "Proposed"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+    SUPERSEDED = "superseded", "Superseded"
+
+
+class PromptTemplate(models.Model):
+    key = models.SlugField(max_length=100, unique=True, help_text="Stable identifier used by agent code to load this prompt.")
+    name = models.CharField(max_length=200, help_text="Human-readable name shown in prompt management.")
+    description = models.TextField(blank=True, help_text="What this prompt controls, when it runs, and its intended outcome.")
+    variables = models.JSONField(default=list, blank=True, help_text="Documented placeholder names supplied by the runtime.")
+    is_active = models.BooleanField(default=True, help_text="Inactive prompts remain archived but cannot be loaded for execution.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "key"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def approved_revision(self):
+        return self.revisions.filter(status=PromptRevisionStatus.APPROVED).order_by("-version").first()
+
+
+class PromptRevision(models.Model):
+    template = models.ForeignKey(PromptTemplate, related_name="revisions", on_delete=models.CASCADE, help_text="Prompt whose history this immutable revision belongs to.")
+    version = models.PositiveIntegerField(blank=True, help_text="Monotonically increasing version number within this prompt.")
+    content = models.TextField(help_text="Complete prompt text. Approved text is what agents execute.")
+    status = models.CharField(max_length=16, choices=PromptRevisionStatus.choices, default=PromptRevisionStatus.PROPOSED, help_text="Only approved revisions are eligible for agent execution.")
+    change_summary = models.TextField(blank=True, help_text="Why this change is proposed and its expected behavioral impact.")
+    created_by = models.ForeignKey(User, null=True, blank=True, related_name="prompt_revisions_created", on_delete=models.SET_NULL)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, related_name="prompt_revisions_reviewed", on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["template__name", "-version"]
+        constraints = [models.UniqueConstraint(fields=["template", "version"], name="unique_prompt_revision_version")]
+
+    def __str__(self):
+        return f"{self.template.name} v{self.version} ({self.get_status_display()})"
+
+    def clean(self):
+        super().clean()
+        try:
+            used = {
+                field_name.split(".", 1)[0].split("[", 1)[0]
+                for _literal, field_name, _format_spec, _conversion in Formatter().parse(self.content)
+                if field_name
+            }
+        except ValueError as exc:
+            raise ValidationError({"content": f"Invalid prompt placeholder syntax: {exc}"}) from exc
+        allowed = set(self.template.variables or [])
+        unknown = sorted(used - allowed)
+        if unknown:
+            raise ValidationError({"content": f"Undocumented placeholder(s): {', '.join(unknown)}."})
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            original = PromptRevision.objects.get(pk=self.pk)
+            if original.content != self.content or original.template_id != self.template_id:
+                raise ValidationError("Prompt revision content and ownership are immutable; create a proposal instead.")
+        elif not self.version:
+            latest = PromptRevision.objects.filter(template=self.template).order_by("-version").values_list("version", flat=True).first() or 0
+            self.version = latest + 1
+        super().save(*args, **kwargs)
+
+    @transaction.atomic
+    def approve(self, user):
+        if self.status != PromptRevisionStatus.PROPOSED:
+            raise ValidationError("Only proposed prompt revisions can be approved.")
+        self.full_clean()
+        PromptRevision.objects.filter(template=self.template, status=PromptRevisionStatus.APPROVED).update(status=PromptRevisionStatus.SUPERSEDED)
+        self.status = PromptRevisionStatus.APPROVED
+        self.reviewed_by = user
+        self.reviewed_at = timezone.now()
+        self.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+
+    def reject(self, user):
+        if self.status != PromptRevisionStatus.PROPOSED:
+            raise ValidationError("Only proposed prompt revisions can be rejected.")
+        self.status = PromptRevisionStatus.REJECTED
+        self.reviewed_by = user
+        self.reviewed_at = timezone.now()
+        self.save(update_fields=["status", "reviewed_by", "reviewed_at"])
 
 
 class IdeaSemanticState(models.Model):

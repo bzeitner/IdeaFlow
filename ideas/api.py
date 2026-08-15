@@ -27,7 +27,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, RepeatResult, ResearchEntry, Resource, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -85,6 +85,17 @@ def idea_list(request):
     if status:
         ideas = ideas.filter(status=status)
     return JsonResponse({"ideas": [idea_to_dict(i, detail=False) for i in ideas]})
+
+
+@require_api_token
+def approved_prompt_view(request, key):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    template = get_object_or_404(PromptTemplate, key=key, is_active=True)
+    revision = template.revisions.filter(status=PromptRevisionStatus.APPROVED).order_by("-version").first()
+    if revision is None:
+        return JsonResponse({"error": "This prompt has no approved revision."}, status=409)
+    return JsonResponse({"key": key, "version": revision.version, "content": revision.content})
 
 
 @require_api_token
@@ -554,6 +565,7 @@ def idea_suggest_children(request, pk):
 
 
 urlpatterns = [
+    path("prompts/<slug:key>/", approved_prompt_view, name="api_approved_prompt"),
     path("graph/", graph_data, name="api_graph"),
     path("graph/neighborhood/", graph_neighborhood, name="api_graph_neighborhood"),
     path("graph/search/", graph_search_view, name="api_graph_search"),

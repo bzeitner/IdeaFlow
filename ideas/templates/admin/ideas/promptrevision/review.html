@@ -1,0 +1,33 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}<style>
+.prompt-review-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:0 0 18px; }
+.prompt-review-meta > div { background:var(--darkened-bg); padding:10px 12px; border-radius:4px; }
+.prompt-diff-wrap { overflow:auto; border:1px solid var(--hairline-color); background:var(--body-bg); }
+.diff { width:100%; border-collapse:collapse; font-family:var(--font-family-monospace); font-size:12px; }
+.diff_header { background:var(--darkened-bg); padding:5px; position:sticky; top:0; }
+.diff_next { display:none; }
+.diff td { padding:2px 5px; vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; }
+.diff_add { background:#c7f0d2; color:#14351c; }
+.diff_sub { background:#ffd1d1; color:#4b1515; }
+.diff_chg { background:#fff0a8; color:#403500; }
+.review-actions { display:flex; gap:10px; margin-top:18px; }
+.review-actions .reject { background:#ba2121; }
+</style>{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Home</a> › <a href="{% url 'admin:ideas_promptrevision_changelist' %}">Prompt revisions</a> › Review</div>{% endblock %}
+{% block content %}
+<div class="prompt-review-meta">
+  <div><strong>Prompt</strong><br>{{ revision.template.name }}<br><code>{{ revision.template.key }}</code></div>
+  <div><strong>Proposal</strong><br>v{{ revision.version }} by {{ revision.created_by|default:"System" }}<br>{{ revision.created_at }}</div>
+  <div><strong>Status</strong><br>{{ revision.get_status_display }}</div>
+</div>
+{% if revision.change_summary %}<fieldset class="module aligned"><h2>Change summary</h2><div class="form-row">{{ revision.change_summary|linebreaksbr }}</div></fieldset>{% endif %}
+<h2>Approved and proposed versions</h2>
+<p>Deletions are red, additions are green, and changed text is yellow. Agents continue using the approved version until this proposal is approved.</p>
+<div class="prompt-diff-wrap">{{ diff_table }}</div>
+{% if revision.status == 'proposed' %}
+<form method="post" class="review-actions">{% csrf_token %}
+  <button class="button default" name="decision" value="approve" type="submit" title="Make this the executable prompt and archive the current approved revision">Approve proposal</button>
+  <button class="button reject" name="decision" value="reject" type="submit" title="Keep the current approved prompt and archive this proposal as rejected">Reject proposal</button>
+</form>
+{% endif %}
+{% endblock %}

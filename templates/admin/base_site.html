@@ -1,7 +1,9 @@
 {% extends "admin/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'ideas/admin_tooltips.css' %}">{% endblock %}
+{% block extrahead %}{{ block.super }}<script defer src="{% static 'ideas/admin_tooltips.js' %}"></script>{% endblock %}
 
 {% block branding %}
 <div id="site-name">

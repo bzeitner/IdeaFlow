@@ -5,20 +5,18 @@ from django.core.management.base import BaseCommand, CommandError
 from ideas.graph.semantic import SemanticAPI
 from ideas.models import ResearchEntry
 from ideas.reporting import extract_open_questions
+from ideas.prompts import approved_prompt
 
 
 MAX_AI_CONTEXT_CHARS = 12000
 
 
 def extract_with_ai(api, entry):
-    prompt = f"""Extract questions from this historical research report that still require a human decision or private context.
-Exclude questions the agent can answer through research, rhetorical questions, resolved questions, and vague requests for more information.
-Return JSON with one `questions` array. Each item must have `question` (a specific standalone question) and `confidence` (0..1). Return an empty array when none qualify.
-
-Idea: {entry.idea.title}
-Research topic: {entry.topic}
-Report:
-{entry.context[:MAX_AI_CONTEXT_CHARS]}"""
+    prompt = approved_prompt("open-question-single").format(
+        idea_title=entry.idea.title,
+        topic=entry.topic,
+        report=entry.context[:MAX_AI_CONTEXT_CHARS],
+    )
     data = api._post(
         "/chat/completions",
         {
