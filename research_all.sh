@@ -29,11 +29,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
-BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+prompt_load_ideaflow_env "$SCRIPT_DIR"
+BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
 if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
   managed_shared="$("$IFCLI" prompt shared-standards 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"

@@ -1,6 +1,41 @@
 #!/usr/bin/env bash
 # Shared behavioral standards composed into every IdeaFlow agent prompt.
 
+prompt_load_ideaflow_env() {
+  local repo_root="${1:-.}"
+  local env_file="$repo_root/.env"
+  [[ -f "$env_file" ]] || return 0
+
+  # Parse dotenv syntax without sourcing it as shell code. Existing exported
+  # values win, which keeps per-run overrides working as expected.
+  eval "$(
+    IDEAFLOW_ENV_FILE="$env_file" python3 - <<'PY'
+import os
+import shlex
+from pathlib import Path
+
+path = Path(os.environ["IDEAFLOW_ENV_FILE"])
+wanted = {"IDEAFLOW_API_BASE", "IDEAFLOW_API_TOKEN"}
+values = {}
+for raw in path.read_text(encoding="utf-8").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    key = key.strip()
+    if key not in wanted or key in os.environ:
+        continue
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    values[key] = value
+
+for key, value in values.items():
+    print(f"export {key}={shlex.quote(value)}")
+PY
+  )"
+}
+
 prompt_shared_standards() {
   cat <<'PROMPT_STANDARDS'
 Shared operating standards:

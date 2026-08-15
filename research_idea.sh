@@ -49,9 +49,10 @@ esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
-BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+prompt_load_ideaflow_env "$SCRIPT_DIR"
+BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
 PR_RESOURCE_STANDARD="$(prompt_pr_resource_standard)"
 HUMAN_SUMMARY_STANDARD="$(prompt_human_summary_standard)"

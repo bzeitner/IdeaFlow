@@ -230,6 +230,9 @@ export IDEAFLOW_API_TOKEN=<the token from the server .env>
 The `research_idea.sh` / `research_all.sh` scripts and the `/research-idea`
 command all drive this client, so they run from any machine — see
 [`deploy/README.md`](deploy/README.md) §14 for the "clone + set token" bootstrap.
+These workflows automatically read `IDEAFLOW_API_TOKEN` and
+`IDEAFLOW_API_BASE` from the repository `.env` when they are not already
+exported. Explicit environment values take precedence for individual runs.
 The inputs, allowed mutations, outputs, terminal conditions, and shared safety
 standards for every mode are documented in
 [`docs/agent-workflows.md`](docs/agent-workflows.md).
