@@ -18,6 +18,7 @@
       {% if user.is_authenticated %}
         {% if user.profile.role_admin %}
           <a class="btn" href="{% url 'ideas:user_management' %}">Users</a>
+          <a class="btn" href="{% url 'ideas:idea_ownership' %}">Owners</a>
           <a class="btn" href="{% url 'admin:index' %}">Manage</a>
         {% endif %}
         {% if user.profile.can_read_feeds %}

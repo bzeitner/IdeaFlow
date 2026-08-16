@@ -80,7 +80,7 @@ def require_api_token(view):
 def idea_list(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
-    ideas = Idea.objects.select_related("category", "stage")
+    ideas = Idea.objects.select_related("category", "stage", "created_by")
     status = request.GET.get("status")
     if status:
         ideas = ideas.filter(status=status)
@@ -103,7 +103,7 @@ def idea_detail(request, pk):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
     idea = get_object_or_404(
-        Idea.objects.select_related("category", "stage").prefetch_related(
+        Idea.objects.select_related("category", "stage", "created_by").prefetch_related(
             *_DETAIL_PREFETCH
         ),
         pk=pk,
@@ -196,7 +196,7 @@ def graph_search_view(request):
 def idea_graph_context(request, pk):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
-    idea = get_object_or_404(Idea.objects.select_related("category", "stage"), pk=pk)
+    idea = get_object_or_404(Idea.objects.select_related("category", "stage", "created_by"), pk=pk)
     try:
         depth = int(request.GET.get("depth", 1))
         max_nodes = int(request.GET.get("max_nodes", 30))
@@ -266,7 +266,7 @@ def idea_effort(request, pk):
         return JsonResponse({"error": str(exc)}, status=400)
 
     idea = (
-        Idea.objects.select_related("category", "stage")
+        Idea.objects.select_related("category", "stage", "created_by")
         .prefetch_related(*_DETAIL_PREFETCH)
         .get(pk=idea.pk)
     )
@@ -531,8 +531,9 @@ def idea_children(request, pk):
         parent=parent,
         status=Status.CURRENT,
         proposed_by_agent=True,
+        created_by=parent.created_by,
     )
-    child = Idea.objects.select_related("category", "stage", "parent").prefetch_related(
+    child = Idea.objects.select_related("category", "stage", "parent", "created_by").prefetch_related(
         *_DETAIL_PREFETCH
     ).get(pk=child.pk)
     return JsonResponse(idea_to_dict(child, detail=True), status=201)

@@ -12,6 +12,7 @@
       <span class="pill">{{ idea.get_status_display }}</span>
       {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y g:i A T" }}</span>
+      {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
     </div>
 
     {% if idea.parent %}
@@ -229,12 +230,20 @@
       <h4>Research</h4>
       {% if can_manage %}<a class="btn small" href="{% url 'ideas:add_research' idea.pk %}">+ Log research</a>{% endif %}
     </div>
-    {% if idea.research_entries.all %}
+    {% if research_entries %}
+      <nav class="research-index" aria-label="Research effort index">
+        <h5>Effort index</h5>
+        <ol>
+          {% for r in research_entries %}
+            <li><a href="#research-entry-{{ r.pk }}">#{{ r.pk }} — {{ r.topic }}</a> <span class="dim">{{ r.occurred_at|date:"M j, Y" }}</span></li>
+          {% endfor %}
+        </ol>
+      </nav>
       <ul class="research-list">
-        {% for r in idea.research_entries.all %}
-          <li>
+        {% for r in research_entries %}
+          <li id="research-entry-{{ r.pk }}">
             <div class="card-head">
-              <strong>{{ r.topic }}</strong>
+              <strong><a class="research-permalink" href="#research-entry-{{ r.pk }}">#{{ r.pk }}</a> {{ r.topic }}</strong>
               <span class="dim">{{ r.occurred_at|date:"M j, Y g:i A" }}</span>
             </div>
             {% if r.focus %}<div class="dim">{{ r.focus }}</div>{% endif %}
@@ -247,7 +256,7 @@
             {% if r.context %}
               <details class="effort-detail">
                 <summary>In-depth review</summary>
-                <p class="summary">{{ r.context|urlize|linebreaksbr }}</p>
+                <p class="summary">{{ r.rendered_context }}</p>
               </details>
             {% endif %}
           </li>

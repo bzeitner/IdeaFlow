@@ -1,0 +1,29 @@
+{% extends "ideas/base.html" %}
+{% block title %}Idea Ownership · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Idea Ownership</h2>
+  <p class="lede">Assign the person responsible for each idea. Agent-created child ideas inherit their parent’s owner.</p>
+  <div class="table-wrap">
+    <table class="tracking ownership-table">
+      <thead><tr><th>Idea</th><th>Status</th><th>Owner</th><th></th></tr></thead>
+      <tbody>
+        {% for idea in ideas %}
+          <tr>
+            <td><a href="{{ idea.get_absolute_url }}">#{{ idea.pk }} — {{ idea.title }}</a></td>
+            <td>{{ idea.get_status_display }}</td>
+            <td>
+              <form method="post" action="{% url 'ideas:reassign_idea' idea.pk %}" class="ownership-form">
+                {% csrf_token %}
+                <select name="created_by" aria-label="Owner for {{ idea.title }}">
+                  {% for owner in owners %}<option value="{{ owner.pk }}"{% if idea.created_by_id == owner.pk %} selected{% endif %}>{{ owner.email|default:owner.username }}</option>{% endfor %}
+                </select>
+                <button class="btn small" type="submit">Save</button>
+              </form>
+            </td>
+            <td>{% if not idea.created_by_id %}<span class="pill attention-pill">Unassigned</span>{% endif %}</td>
+          </tr>
+        {% empty %}<tr><td colspan="4">No ideas yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

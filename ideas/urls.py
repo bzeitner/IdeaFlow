@@ -48,4 +48,6 @@ urlpatterns = [
     ),
     path("<int:pk>/continue-work/", views.continue_work, name="continue_work"),
     path("users/", views.user_management, name="user_management"),
+    path("ownership/", views.idea_ownership, name="idea_ownership"),
+    path("ownership/<int:pk>/", views.reassign_idea, name="reassign_idea"),
 ]

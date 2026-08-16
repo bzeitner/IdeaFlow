@@ -30,7 +30,7 @@ class Command(BaseCommand):
         if options["pk"] is not None:
             try:
                 idea = (
-                    Idea.objects.select_related("category", "stage", "parent")
+                    Idea.objects.select_related("category", "stage", "parent", "created_by")
                     .prefetch_related(
                         "resources",
                         "research_entries",
@@ -43,7 +43,7 @@ class Command(BaseCommand):
                 raise CommandError(f"No idea with id {options['pk']}.")
             data = idea_to_dict(idea, detail=True)
         else:
-            ideas = Idea.objects.select_related("category", "stage")
+            ideas = Idea.objects.select_related("category", "stage", "created_by")
             if options["status"]:
                 ideas = ideas.filter(status=options["status"])
             data = {"ideas": [idea_to_dict(i, detail=False) for i in ideas]}

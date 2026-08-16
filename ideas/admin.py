@@ -120,12 +120,12 @@ class RepeatResultInline(admin.TabularInline):
 
 @admin.register(Idea)
 class IdeaAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    list_display = ("title", "category", "parent", "status", "stage", "interest_level", "is_public", "rank")
+    list_display = ("title", "created_by", "category", "parent", "status", "stage", "interest_level", "is_public", "rank")
     list_editable = ("status", "is_public", "rank")
-    list_filter = ("status", "is_public", "category", "stage", "interest_level")
+    list_filter = ("created_by", "status", "is_public", "category", "stage", "interest_level")
     search_fields = ("title", "summary", "notes")
-    list_select_related = ("category", "stage", "parent")
-    autocomplete_fields = ("parent",)
+    list_select_related = ("created_by", "category", "stage", "parent")
+    autocomplete_fields = ("created_by", "parent")
     inlines = [ResourceInline, ResearchEntryInline, RepeatResultInline, IdeaFeedInline]
 
 

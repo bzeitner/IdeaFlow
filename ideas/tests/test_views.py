@@ -10,6 +10,7 @@ from ideas.models import Idea, Profile, Status
 
 from .helpers import (
     MODEL_BACKEND,
+    make_ai_model,
     make_category,
     make_feed_item,
     make_idea,
@@ -100,6 +101,28 @@ class DetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, idea.title)
         self.assertContains(response, "No effort summary has been recorded yet.")
+
+    def test_research_index_and_cross_entry_links_use_stable_anchors(self):
+        idea = make_idea(status=Status.CURRENT)
+        model = make_ai_model()
+        first = idea.research_entries.create(topic="Initial scan", model=model)
+        later = idea.research_entries.create(
+            topic="Follow-up",
+            context=f"Entry #{first.pk} established the baseline.",
+            model=model,
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        self.assertContains(response, "Effort index")
+        self.assertContains(response, f'id="research-entry-{first.pk}"')
+        self.assertContains(response, f'href="#research-entry-{later.pk}"')
+        self.assertContains(
+            response,
+            f'href="#research-entry-{first.pk}">Entry #{first.pk}</a>',
+        )
 
     def test_header_shows_last_update_date_and_time(self):
         idea = make_idea(status=Status.CURRENT)
@@ -216,6 +239,7 @@ class IdeaCreateViewTests(TestCase):
         response = self.client.post(reverse("ideas:create"), self._post_data(category))
         idea = Idea.objects.get(title="A brand new idea")
         self.assertRedirects(response, idea.get_absolute_url())
+        self.assertEqual(idea.created_by, user)
 
     def test_role_admin_can_also_create(self):
         user = make_user(roles=["role_admin"])
@@ -1007,6 +1031,7 @@ class ParentChildTests(TestCase):
         self.assertRedirects(response, reverse("ideas:detail", args=[child.pk]))
         self.assertEqual(child.title, "A SaaS")
         self.assertEqual(child.category, parent.category)
+        self.assertEqual(child.created_by, user)
         parent.refresh_from_db()
         self.assertEqual(parent.suggested_children, "A rental property")
 
@@ -1032,6 +1057,61 @@ class ParentChildTests(TestCase):
         options = list(form.fields["parent"].queryset.values_list("pk", flat=True))
         self.assertNotIn(idea.pk, options)   # can't parent itself
         self.assertNotIn(child.pk, options)  # nor a descendant (cycle)
+
+
+class IdeaOwnershipTests(TestCase):
+    def test_admin_can_reassign_an_idea(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        owner = make_user(email="owner@example.com")
+        idea = make_idea(created_by=admin)
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:reassign_idea", args=[idea.pk]),
+            {"created_by": owner.pk},
+        )
+
+        self.assertRedirects(response, reverse("ideas:idea_ownership"))
+        idea.refresh_from_db()
+        self.assertEqual(idea.created_by, owner)
+
+    def test_non_admin_cannot_manage_ownership(self):
+        user = make_user(roles=["role_current"])
+        idea = make_idea(created_by=user)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:reassign_idea", args=[idea.pk]),
+            {"created_by": user.pk},
+        )
+
+        self.assertRedirects(
+            response, reverse("ideas:home"), fetch_redirect_response=False
+        )
+
+    def test_current_list_can_filter_to_signed_in_users_ideas(self):
+        user = make_user(email="mine@example.com", roles=["role_current"])
+        other = make_user(email="other@example.com")
+        make_idea(title="Mine", created_by=user)
+        make_idea(title="Theirs", created_by=other)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:current"), {"owner": "mine"})
+
+        self.assertContains(response, "Mine")
+        self.assertNotContains(response, "Theirs")
+
+    def test_tracking_list_can_filter_to_signed_in_users_ideas(self):
+        user = make_user(email="mine@example.com", roles=["role_tracking"])
+        other = make_user(email="other@example.com")
+        make_idea(title="Mine tracked", status=Status.TRACKING, created_by=user)
+        make_idea(title="Their tracked", status=Status.TRACKING, created_by=other)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:tracking"), {"owner": "mine"})
+
+        self.assertContains(response, "Mine tracked")
+        self.assertNotContains(response, "Their tracked")
 
 
 class TrackingPrIconTests(TestCase):

@@ -55,3 +55,38 @@ class PerIdeaAssessmentMigrationTests(TransactionTestCase):
             Assessment.objects.filter(item_id=self.shared_item_id).exists()
         )
 
+
+class IdeaOwnerMigrationTests(TransactionTestCase):
+    migrate_from = ("ideas", "0026_update_build_execution_prompt")
+    migrate_to = ("ideas", "0027_idea_created_by")
+
+    def setUp(self):
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+
+        User = old_apps.get_model("auth", "User")
+        Category = old_apps.get_model("ideas", "Category")
+        Idea = old_apps.get_model("ideas", "Idea")
+        owner = User.objects.create(
+            username="bzeitner", email="bzeitner@gmail.com"
+        )
+        category = Category.objects.create(name="Owned", slug="owned")
+        self.owner_id = owner.pk
+        self.idea_id = Idea.objects.create(title="Existing", category=category).pk
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        self.apps = executor.loader.project_state([self.migrate_to]).apps
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate(
+            MigrationExecutor(connection).loader.graph.leaf_nodes()
+        )
+        super().tearDown()
+
+    def test_existing_ideas_are_assigned_to_bzeitner(self):
+        Idea = self.apps.get_model("ideas", "Idea")
+
+        self.assertEqual(Idea.objects.get(pk=self.idea_id).created_by_id, self.owner_id)

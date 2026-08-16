@@ -2,6 +2,7 @@ from functools import wraps
 from datetime import timedelta
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -20,6 +21,7 @@ from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
 from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus
+from .presentation import render_research_context
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -331,7 +333,7 @@ def home(request):
     if not request.user.is_authenticated:
         return render(request, "ideas/landing.html")
     profile = request.user.profile
-    public = Idea.objects.filter(is_public=True).prefetch_related("resources")
+    public = Idea.objects.filter(is_public=True).select_related("created_by").prefetch_related("resources")
     return render(
         request,
         "ideas/home.html",
@@ -347,7 +349,10 @@ def home(request):
 
 
 def _tab_view(request, status, template):
-    ideas = Idea.objects.filter(status=status).prefetch_related("resources")
+    owner_filter = request.GET.get("owner", "")
+    ideas = Idea.objects.filter(status=status).select_related("created_by").prefetch_related("resources")
+    if owner_filter == "mine":
+        ideas = ideas.filter(created_by=request.user)
     return render(
         request,
         template,
@@ -356,6 +361,7 @@ def _tab_view(request, status, template):
             "tabs": _tabs(request.user.profile),
             "active": status,
             "can_manage": True,
+            "owner_filter": owner_filter,
         },
     )
 
@@ -367,13 +373,14 @@ def current(request):
 
 @role_required("role_tracking")
 def tracking(request):
-    ideas = Idea.objects.filter(status=Status.TRACKING).prefetch_related(
+    ideas = Idea.objects.filter(status=Status.TRACKING).select_related("created_by").prefetch_related(
         "resources", "research_entries"
     )
     query = request.GET.get("q", "").strip()
     category = request.GET.get("category", "")
     stage = request.GET.get("stage", "")
     attention = request.GET.get("attention", "")
+    owner_filter = request.GET.get("owner", "")
     if query:
         ideas = ideas.filter(
             Q(title__icontains=query)
@@ -385,6 +392,8 @@ def tracking(request):
         ideas = ideas.filter(category__slug=category)
     if stage:
         ideas = ideas.filter(stage__slug=stage)
+    if owner_filter == "mine":
+        ideas = ideas.filter(created_by=request.user)
     if attention == "paused":
         ideas = ideas.filter(
             agent_runs_since_feedback__gte=AGENT_RUNS_BEFORE_FEEDBACK
@@ -462,6 +471,7 @@ def tracking(request):
                 "category": category,
                 "stage": stage,
                 "attention": attention,
+                "owner": owner_filter,
                 "sort": sort,
             },
         },
@@ -476,7 +486,7 @@ def archive(request):
 @login_required
 def detail(request, pk):
     idea = get_object_or_404(
-        Idea.objects.select_related("parent").prefetch_related(
+        Idea.objects.select_related("parent", "created_by").prefetch_related(
             "resources", "research_entries", "research_entries__model", "children", "repeat_results"
         ),
         pk=pk,
@@ -493,6 +503,12 @@ def detail(request, pk):
     research_with_open_questions = [
         entry for entry in idea.research_entries.all() if entry.unanswered_question_items
     ]
+    research_entries = list(idea.research_entries.all())
+    research_entry_ids = {entry.pk for entry in research_entries}
+    for entry in research_entries:
+        entry.rendered_context = render_research_context(
+            entry.context, research_entry_ids
+        )
     return render(
         request,
         "ideas/detail.html",
@@ -505,6 +521,7 @@ def detail(request, pk):
             "articles": recent_articles(idea),
             "repeat_result_statuses": RepeatResultStatus.choices,
             "research_with_open_questions": research_with_open_questions,
+            "research_entries": research_entries,
             "suggested_children": [
                 line for line in idea.suggested_children.splitlines() if line.strip()
             ],
@@ -536,6 +553,7 @@ def idea_form(request, pk=None):
                 # submitted, so a role_add_ideas-only user can't write directly
                 # into a tab (e.g. archived) they have no role to manage.
                 form.instance.status = Status.CURRENT
+                form.instance.created_by = request.user
             saved = form.save()
             formset.instance = saved
             formset.save()
@@ -769,6 +787,7 @@ def create_suggested_child(request, pk):
         category=parent.category,
         parent=parent,
         status=Status.CURRENT,
+        created_by=request.user,
     )
     suggestions.remove(title)
     parent.suggested_children = "\n".join(suggestions)
@@ -945,3 +964,28 @@ def user_management(request):
             "tabs": _tabs(request.user.profile),
         },
     )
+
+
+@role_required()
+def idea_ownership(request):
+    """Admin-only ownership overview and reassignment page."""
+    users = get_user_model().objects.order_by("email", "username")
+    ideas = Idea.objects.select_related("created_by", "category").order_by(
+        "created_by__email", "title"
+    )
+    return render(
+        request,
+        "ideas/idea_ownership.html",
+        {"ideas": ideas, "owners": users, "tabs": _tabs(request.user.profile)},
+    )
+
+
+@require_POST
+@role_required()
+def reassign_idea(request, pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    owner = get_object_or_404(get_user_model(), pk=request.POST.get("created_by"))
+    idea.created_by = owner
+    idea.save(update_fields=["created_by", "updated_at"])
+    messages.success(request, f"Reassigned “{idea.title}” to {owner.email or owner.username}.")
+    return redirect("ideas:idea_ownership")

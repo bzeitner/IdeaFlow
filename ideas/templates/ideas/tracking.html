@@ -27,6 +27,10 @@
       <option value="paused"{% if filters.attention == 'paused' %} selected{% endif %}>Paused</option>
       <option value="no-next-action"{% if filters.attention == 'no-next-action' %} selected{% endif %}>Missing next action</option>
     </select>
+    <select name="owner" aria-label="Filter by owner">
+      <option value="">Everyone's ideas</option>
+      <option value="mine"{% if filters.owner == 'mine' %} selected{% endif %}>My ideas</option>
+    </select>
     <select name="sort" aria-label="Sort ideas">
       <option value="questions"{% if filters.sort == 'questions' %} selected{% endif %}>Human input needed</option>
       <option value="family"{% if filters.sort == 'family' %} selected{% endif %}>Parent &amp; children</option>
@@ -36,7 +40,7 @@
       <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
     </select>
     <button class="btn primary" type="submit" data-filter-apply>Apply</button>
-    {% if filters.q or filters.category or filters.stage or filters.attention or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.category or filters.stage or filters.attention or filters.owner or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
   </form>
 
   {% if ideas %}
@@ -54,6 +58,7 @@
               {% if idea.is_paused %}<span class="pill attention-pill">Paused</span>{% endif %}
               {% if idea.open_question_count %}<a class="pill question-pill" href="{{ idea.get_absolute_url }}#open-questions">❓ Human input needed ({{ idea.open_question_count }})</a>{% endif %}
               <span class="dim">Updated {{ idea.updated_at|date:"M j, Y" }}</span>
+              {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
               {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener">Open PR ↗</a>{% endif %}
             </div>
             {% if idea.summary %}<p class="summary compact">{{ idea.summary }}</p>{% endif %}

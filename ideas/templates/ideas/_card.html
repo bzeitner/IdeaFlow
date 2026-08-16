@@ -7,6 +7,7 @@
     {% include "ideas/_pill.html" with obj=idea.category %}
     {% include "ideas/_pill.html" with obj=idea.stage %}
     {% if idea.is_public %}<span class="pill">Public</span>{% endif %}
+    {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
   </div>
   {% if idea.summary %}<p class="summary">{{ idea.summary }}</p>{% endif %}
   {% if idea.next_action %}<p class="next-line"><span class="next-tag">Next</span> {{ idea.next_action|urlize }}</p>{% endif %}

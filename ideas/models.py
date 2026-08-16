@@ -121,6 +121,14 @@ class Stage(LookupBase):
 class Idea(models.Model):
     title = models.CharField(max_length=200)
     summary = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="ideas_created",
+        on_delete=models.SET_NULL,
+        help_text="Owner responsible for this idea.",
+    )
     category = models.ForeignKey(
         Category, on_delete=models.PROTECT, related_name="ideas"
     )

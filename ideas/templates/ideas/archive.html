@@ -3,6 +3,7 @@
 {% block content %}
   <h2>Archive</h2>
   <p class="lede">Ideas and efforts that have been shelved or finished.</p>
+  {% include "ideas/_owner_filter.html" %}
   <div class="grid muted">
     {% for idea in ideas %}
       {% include "ideas/_card.html" %}

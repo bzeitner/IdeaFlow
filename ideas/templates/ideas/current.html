@@ -3,6 +3,7 @@
 {% block content %}
   <h2>Current Focus</h2>
   <p class="lede">The efforts you're actively putting time into right now.</p>
+  {% include "ideas/_owner_filter.html" %}
   <div class="grid">
     {% for idea in ideas %}
       {% include "ideas/_card.html" %}

@@ -93,6 +93,11 @@ def idea_to_dict(idea, *, detail=True):
         "id": idea.id,
         "title": idea.title,
         "summary": idea.summary,
+        "created_by": (
+            {"id": idea.created_by_id, "email": idea.created_by.email}
+            if idea.created_by_id
+            else None
+        ),
         "category": _lookup(idea.category),
         "interest_level": idea.interest_level,
         "status": idea.status,

@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 
 from ideas.models import ResearchEntry, Status
 
-from .helpers import make_idea, make_stage
+from .helpers import make_idea, make_stage, make_user
 
 TOKEN = "test-token-123"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
@@ -604,13 +604,15 @@ class ApiChildIdeaTests(TestCase):
     def test_agent_creates_child_under_top_level(self):
         from ideas.models import Idea
 
-        parent = make_idea(title="Passive Income")
+        owner = make_user(email="owner@example.com")
+        parent = make_idea(title="Passive Income", created_by=owner)
         r = self._post(f"/api/ideas/{parent.pk}/children/", {"title": "A SaaS"})
         self.assertEqual(r.status_code, 201)
         child = Idea.objects.get(title="A SaaS")
         self.assertEqual(child.parent_id, parent.pk)
         self.assertTrue(child.proposed_by_agent)
         self.assertEqual(child.category_id, parent.category_id)  # inherited
+        self.assertEqual(child.created_by, owner)
 
     def test_child_limit_is_five(self):
         parent = make_idea()

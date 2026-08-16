@@ -1,0 +1,8 @@
+<form method="get" class="owner-filter">
+  <label>
+    <input type="checkbox" name="owner" value="mine"{% if owner_filter == 'mine' %} checked{% endif %}>
+    My ideas
+  </label>
+  <button class="btn small" type="submit">Apply</button>
+  {% if owner_filter %}<a class="btn small" href="{{ request.path }}">Clear</a>{% endif %}
+</form>
