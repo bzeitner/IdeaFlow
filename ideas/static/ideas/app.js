@@ -39,12 +39,13 @@
 
     select.addEventListener("change", async () => {
       const requestedValue = select.value;
+      const formData = new FormData(form);
       select.disabled = true;
       saveStatus.textContent = " Saving…";
       try {
         const response = await fetch(form.action, {
           method: "POST",
-          body: new FormData(form),
+          body: formData,
           headers: { Accept: "application/json" },
           credentials: "same-origin",
         });
