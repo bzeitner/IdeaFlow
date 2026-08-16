@@ -46,9 +46,15 @@ Shared operating standards:
     recommendations. Cite URLs or repository locations for material claims.
   * Idempotency: inspect existing state before writing. Reuse existing records,
     branches, and PRs; do not duplicate work when retrying.
+  * Building: when the active next action explicitly asks to build software and
+    the idea has an attached repository, start implementation instead of doing
+    another research pass. Follow an established repository stack. For a
+    greenfield non-mobile application, default to Django with PostgreSQL.
   * Blockers: do not guess through missing authority, credentials, or materially
-    ambiguous requirements. Report the exact blocker and the smallest human
-    action needed to unblock it.
+    ambiguous requirements. A blocker is true only when safe, meaningful work
+    cannot continue without human input or access. Report the exact blocker and
+    the smallest human action needed to unblock it as a specific question, and
+    pass that question with `--open-question` when logging the effort.
   * Accuracy: never claim a command, test, write-back, or external action
     succeeded unless you observed it succeed. Preserve unrelated user work.
   * Completion: verify every required write-back, then report the outcome,

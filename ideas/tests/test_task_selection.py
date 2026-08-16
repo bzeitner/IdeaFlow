@@ -95,3 +95,33 @@ class TaskSelectionStateTests(SimpleTestCase):
         output, state = self.run_selector(listing, details)
         self.assertEqual(output, "")
         self.assertEqual(state["reason"], "idle")
+
+    def test_repo_backed_build_action_is_selected_for_execution(self):
+        listing = [{"id": 9, "status": "tracking", "title": "Build it"}]
+        details = {
+            9: {
+                "title": "Build it", "is_paused": False,
+                "research_entries": [{"id": 1}],
+                "next_action": "Implement the account dashboard and verify login works",
+                "repo": "owner/project", "resources": [],
+            }
+        }
+
+        output, _state = self.run_selector(listing, details)
+
+        self.assertIn("9 execute Build it", output)
+
+    def test_repo_backed_non_build_action_stays_in_review(self):
+        listing = [{"id": 10, "status": "tracking", "title": "Validate it"}]
+        details = {
+            10: {
+                "title": "Validate it", "is_paused": False,
+                "research_entries": [{"id": 1}],
+                "next_action": "Interview five customers and record their answers",
+                "repo": "owner/project", "resources": [],
+            }
+        }
+
+        output, _state = self.run_selector(listing, details)
+
+        self.assertIn("10 review Validate it", output)

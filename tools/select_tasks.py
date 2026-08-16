@@ -3,8 +3,9 @@
 
 Reads the deployed data through the tools/ideaflow client (path in argv[1]) and
 applies the default selection:
-  * every idea with no research yet     -> research
-  * every idea with a next action set   -> review
+  * every idea with no research yet                  -> research
+  * repo-backed ideas with a build-oriented action   -> execute
+  * every other idea with a next action set          -> review
   * researched ideas without a next action are skipped; continue to the next
     actionable idea instead of re-analyzing idle work
 
@@ -22,6 +23,23 @@ import json
 import os
 import subprocess
 import sys
+
+
+BUILD_ACTION_TERMS = (
+    "build",
+    "create",
+    "develop",
+    "implement",
+    "prototype",
+    "scaffold",
+    "ship",
+)
+
+
+def is_build_action(value):
+    """Conservatively identify next actions that explicitly request software work."""
+    words = {word.strip(".,:;!?()[]{}") for word in value.lower().split()}
+    return bool(words.intersection(BUILD_ACTION_TERMS))
 
 
 def main():
@@ -97,8 +115,13 @@ def main():
             na = (detail[i].get("next_action") or "").strip().lower()
             if na.startswith("critical pr review"):
                 return "critique"                 # a PR is waiting for a critical pass
-            if detail[i].get("repo") and na and has_research(i) and not has_open_pr(i):
-                return "execute"                  # repo-targeted, ready to build
+            if (
+                detail[i].get("repo")
+                and is_build_action(na)
+                and has_research(i)
+                and not has_open_pr(i)
+            ):
+                return "execute"                  # repo-backed build action, ready to implement
             if not has_research(i):
                 return "research"
             if has_next(i):

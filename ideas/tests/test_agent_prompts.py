@@ -13,6 +13,7 @@ def prompt(mode):
     return subprocess.check_output(
         [str(RUNNER), "123", mode, "--print-prompt"],
         cwd=ROOT,
+        env={**os.environ, "IDEAFLOW_API_TOKEN": ""},
         text=True,
     )
 
@@ -63,8 +64,11 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("existing branch or PR", text)
         self.assertIn("read all repository contributor", text)
         self.assertIn("exact commands and results", text)
-        self.assertIn("stop without opening", text)
+        self.assertIn("stop without", text)
         self.assertIn("a partial PR", text)
+        self.assertIn("default to Django with PostgreSQL", text)
+        self.assertIn("not a mobile application", text)
+        self.assertIn("one --open-question flag", text)
         self.assertIn("Write a markdown implementation report", text)
         self.assertIn("<report-path> is non-empty", text)
         self.assertIn("--exec-summary", text)

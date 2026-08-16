@@ -141,13 +141,19 @@ local git + gh (you have write access) for the repo. Steps:
    clone to a temporary directory if needed, and read all repository contributor
    and agent instructions. Check the worktree and base branch before editing;
    never overwrite unrelated work.
-3. Implement the smallest complete change that satisfies the idea and its
-   next_action. Add or update relevant tests. Run focused tests and required
-   lint/type checks, recording the exact commands and results.
-4. If requirements are materially ambiguous, credentials are missing, tests
-   cannot be run, or a safe complete change cannot be made, stop without opening
-   a partial PR. Print the blocker and precise human action needed. On retries,
-   reuse an existing branch or PR rather than creating a duplicate.
+3. Start building the smallest complete change that satisfies the idea and its
+   next_action. Follow the repository's established architecture and stack. If
+   the repository is greenfield and the product is not a mobile application,
+   default to Django with PostgreSQL; do not replace an established stack merely
+   to apply this default. Add or update relevant tests. Run focused tests and
+   required lint/type checks, recording the exact commands and results.
+4. If a true blocker prevents safe, meaningful implementation, stop without
+   opening a partial PR. First exhaust safe in-scope alternatives. Write the
+   blocker and smallest human action needed as one specific question, preserve
+   the existing next action, and log the effort with one --open-question flag.
+   Do not treat ordinary uncertainty, optional credentials, or a failing test
+   that can be diagnosed as blockers. On retries, reuse an existing branch or PR
+   rather than creating a duplicate.
 5. Commit and push the verified change, then open or update one focused PR.
 6. Write a markdown implementation report to ${REPORT} before logging. Include:
    outcome; files and behavior changed; exact tests and results; limitations;

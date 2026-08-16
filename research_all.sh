@@ -5,7 +5,8 @@
 #
 # Default pass selects, in priority order:
 #   * every idea with no research yet          -> research mode
-#   * every idea that has a next action set     -> review mode (advance it)
+#   * repo-backed ideas with a build action     -> execute mode (implement it)
+#   * every other idea with a next action set   -> review mode (advance it)
 #   * researched ideas without a next action are skipped
 #
 #   IDEAFLOW_API_TOKEN=... ./research_all.sh [options]
