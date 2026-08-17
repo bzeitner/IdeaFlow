@@ -32,7 +32,7 @@ else
   REPORT_DIR="$SCRIPT_DIR/.agent-reports"
   mkdir -p "$REPORT_DIR"
   REPORT="$(mktemp "$REPORT_DIR/weekly-summary.XXXXXX")"
-  METRICS="$(mktemp "$REPORT_DIR/weekly-metrics.XXXXXX.json")"
+  METRICS="$(mktemp "$REPORT_DIR/weekly-metrics.json.XXXXXX")"
   MODEL="$("$IFCLI" config | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_models"].get("weekly_summary", "claude-opus-4-8"))')"
 fi
 PROVIDER="$AGENT"

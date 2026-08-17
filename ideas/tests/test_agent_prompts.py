@@ -33,6 +33,11 @@ def codex_prompt(script, *args):
 
 
 class AgentPromptTests(SimpleTestCase):
+    def test_weekly_metrics_mktemp_template_ends_with_placeholders(self):
+        source = (ROOT / "weekly_summary.sh").read_text()
+        self.assertIn('weekly-metrics.json.XXXXXX', source)
+        self.assertNotIn('weekly-metrics.XXXXXX.json', source)
+
     def test_codex_research_logs_actual_execution_identity(self):
         text = codex_prompt(RUNNER, "123", "review", "--print-prompt")
         self.assertIn("--model <configured-review-model>", text)
