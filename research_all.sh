@@ -18,6 +18,7 @@
 #   --force                               research EVERY idea (ignore existing work)
 #   --reflect                             just run the project-level reflection
 #   --dry-run                             show the plan, launch nothing
+#   --delay N                             wait N seconds between ideas (default 0)
 #
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
@@ -48,6 +49,7 @@ FORCE=0
 REVIEW=0
 REFLECT=0
 DRY_RUN=0
+DELAY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --review) REVIEW=1; shift ;;
     --reflect) REFLECT=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --delay) DELAY="${2:-}"; shift 2 ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -71,10 +74,72 @@ case "$AGENT" in
   *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
 esac
 [[ "$MIN" =~ ^[0-9]+$ ]] || { echo "error: --min must be a whole number." >&2; exit 2; }
+[[ "$DELAY" =~ ^[0-9]+$ ]] || { echo "error: --delay must be a whole number of seconds." >&2; exit 2; }
 
-STATE_FILE="$(mktemp -t ideaflow-selection.XXXXXX.json)"
+STATE_FILE="$(mktemp -t ideaflow-selection.json.XXXXXX)"
+RUN_METRICS_FILE="$(mktemp -t ideaflow-run-metrics.tsv.XXXXXX)"
 printf '{}\n' > "$STATE_FILE"
-trap 'rm -f "$STATE_FILE"' EXIT
+RUN_STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+RUN_START_EPOCH="$(date '+%s')"
+if [[ "$AGENT" == "codex" ]]; then
+  REQUESTED_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+else
+  REQUESTED_MODEL="task-routed"
+fi
+echo "Batch started: ${RUN_STARTED_AT} (agent=${AGENT}, model=${REQUESTED_MODEL})"
+
+finish_run() {
+  local status=$? end_epoch elapsed metrics total_tokens models
+  end_epoch="$(date '+%s')"
+  elapsed=$((end_epoch - RUN_START_EPOCH))
+  metrics="$(python3 - "$RUN_METRICS_FILE" <<'PY'
+import sys
+
+total = 0
+models = []
+try:
+    lines = open(sys.argv[1], encoding="utf-8")
+except OSError:
+    lines = []
+for line in lines:
+    model, _, tokens = line.rstrip("\n").partition("\t")
+    if model and model not in models:
+        models.append(model)
+    try:
+        total += int(tokens or 0)
+    except ValueError:
+        pass
+print(f"{total}\t{', '.join(models)}")
+PY
+)"
+  IFS=$'\t' read -r total_tokens models <<< "$metrics"
+  [[ -n "$models" ]] || models="$REQUESTED_MODEL"
+  echo "Batch finished: $(date -u '+%Y-%m-%dT%H:%M:%SZ') (elapsed=${elapsed}s, recorded_tokens=${total_tokens:-0}, models=${models}, exit=${status})"
+  rm -f "$STATE_FILE" "$RUN_METRICS_FILE"
+  return "$status"
+}
+trap finish_run EXIT
+
+record_task_metrics() {
+  local before_file="$1" after_file="$2"
+  python3 - "$before_file" "$after_file" >> "$RUN_METRICS_FILE" <<'PY'
+import json
+import sys
+
+try:
+    before = json.load(open(sys.argv[1], encoding="utf-8"))
+    after = json.load(open(sys.argv[2], encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(0)
+old_ids = {entry.get("id") for entry in before.get("research_entries", [])}
+for entry in after.get("research_entries", []):
+    if entry.get("id") in old_ids:
+        continue
+    routed = entry.get("model") or {}
+    model = entry.get("execution_model") or routed.get("slug") or routed.get("name") or "unknown"
+    print(f"{model}\t{entry.get('tokens_used') or 0}")
+PY
+}
 
 run_reflection() {
   local reason="${1:-explicit}"
@@ -196,6 +261,9 @@ fi
 fail=0
 for i in "${!IDS[@]}"; do
   id="${IDS[$i]}"; mode="${MODES[$i]}"; title="${TITLES[$i]}"
+  before_file="$(mktemp -t ideaflow-before.json.XXXXXX)"
+  after_file="$(mktemp -t ideaflow-after.json.XXXXXX)"
+  "$IFCLI" dump-idea "$id" > "$before_file" 2>/dev/null || printf '{}\n' > "$before_file"
   echo
   echo "=== [$((i + 1))/${#IDS[@]}] ${mode}: ${title} (#${id}) ==="
   if ./research_idea.sh "$id" "$mode"; then
@@ -203,6 +271,13 @@ for i in "${!IDS[@]}"; do
   else
     echo "!!! ${title} (#${id}) failed (continuing) !!!" >&2
     fail=$((fail + 1))
+  fi
+  "$IFCLI" dump-idea "$id" > "$after_file" 2>/dev/null || printf '{}\n' > "$after_file"
+  record_task_metrics "$before_file" "$after_file"
+  rm -f "$before_file" "$after_file"
+  if [[ "$DELAY" -gt 0 && "$i" -lt $((${#IDS[@]} - 1)) ]]; then
+    echo "Waiting ${DELAY}s before the next idea..."
+    sleep "$DELAY"
   fi
 done
 

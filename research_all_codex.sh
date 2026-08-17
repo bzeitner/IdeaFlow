@@ -5,6 +5,8 @@
 #   IDEAFLOW_API_TOKEN=... ./research_all_codex.sh [research_all.sh options]
 #
 # Optional: IDEAFLOW_CODEX_MODEL=<Codex model available to your CLI>
+# Start/end timing, recorded token totals, model reporting, and --delay are
+# provided by research_all.sh so both entry points produce identical logs.
 
 set -euo pipefail
 

@@ -182,7 +182,7 @@ class AgentPromptTests(SimpleTestCase):
     def test_reflection_prompt_is_structured_and_read_only(self):
         env = {**os.environ, "IDEAFLOW_API_TOKEN": "prompt-test"}
         text = subprocess.check_output(
-            [str(ROOT / "research_all.sh"), "--reflect", "--dry-run"],
+            [str(ROOT / "research_all.sh"), "--reflect", "--dry-run", "--delay", "0"],
             cwd=ROOT,
             env=env,
             text=True,
@@ -194,3 +194,15 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("Do not", text)
         self.assertIn("modify IdeaFlow", text)
         self.assertIn("Shared operating standards:", text)
+        self.assertIn("Batch started:", text)
+        self.assertIn("Batch finished:", text)
+        self.assertIn("recorded_tokens=0", text)
+
+    def test_both_batch_entry_points_document_delay_and_run_metrics(self):
+        main = (ROOT / "research_all.sh").read_text()
+        codex = (ROOT / "research_all_codex.sh").read_text()
+
+        self.assertIn("--delay N", main)
+        self.assertIn("recorded_tokens=", main)
+        self.assertIn("models=", main)
+        self.assertIn("provided by research_all.sh", codex)
