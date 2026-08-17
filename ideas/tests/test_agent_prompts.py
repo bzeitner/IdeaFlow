@@ -35,6 +35,8 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("missing_periods", text)
         self.assertIn("--metrics-file", text)
         self.assertIn("Sunday 12:01 AM through Saturday midnight", text)
+        self.assertIn("gh pr view <url> --json state,title,url", text)
+        self.assertIn("reports state OPEN", text)
 
     def test_repeat_prompt_collects_structured_results_without_padding(self):
         text = prompt("repeat")

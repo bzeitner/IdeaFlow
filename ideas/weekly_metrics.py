@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import timedelta
 
 from django.utils import timezone
+from urllib.parse import urlparse
 
 
 METRIC_GROUPS = (
@@ -60,6 +61,34 @@ def normalize_weekly_metrics(value):
     if isinstance(total, bool) or not isinstance(total, int) or total < 0:
         raise ValueError("metrics.total_tokens must be a non-negative integer.")
     normalized["total_tokens"] = total
+    raw_prs = value.get("open_prs") or []
+    if not isinstance(raw_prs, list):
+        raise ValueError("metrics.open_prs must be a JSON array.")
+    open_prs = []
+    seen = set()
+    for item in raw_prs:
+        if not isinstance(item, dict):
+            raise ValueError("Each metrics.open_prs item must be a JSON object.")
+        url = str(item.get("url") or "").strip()
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.netloc.lower() != "github.com" or "/pull/" not in parsed.path:
+            raise ValueError("Each open PR must have an https://github.com/.../pull/... URL.")
+        if url in seen:
+            continue
+        seen.add(url)
+        idea_id = item.get("idea_id")
+        if idea_id is not None and (isinstance(idea_id, bool) or not isinstance(idea_id, int) or idea_id <= 0):
+            raise ValueError("Open PR idea_id must be a positive integer or null.")
+        open_prs.append(
+            {
+                "url": url,
+                "title": str(item.get("title") or url)[:300],
+                "description": str(item.get("description") or "")[:1000],
+                "idea_id": idea_id,
+                "state": "OPEN",
+            }
+        )
+    normalized["open_prs"] = open_prs
     return normalized
 
 

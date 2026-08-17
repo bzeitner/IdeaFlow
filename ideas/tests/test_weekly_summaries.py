@@ -43,6 +43,15 @@ class WeeklySummaryViewTests(TestCase):
             metrics={
                 "tasks_by_type": {"research": 4, "implementation": 2},
                 "prs": {"created": 2, "reviewed": 1, "closed": 1},
+                "open_prs": [
+                    {
+                        "url": "https://github.com/bzeitner/IdeaFlow/pull/33",
+                        "title": "Persist feed backfill cutoff",
+                        "description": "Review migration behavior and API limits.",
+                        "idea_id": 12,
+                        "state": "OPEN",
+                    }
+                ],
                 "tokens_by_task": {"research": 1000, "implementation": 2000},
                 "tokens_by_model": {"claude-opus-4-8": 3000},
                 "tokens_by_category": {"Project": 3000},
@@ -62,6 +71,8 @@ class WeeklySummaryViewTests(TestCase):
         self.assertContains(response, "Trends over time")
         self.assertContains(response, "Tokens by model")
         self.assertContains(response, "Created / reviewed / closed")
+        self.assertContains(response, "Open pull requests")
+        self.assertContains(response, "Persist feed backfill cutoff")
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
@@ -79,6 +90,14 @@ class WeeklySummaryApiTests(TestCase):
             "metrics": {
                 "tasks_by_type": {"research": 3},
                 "prs": {"created": 1, "reviewed": 2, "closed": 1},
+                "open_prs": [
+                    {
+                        "url": "https://github.com/bzeitner/IdeaFlow/pull/33",
+                        "title": "Backfill cutoff",
+                        "description": "Needs review.",
+                        "idea_id": 12,
+                    }
+                ],
                 "tokens_by_task": {"research": 5000},
                 "tokens_by_model": {"claude-opus-4-8": 5000},
                 "tokens_by_category": {"Project": 5000},
@@ -102,6 +121,7 @@ class WeeklySummaryApiTests(TestCase):
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.json()["weekly_summaries"][0]["id"], summary_id)
         self.assertEqual(listed.json()["weekly_summaries"][0]["metrics"]["prs"]["reviewed"], 2)
+        self.assertEqual(listed.json()["weekly_summaries"][0]["metrics"]["open_prs"][0]["state"], "OPEN")
 
     def test_same_period_is_replaced_instead_of_duplicated(self):
         for content in ("First", "Corrected"):
@@ -159,3 +179,7 @@ class WeeklyMetricTests(TestCase):
             normalize_weekly_metrics({"tasks_by_type": {"research": -1}})
         with self.assertRaises(ValueError):
             normalize_weekly_metrics({"tokens_by_model": {"opus": 1.5}})
+        with self.assertRaises(ValueError):
+            normalize_weekly_metrics(
+                {"open_prs": [{"url": "https://example.com/not-a-pr"}]}
+            )

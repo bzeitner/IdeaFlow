@@ -73,12 +73,18 @@ ${PERIOD_START} through ${PERIOD_END}. Talk to IdeaFlow only through "${IFCLI}"
    "None identified" if no true blockers are evidenced.
 6. Write valid JSON to ${METRICS} using exactly this schema, with non-negative
    integer values:
-   {"tasks_by_type": {"research": 0, "review": 0, "implementation": 0, "pr_review": 0, "repeat": 0, "other": 0}, "prs": {"created": 0, "reviewed": 0, "closed": 0}, "tokens_by_task": {}, "tokens_by_model": {}, "tokens_by_category": {}, "total_tokens": 0}
+   {"tasks_by_type": {"research": 0, "review": 0, "implementation": 0, "pr_review": 0, "repeat": 0, "other": 0}, "prs": {"created": 0, "reviewed": 0, "closed": 0}, "open_prs": [], "tokens_by_task": {}, "tokens_by_model": {}, "tokens_by_category": {}, "total_tokens": 0}
    Count each research entry once by its primary task type. Derive PR created,
    reviewed, and closed events only from explicit URLs, topics, statuses, or
    report statements in the reporting window. Token totals come from each
    entry's tokens_used and must be grouped consistently by its task type, model,
    and parent idea category; omit unknown token counts rather than estimating.
+   For every GitHub pull-request URL associated with work in that week, run
+   gh pr view <url> --json state,title,url at summary-generation time. Add an
+   open_prs item only when that command succeeds and reports state OPEN. Each
+   item must contain url, title, idea_id, and a concise description of the
+   change and what remains to review. Never infer open state from IdeaFlow data,
+   and never include a PR when the GitHub lookup fails, is CLOSED, or is MERGED.
 7. Save each missing period exactly once through the client, substituting that
    period's dates:
    ${IFCLI} log-weekly-summary --period-start <start> --period-end <end> --title "Week ending <end>" --summary-file ${REPORT} --metrics-file ${METRICS} --model ${MODEL} --tokens <approx>

@@ -26,6 +26,19 @@
         <span class="dim">Run {{ summary.generated_at|date:"M j, Y g:i A T" }} · covering {{ summary.period_start|date:"M j" }}–{{ summary.period_end|date:"M j, Y" }}</span>
       </summary>
       <div class="weekly-summary-body">{{ summary.content|urlize|linebreaksbr }}</div>
+      {% if summary.metrics.open_prs %}
+        <section class="weekly-open-prs">
+          <h3>Open pull requests <span class="pill">{{ summary.metrics.open_prs|length }}</span></h3>
+          <ul>
+            {% for pr in summary.metrics.open_prs %}
+              <li>
+                <div><a href="{{ pr.url }}" target="_blank" rel="noopener"><strong>{{ pr.title }}</strong> ↗</a>{% if pr.idea_id %} <a class="pill" href="{% url 'ideas:detail' pr.idea_id %}">Idea #{{ pr.idea_id }}</a>{% endif %}</div>
+                {% if pr.description %}<p>{{ pr.description }}</p>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
       {% if summary.metrics %}
         <div class="weekly-metrics">
           <h3>Metrics <span class="dim">(solid: this week; outline: previous week)</span></h3>

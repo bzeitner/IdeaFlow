@@ -164,6 +164,12 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .metric-row small.up { color: #217a43; }
 .metric-row small.down { color: #a13d3d; }
 .metric-legend { margin: 6px 0 0 80px; }
+.weekly-open-prs { margin: 0 16px 16px; padding: 12px 14px; border: 1px solid var(--warm-line); border-radius: 8px; background: var(--warm-bg); }
+.weekly-open-prs h3 { margin: 0 0 8px; }
+.weekly-open-prs ul { list-style: none; padding: 0; margin: 0; }
+.weekly-open-prs li + li { border-top: 1px solid var(--warm-line); margin-top: 10px; padding-top: 10px; }
+.weekly-open-prs a { text-decoration: none; }
+.weekly-open-prs p { margin: 5px 0 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
