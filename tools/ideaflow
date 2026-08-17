@@ -113,6 +113,7 @@ def cmd_log_weekly_summary(a):
             "title": a.title,
             "content": _read_text(a.summary, a.summary_file),
             "model": a.model,
+            "execution_provider": a.provider,
             "tokens_used": a.tokens,
             "metrics": metrics,
         },
@@ -143,6 +144,8 @@ def cmd_log_effort(a):
     body = {
         "topic": a.topic,
         "model": a.model,
+        "execution_provider": a.provider,
+        "execution_model": a.execution_model,
         "context": _read_text(a.context, a.context_file),
         "focus": a.focus,
         "effort": a.effort,
@@ -245,6 +248,7 @@ def build_parser():
     s.add_argument("--summary", default="")
     s.add_argument("--summary-file")
     s.add_argument("--model", default="")
+    s.add_argument("--provider", default="")
     s.add_argument("--tokens", type=int)
     s.add_argument("--metrics-file", help="JSON file containing structured weekly metrics.")
     s.set_defaults(func=cmd_log_weekly_summary)
@@ -274,6 +278,8 @@ def build_parser():
     s.add_argument("id", type=int)
     s.add_argument("--topic", required=True)
     s.add_argument("--model", default="other")
+    s.add_argument("--provider", default="")
+    s.add_argument("--execution-model", default="")
     s.add_argument("--context", default="")
     s.add_argument("--context-file")
     s.add_argument("--focus", default="")

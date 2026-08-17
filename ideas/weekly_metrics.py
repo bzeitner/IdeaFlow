@@ -7,10 +7,12 @@ from urllib.parse import urlparse
 
 METRIC_GROUPS = (
     "tasks_by_type",
+    "tasks_by_idea",
     "prs",
     "tokens_by_task",
     "tokens_by_model",
     "tokens_by_category",
+    "tokens_by_idea",
 )
 
 PR_KEYS = ("created", "reviewed", "closed")
@@ -61,6 +63,10 @@ def normalize_weekly_metrics(value):
     if isinstance(total, bool) or not isinstance(total, int) or total < 0:
         raise ValueError("metrics.total_tokens must be a non-negative integer.")
     normalized["total_tokens"] = total
+    total_tasks = value.get("total_tasks", sum(normalized["tasks_by_type"].values()))
+    if isinstance(total_tasks, bool) or not isinstance(total_tasks, int) or total_tasks < 0:
+        raise ValueError("metrics.total_tasks must be a non-negative integer.")
+    normalized["total_tasks"] = total_tasks
     raw_prs = value.get("open_prs") or []
     if not isinstance(raw_prs, list):
         raise ValueError("metrics.open_prs must be a JSON array.")

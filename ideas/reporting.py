@@ -82,6 +82,8 @@ def record_effort(
     *,
     topic,
     model="other",
+    execution_provider="",
+    execution_model="",
     context="",
     focus="",
     effort=3,
@@ -125,6 +127,8 @@ def record_effort(
         effort=_star(effort, "effort"),
         quality=_star(quality, "quality"),
         model=resolve_ai_model(model),
+        execution_provider=(execution_provider or "")[:32],
+        execution_model=(execution_model or "")[:100],
         tokens_used=tokens_used,
     )
     resource = None

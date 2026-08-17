@@ -140,8 +140,8 @@ class RepeatResultAdmin(TooltipAdminMixin, admin.ModelAdmin):
 
 @admin.register(ResearchEntry)
 class ResearchEntryAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    list_display = ("topic", "idea", "model", "occurred_at", "effort", "quality", "tokens_used")
-    list_filter = ("model", "effort", "quality")
+    list_display = ("topic", "idea", "execution_provider", "execution_model", "model", "occurred_at", "effort", "quality", "tokens_used")
+    list_filter = ("execution_provider", "model", "effort", "quality")
     search_fields = ("topic", "focus", "context", "idea__title")
     list_select_related = ("idea", "model")
     date_hierarchy = "occurred_at"
@@ -149,8 +149,8 @@ class ResearchEntryAdmin(TooltipAdminMixin, admin.ModelAdmin):
 
 @admin.register(WeeklySummary)
 class WeeklySummaryAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    list_display = ("title", "period_start", "period_end", "generated_at", "model", "tokens_used")
-    list_filter = ("model",)
+    list_display = ("title", "period_start", "period_end", "generated_at", "execution_provider", "model", "tokens_used")
+    list_filter = ("execution_provider", "model")
     search_fields = ("title", "content")
     readonly_fields = ("created_at",)
     date_hierarchy = "generated_at"

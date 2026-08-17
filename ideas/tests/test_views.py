@@ -43,6 +43,37 @@ class HomeViewTests(TestCase):
         response = self.client.get("/")
         self.assertNotContains(response, "Edit")
 
+    def test_ideas_page_summarizes_full_history_with_family_totals(self):
+        category = make_category(name="Product")
+        model = make_ai_model()
+        parent = make_idea(title="Parent project", status=Status.CURRENT, category=category)
+        child = make_idea(
+            title="Child project", status=Status.CURRENT, category=category, parent=parent
+        )
+        parent.research_entries.create(
+            topic="Parent research",
+            model=model,
+            execution_provider="codex",
+            execution_model="gpt-5-codex",
+            tokens_used=1200,
+        )
+        child.research_entries.create(
+            topic="Child implementation", model=model, tokens_used=800
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:current"))
+
+        self.assertContains(response, "Full-history metrics")
+        self.assertContains(response, "2</strong> tasks")
+        self.assertContains(response, "2000</strong> tokens total")
+        self.assertContains(response, "Idea #{} — Parent project".format(parent.pk))
+        self.assertContains(response, "Idea #{} — Child project".format(child.pk))
+        self.assertContains(response, "Parent project + children (total)")
+        self.assertContains(response, "gpt-5-codex")
+        self.assertContains(response, "Product")
+
 
 class TabAccessTests(TestCase):
     TABS = [

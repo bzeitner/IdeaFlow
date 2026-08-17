@@ -38,6 +38,7 @@ if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
   echo "usage: $0 <idea-id> [research|review|execute|critique]" >&2
   exit 2
 fi
+
 case "$MODE" in
   research|review|execute|critique|repeat) ;;
   *) echo "error: mode must be research|review|execute|critique|repeat, got '$MODE'." >&2; exit 2 ;;
@@ -108,6 +109,13 @@ else
   [[ -z "$MODEL" ]] && MODEL="claude-opus-4-8"
 fi
 
+PROVIDER="$AGENT"
+if [[ "$AGENT" == "codex" ]]; then
+  EXECUTION_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+else
+  EXECUTION_MODEL="$MODEL"
+fi
+
 if [[ "$MODE" == "repeat" ]]; then
   read -r -d '' PROMPT <<PROMPT || true
 Run the repeatable task for IdeaFlow idea ${ID}. Use "${IFCLI}" only for
@@ -162,6 +170,7 @@ local git + gh (you have write access) for the repo. Steps:
      ${IFCLI} log-effort ${ID} \\
        --topic 'Implemented: <short what>' \\
        --model ${MODEL} \\
+       --provider ${PROVIDER} --execution-model ${EXECUTION_MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        --repo-url '<PR_URL>' --repo-label 'PR' \\
@@ -207,6 +216,7 @@ Steps:
      ${IFCLI} log-effort ${ID} \\
        --topic 'Critical PR review' \\
        --model ${MODEL} \\
+       --provider ${PROVIDER} --execution-model ${EXECUTION_MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        --exec-summary '<latest effort outcome and recommended next steps>' \\
@@ -259,6 +269,7 @@ Steps:
      ${IFCLI} log-effort ${ID} \\
        --topic 'Review & synthesis' \\
        --model ${MODEL} \\
+       --provider ${PROVIDER} --execution-model ${EXECUTION_MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        [--next-action '<specific action with completion condition>'] \\
@@ -319,6 +330,7 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
      ${IFCLI} log-effort ${ID} \\
        --topic '<short title of what you did>' \\
        --model ${MODEL} \\
+       --provider ${PROVIDER} --execution-model ${EXECUTION_MODEL} \\
        --context-file ${REPORT} \\
        --effort <1-5, how much work> \\
        --quality <1-5, your confidence in the findings> \\
@@ -349,7 +361,7 @@ fi
 if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
   managed_mode_template="$("$IFCLI" prompt "agent-${MODE}" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
   if [[ -n "$managed_mode_template" ]]; then
-    PROMPT="$(printf '%s' "$managed_mode_template" | ID="$ID" IFCLI="$IFCLI" BASE="$BASE" REPORT="$REPORT" MODEL="$MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" PR_RESOURCE_STANDARD="$PR_RESOURCE_STANDARD" HUMAN_SUMMARY_STANDARD="$HUMAN_SUMMARY_STANDARD" EFFORT_QUALITY_STANDARD="$EFFORT_QUALITY_STANDARD" CHILD_STANDARD="$CHILD_STANDARD" NEXT_ACTION_STANDARD="$NEXT_ACTION_STANDARD" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
+    PROMPT="$(printf '%s' "$managed_mode_template" | ID="$ID" IFCLI="$IFCLI" BASE="$BASE" REPORT="$REPORT" MODEL="$MODEL" PROVIDER="$PROVIDER" EXECUTION_MODEL="$EXECUTION_MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" PR_RESOURCE_STANDARD="$PR_RESOURCE_STANDARD" HUMAN_SUMMARY_STANDARD="$HUMAN_SUMMARY_STANDARD" EFFORT_QUALITY_STANDARD="$EFFORT_QUALITY_STANDARD" CHILD_STANDARD="$CHILD_STANDARD" NEXT_ACTION_STANDARD="$NEXT_ACTION_STANDARD" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
   fi
 fi
 

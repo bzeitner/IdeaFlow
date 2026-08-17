@@ -35,6 +35,12 @@ else
   METRICS="$(mktemp "$REPORT_DIR/weekly-metrics.XXXXXX.json")"
   MODEL="$("$IFCLI" config | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_models"].get("weekly_summary", "claude-opus-4-8"))')"
 fi
+PROVIDER="$AGENT"
+if [[ "$AGENT" == "codex" ]]; then
+  EXECUTION_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+else
+  EXECUTION_MODEL="$MODEL"
+fi
 SHARED_STANDARDS="$(prompt_shared_standards)"
 managed_shared=""
 if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
@@ -73,12 +79,19 @@ ${PERIOD_START} through ${PERIOD_END}. Talk to IdeaFlow only through "${IFCLI}"
    "None identified" if no true blockers are evidenced.
 6. Write valid JSON to ${METRICS} using exactly this schema, with non-negative
    integer values:
-   {"tasks_by_type": {"research": 0, "review": 0, "implementation": 0, "pr_review": 0, "repeat": 0, "other": 0}, "prs": {"created": 0, "reviewed": 0, "closed": 0}, "open_prs": [], "tokens_by_task": {}, "tokens_by_model": {}, "tokens_by_category": {}, "total_tokens": 0}
+   {"tasks_by_type": {"research": 0, "review": 0, "implementation": 0, "pr_review": 0, "repeat": 0, "other": 0}, "tasks_by_idea": {}, "prs": {"created": 0, "reviewed": 0, "closed": 0}, "open_prs": [], "tokens_by_task": {}, "tokens_by_model": {}, "tokens_by_category": {}, "tokens_by_idea": {}, "total_tasks": 0, "total_tokens": 0}
    Count each research entry once by its primary task type. Derive PR created,
    reviewed, and closed events only from explicit URLs, topics, statuses, or
    report statements in the reporting window. Token totals come from each
-   entry's tokens_used and must be grouped consistently by its task type, model,
-   and parent idea category; omit unknown token counts rather than estimating.
+   entry's tokens_used and must be grouped consistently by its task type and
+   execution_model when present (falling back to model for legacy entries),
+   parent idea category, and idea. Use "Idea #<id> — <title>" in both
+   tasks_by_idea and tokens_by_idea. For every parent with children, include
+   individual rows for the parent and each child plus an "Idea #<parent-id> —
+   <parent-title> + children (total)" row in both groups. Family totals must
+   equal the parent plus its children, while total_tasks and total_tokens remain
+   portfolio totals and must not double-count family-total rows. Omit unknown
+   token counts rather than estimating.
    For every GitHub pull-request URL associated with work in that week, run
    gh pr view <url> --json state,title,url at summary-generation time. Add an
    open_prs item only when that command succeeds and reports state OPEN. Each
@@ -87,7 +100,7 @@ ${PERIOD_START} through ${PERIOD_END}. Talk to IdeaFlow only through "${IFCLI}"
    and never include a PR when the GitHub lookup fails, is CLOSED, or is MERGED.
 7. Save each missing period exactly once through the client, substituting that
    period's dates:
-   ${IFCLI} log-weekly-summary --period-start <start> --period-end <end> --title "Week ending <end>" --summary-file ${REPORT} --metrics-file ${METRICS} --model ${MODEL} --tokens <approx>
+   ${IFCLI} log-weekly-summary --period-start <start> --period-end <end> --title "Week ending <end>" --summary-file ${REPORT} --metrics-file ${METRICS} --model ${EXECUTION_MODEL} --provider ${PROVIDER} --tokens <approx>
 8. You are done only after the client confirms a persisted summary id for every
    missing period. Print the ids and a two-line outcome.
 
@@ -99,7 +112,7 @@ if [[ -n "${IDEAFLOW_API_TOKEN:-}" ]]; then
   managed_prompt="$("$IFCLI" prompt agent-weekly-summary 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])' 2>/dev/null || true)"
 fi
 if [[ -n "$managed_prompt" ]]; then
-  PROMPT="$(printf '%s' "$managed_prompt" | PERIOD_START="$PERIOD_START" PERIOD_END="$PERIOD_END" IFCLI="$IFCLI" BASE="$BASE" REPORT="$REPORT" METRICS="$METRICS" MODEL="$MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
+  PROMPT="$(printf '%s' "$managed_prompt" | PERIOD_START="$PERIOD_START" PERIOD_END="$PERIOD_END" IFCLI="$IFCLI" BASE="$BASE" REPORT="$REPORT" METRICS="$METRICS" MODEL="$MODEL" PROVIDER="$PROVIDER" EXECUTION_MODEL="$EXECUTION_MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
 fi
 
 if [[ "$PRINT_PROMPT" -eq 1 ]]; then

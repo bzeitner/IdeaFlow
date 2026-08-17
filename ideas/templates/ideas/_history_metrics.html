@@ -1,0 +1,24 @@
+{% if history_metrics %}
+  <section class="weekly-metrics history-metrics" aria-labelledby="history-metrics-heading">
+    <h3 id="history-metrics-heading">Full-history metrics</h3>
+    <p>
+      <strong>{{ history_metrics.idea_count }}</strong> ideas ·
+      <strong>{{ history_metrics.total_tasks }}</strong> tasks ·
+      <strong>{{ history_metrics.total_tokens }}</strong> tokens total
+    </p>
+    <div class="metric-section-grid">
+      {% for section in history_metrics.sections %}
+        <section>
+          <h4>{{ section.title }}</h4>
+          {% for row in section.rows %}
+            <div class="metric-row">
+              <span title="{{ row.label }}">{{ row.label }}</span>
+              <div><div class="metric-track"><i style="width: {{ row.width }}%"></i></div></div>
+              <strong>{{ row.value }}</strong>
+            </div>
+          {% empty %}<p class="dim">No recorded activity.</p>{% endfor %}
+        </section>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

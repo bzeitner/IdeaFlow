@@ -617,6 +617,8 @@ class ResearchEntry(models.Model):
     model = models.ForeignKey(
         AIModel, related_name="research_entries", on_delete=models.PROTECT
     )
+    execution_provider = models.CharField(max_length=32, blank=True)
+    execution_model = models.CharField(max_length=100, blank=True)
     quality = models.PositiveSmallIntegerField(choices=STAR_CHOICES, default=3)
     tokens_used = models.PositiveIntegerField(
         null=True, blank=True, help_text="Approximate tokens used, if known."
@@ -690,6 +692,7 @@ class WeeklySummary(models.Model):
     title = models.CharField(max_length=200)
     content = models.TextField()
     model = models.CharField(max_length=100, blank=True)
+    execution_provider = models.CharField(max_length=32, blank=True)
     tokens_used = models.PositiveIntegerField(null=True, blank=True)
     metrics = models.JSONField(
         default=dict,

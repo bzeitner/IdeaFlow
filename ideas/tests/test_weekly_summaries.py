@@ -42,6 +42,11 @@ class WeeklySummaryViewTests(TestCase):
             generated_at=datetime(2026, 8, 17, tzinfo=timezone.utc),
             metrics={
                 "tasks_by_type": {"research": 4, "implementation": 2},
+                "tasks_by_idea": {
+                    "Idea #9 — Parent": 2,
+                    "Idea #10 — Child": 4,
+                    "Idea #9 — Parent + children (total)": 6,
+                },
                 "prs": {"created": 2, "reviewed": 1, "closed": 1},
                 "open_prs": [
                     {
@@ -55,6 +60,8 @@ class WeeklySummaryViewTests(TestCase):
                 "tokens_by_task": {"research": 1000, "implementation": 2000},
                 "tokens_by_model": {"claude-opus-4-8": 3000},
                 "tokens_by_category": {"Project": 3000},
+                "tokens_by_idea": {"Idea #9 — Repeat task status": 3000},
+                "total_tasks": 6,
                 "total_tokens": 3000,
             },
         )
@@ -70,6 +77,11 @@ class WeeklySummaryViewTests(TestCase):
         self.assertContains(response, "Weekly Summary")
         self.assertContains(response, "Trends over time")
         self.assertContains(response, "Tokens by model")
+        self.assertContains(response, "Tokens by idea")
+        self.assertContains(response, "Tasks by idea")
+        self.assertContains(response, "6</strong> tasks")
+        self.assertContains(response, "Idea #9 — Parent + children (total)")
+        self.assertContains(response, "Idea #9 — Repeat task status")
         self.assertContains(response, "Created / reviewed / closed")
         self.assertContains(response, "Open pull requests")
         self.assertContains(response, "Persist feed backfill cutoff")
@@ -86,9 +98,11 @@ class WeeklySummaryApiTests(TestCase):
             "title": "Week ending 2026-08-15",
             "content": "# Executive summary\nShipped useful work.",
             "model": "claude-opus-4-8",
+            "execution_provider": "claude",
             "tokens_used": 12000,
             "metrics": {
                 "tasks_by_type": {"research": 3},
+                "tasks_by_idea": {"Idea #4 — Example": 3},
                 "prs": {"created": 1, "reviewed": 2, "closed": 1},
                 "open_prs": [
                     {
@@ -101,6 +115,8 @@ class WeeklySummaryApiTests(TestCase):
                 "tokens_by_task": {"research": 5000},
                 "tokens_by_model": {"claude-opus-4-8": 5000},
                 "tokens_by_category": {"Project": 5000},
+                "tokens_by_idea": {"Idea #4 — Example": 5000},
+                "total_tasks": 3,
                 "total_tokens": 5000,
             },
         }
@@ -122,6 +138,7 @@ class WeeklySummaryApiTests(TestCase):
         self.assertEqual(listed.json()["weekly_summaries"][0]["id"], summary_id)
         self.assertEqual(listed.json()["weekly_summaries"][0]["metrics"]["prs"]["reviewed"], 2)
         self.assertEqual(listed.json()["weekly_summaries"][0]["metrics"]["open_prs"][0]["state"], "OPEN")
+        self.assertEqual(listed.json()["weekly_summaries"][0]["execution_provider"], "claude")
 
     def test_same_period_is_replaced_instead_of_duplicated(self):
         for content in ("First", "Corrected"):

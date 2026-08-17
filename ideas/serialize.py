@@ -34,6 +34,8 @@ def research_entry_to_dict(entry):
         "effort": entry.effort,
         "quality": entry.quality,
         "model": _lookup(entry.model),
+        "execution_provider": entry.execution_provider,
+        "execution_model": entry.execution_model,
         "tokens_used": entry.tokens_used,
         "occurred_at": entry.occurred_at.isoformat(),
         "created_at": entry.created_at.isoformat(),

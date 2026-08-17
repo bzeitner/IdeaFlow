@@ -18,7 +18,36 @@ def prompt(mode):
     )
 
 
+def codex_prompt(script, *args):
+    return subprocess.check_output(
+        [str(script), *args],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "IDEAFLOW_API_TOKEN": "",
+            "IDEAFLOW_AGENT": "codex",
+            "IDEAFLOW_CODEX_MODEL": "gpt-5-codex",
+        },
+        text=True,
+    )
+
+
 class AgentPromptTests(SimpleTestCase):
+    def test_codex_research_logs_actual_execution_identity(self):
+        text = codex_prompt(RUNNER, "123", "review", "--print-prompt")
+        self.assertIn("--model <configured-review-model>", text)
+        self.assertIn("--provider codex --execution-model gpt-5-codex", text)
+
+    def test_codex_weekly_summary_logs_actual_model(self):
+        text = codex_prompt(ROOT / "weekly_summary.sh", "--print-prompt")
+        self.assertIn("--model gpt-5-codex --provider codex", text)
+        self.assertIn("execution_model when present", text)
+        self.assertIn('"tokens_by_idea": {}', text)
+        self.assertIn('"tasks_by_idea": {}', text)
+        self.assertIn('Idea #<id> — <title>', text)
+        self.assertIn('+ children (total)', text)
+        self.assertIn("must not double-count", text)
+
     def test_weekly_summary_prompt_covers_every_idea_and_persists_once(self):
         text = subprocess.check_output(
             [str(ROOT / "weekly_summary.sh"), "--print-prompt"],

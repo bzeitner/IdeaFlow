@@ -141,6 +141,25 @@ class ApiEffortTests(TestCase):
             ["Which market should we prioritize?"],
         )
 
+    def test_records_actual_execution_identity_separately_from_routing_model(self):
+        idea = make_idea()
+        response = self._post(
+            idea,
+            {
+                "topic": "Codex implementation",
+                "model": "claude-opus-4-8",
+                "execution_provider": "codex",
+                "execution_model": "gpt-5-codex",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        entry = ResearchEntry.objects.get()
+        self.assertEqual(entry.model.slug, "claude-opus-4-8")
+        self.assertEqual(entry.execution_provider, "codex")
+        self.assertEqual(entry.execution_model, "gpt-5-codex")
+        self.assertEqual(response.json()["research_entry"]["execution_model"], "gpt-5-codex")
+
     def test_extracts_open_questions_from_markdown_report(self):
         idea = make_idea()
         response = self._post(

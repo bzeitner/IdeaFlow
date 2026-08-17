@@ -42,6 +42,7 @@
       {% if summary.metrics %}
         <div class="weekly-metrics">
           <h3>Metrics <span class="dim">(solid: this week; outline: previous week)</span></h3>
+          <p><strong>{{ summary.metrics.total_tasks|default:0 }}</strong> tasks · <strong>{{ summary.metrics.total_tokens|default:0 }}</strong> tokens total</p>
           <div class="metric-section-grid">
             {% for section in summary.metric_sections %}
               <section>

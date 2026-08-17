@@ -30,6 +30,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--model", default="other", help="AI model slug or name (default: other)."
         )
+        parser.add_argument("--provider", default="", dest="execution_provider")
+        parser.add_argument("--execution-model", default="", dest="execution_model")
         parser.add_argument("--context", default="", help="The write-up / report body.")
         parser.add_argument(
             "--context-file", help="Read the report body from this file (overrides --context)."
@@ -94,6 +96,8 @@ class Command(BaseCommand):
                 idea,
                 topic=options["topic"],
                 model=options["model"],
+                execution_provider=options["execution_provider"],
+                execution_model=options["execution_model"],
                 context=context,
                 focus=options["focus"],
                 effort=options["effort"],

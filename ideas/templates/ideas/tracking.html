@@ -91,5 +91,6 @@
   {% else %}
     <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}">Clear filters</a></p>
   {% endif %}
+  {% include "ideas/_history_metrics.html" %}
   <script src="{% static 'ideas/tracking.js' %}"></script>
 {% endblock %}

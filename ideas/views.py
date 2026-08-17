@@ -32,6 +32,62 @@ def _stars(value):
     filled_to = value or 0
     return [(n, n <= filled_to) for n in STAR_RANGE]
 
+
+def _history_metrics(ideas):
+    """All recorded effort for the ideas currently represented by a list page."""
+    ideas = list(ideas)
+    by_id = {idea.pk: idea for idea in ideas}
+    task_counts = {idea.pk: 0 for idea in ideas}
+    token_counts = {idea.pk: 0 for idea in ideas}
+    models = {}
+    categories = {}
+    entries = ResearchEntry.objects.filter(idea_id__in=by_id).select_related(
+        "idea__category", "model"
+    )
+    total_tasks = 0
+    total_tokens = 0
+    for entry in entries:
+        total_tasks += 1
+        task_counts[entry.idea_id] += 1
+        tokens = entry.tokens_used or 0
+        token_counts[entry.idea_id] += tokens
+        total_tokens += tokens
+        model = entry.execution_model or entry.model.name
+        models[model] = models.get(model, 0) + tokens
+        category = entry.idea.category.name if entry.idea.category_id else "Uncategorized"
+        categories[category] = categories.get(category, 0) + tokens
+
+    task_rows = {}
+    token_rows = {}
+    for idea in ideas:
+        label = f"Idea #{idea.pk} — {idea.title}"
+        task_rows[label] = task_counts[idea.pk]
+        token_rows[label] = token_counts[idea.pk]
+    for parent in ideas:
+        child_ids = [idea.pk for idea in ideas if idea.parent_id == parent.pk]
+        if not child_ids:
+            continue
+        label = f"Idea #{parent.pk} — {parent.title} + children (total)"
+        family_ids = [parent.pk, *child_ids]
+        task_rows[label] = sum(task_counts[idea_id] for idea_id in family_ids)
+        token_rows[label] = sum(token_counts[idea_id] for idea_id in family_ids)
+
+    sections = (
+        ("Tasks by idea", task_rows),
+        ("Tokens by idea", token_rows),
+        ("Tokens by model", models),
+        ("Tokens by category", categories),
+    )
+    return {
+        "idea_count": len(ideas),
+        "total_tasks": total_tasks,
+        "total_tokens": total_tokens,
+        "sections": [
+            {"title": title, "rows": metric_comparison_rows(values)}
+            for title, values in sections
+        ],
+    }
+
 TAB_SPEC = [
     (Status.CURRENT, "Current", "ideas:current"),
     (Status.TRACKING, "Tracking", "ideas:tracking"),
@@ -114,10 +170,12 @@ def weekly_summaries(request):
     summaries = list(WeeklySummary.objects.all())
     section_specs = (
         ("Tasks by type", "tasks_by_type"),
+        ("Tasks by idea", "tasks_by_idea"),
         ("Pull requests", "prs"),
         ("Tokens by task", "tokens_by_task"),
         ("Tokens by model", "tokens_by_model"),
         ("Tokens by category", "tokens_by_category"),
+        ("Tokens by idea", "tokens_by_idea"),
     )
     for index, summary in enumerate(summaries):
         previous = summaries[index + 1].metrics if index + 1 < len(summaries) else {}
@@ -398,12 +456,13 @@ def home(request):
     if not request.user.is_authenticated:
         return render(request, "ideas/landing.html")
     profile = request.user.profile
-    public = Idea.objects.filter(is_public=True).select_related("created_by").prefetch_related("resources")
+    public = list(Idea.objects.filter(is_public=True).select_related("created_by", "category", "parent").prefetch_related("resources"))
     return render(
         request,
         "ideas/home.html",
         {
             "ideas": public,
+            "history_metrics": _history_metrics(public),
             "tabs": _tabs(profile),
             "can_manage": False,
             "has_any_role": profile.has_role(
@@ -415,14 +474,16 @@ def home(request):
 
 def _tab_view(request, status, template):
     owner_filter = request.GET.get("owner", "")
-    ideas = Idea.objects.filter(status=status).select_related("created_by").prefetch_related("resources")
+    ideas = Idea.objects.filter(status=status).select_related("created_by", "category", "parent").prefetch_related("resources")
     if owner_filter == "mine":
         ideas = ideas.filter(created_by=request.user)
+    ideas = list(ideas)
     return render(
         request,
         template,
         {
             "ideas": ideas,
+            "history_metrics": _history_metrics(ideas),
             "tabs": _tabs(request.user.profile),
             "active": status,
             "can_manage": True,
@@ -521,11 +582,13 @@ def tracking(request):
         # consistent on SQLite and PostgreSQL. Stable sorting retains the
         # family/rank ordering above within each priority group.
         ideas = sorted(ideas, key=lambda idea: idea.open_question_count == 0)
+    ideas = list(ideas)
     return render(
         request,
         "ideas/tracking.html",
         {
             "ideas": ideas,
+            "history_metrics": _history_metrics(ideas),
             "tabs": _tabs(request.user.profile),
             "active": Status.TRACKING,
             "can_manage": True,
