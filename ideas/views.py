@@ -1,5 +1,6 @@
 from functools import wraps
 from datetime import timedelta
+import re
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -78,15 +79,35 @@ def _history_metrics(ideas):
         ("Tokens by model", models),
         ("Tokens by category", categories),
     )
+    rendered_sections = []
+    for title, values in sections:
+        rows = metric_comparison_rows(values)
+        rows = _link_idea_metric_rows(rows, by_id)
+        rendered_sections.append({"title": title, "rows": rows})
     return {
         "idea_count": len(ideas),
         "total_tasks": total_tasks,
         "total_tokens": total_tokens,
-        "sections": [
-            {"title": title, "rows": metric_comparison_rows(values)}
-            for title, values in sections
-        ],
+        "sections": rendered_sections,
     }
+
+
+def _link_idea_metric_rows(rows, ideas_by_id):
+    """Attach detail links and fill missing titles in persisted idea metric labels."""
+    for row in rows:
+        match = re.match(r"^Idea #(\d+)(.*)$", row["label"])
+        if not match:
+            continue
+        idea_id = int(match.group(1))
+        idea = ideas_by_id.get(idea_id)
+        if idea is None:
+            continue
+        row["idea_id"] = idea_id
+        family_total = "+ children (total)" in match.group(2)
+        row["label"] = f"Idea #{idea_id} — {idea.title}"
+        if family_total:
+            row["label"] += " + children (total)"
+    return rows
 
 TAB_SPEC = [
     (Status.CURRENT, "Current", "ideas:current"),
@@ -168,6 +189,7 @@ def _tabs(profile):
 @role_required("role_weekly_summary")
 def weekly_summaries(request):
     summaries = list(WeeklySummary.objects.all())
+    ideas_by_id = Idea.objects.in_bulk()
     section_specs = (
         ("Tasks by type", "tasks_by_type"),
         ("Tasks by idea", "tasks_by_idea"),
@@ -179,15 +201,13 @@ def weekly_summaries(request):
     )
     for index, summary in enumerate(summaries):
         previous = summaries[index + 1].metrics if index + 1 < len(summaries) else {}
-        summary.metric_sections = [
-            {
-                "title": title,
-                "rows": metric_comparison_rows(
-                    (summary.metrics or {}).get(key), (previous or {}).get(key)
-                ),
-            }
-            for title, key in section_specs
-        ]
+        summary.metric_sections = []
+        for title, key in section_specs:
+            rows = metric_comparison_rows(
+                (summary.metrics or {}).get(key), (previous or {}).get(key)
+            )
+            rows = _link_idea_metric_rows(rows, ideas_by_id)
+            summary.metric_sections.append({"title": title, "rows": rows})
     chronological = list(reversed(summaries))
     max_tokens = max(
         [1, *[(summary.metrics or {}).get("total_tokens", 0) for summary in chronological]]

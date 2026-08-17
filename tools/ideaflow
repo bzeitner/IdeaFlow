@@ -16,6 +16,7 @@ Commands:
   ideaflow log-weekly-summary --period-start YYYY-MM-DD --period-end YYYY-MM-DD
                               --summary-file F [--title T] [--model M]
   ideaflow remove-resource <idea-id> <resource-id>
+  ideaflow reconcile-pr <idea-id> --url URL --state CLOSED|MERGED
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
@@ -122,6 +123,14 @@ def cmd_log_weekly_summary(a):
 
 def cmd_remove_resource(a):
     return _request("DELETE", f"/ideas/{a.idea_id}/resources/{a.resource_id}/")
+
+
+def cmd_reconcile_pr(a):
+    return _request(
+        "POST",
+        f"/ideas/{a.idea_id}/reconcile-pr/",
+        body={"url": a.url, "state": a.state},
+    )
 
 
 def cmd_graph(a):
@@ -259,6 +268,12 @@ def build_parser():
     s.add_argument("idea_id", type=int)
     s.add_argument("resource_id", type=int)
     s.set_defaults(func=cmd_remove_resource)
+
+    s = sub.add_parser("reconcile-pr", help="Apply a verified closed or merged PR state.")
+    s.add_argument("idea_id", type=int)
+    s.add_argument("--url", required=True)
+    s.add_argument("--state", required=True, choices=("CLOSED", "MERGED"))
+    s.set_defaults(func=cmd_reconcile_pr)
 
     s = sub.add_parser("graph", help="Read the projected knowledge graph.")
     s.add_argument("--archived", action="store_true")

@@ -8,7 +8,7 @@ from django.urls import reverse
 from ideas.models import WeeklySummary
 from ideas.weekly_metrics import missing_weekly_periods, normalize_weekly_metrics
 
-from .helpers import MODEL_BACKEND, make_user
+from .helpers import MODEL_BACKEND, make_idea, make_user
 
 
 TOKEN = "weekly-test-token"
@@ -27,6 +27,8 @@ class WeeklySummaryViewTests(TestCase):
         )
 
     def test_latest_is_expanded_and_history_is_collapsed(self):
+        parent = make_idea(pk=9, title="Parent")
+        make_idea(pk=10, title="Child", parent=parent)
         older = WeeklySummary.objects.create(
             period_start=date(2026, 8, 2),
             period_end=date(2026, 8, 8),
@@ -81,7 +83,11 @@ class WeeklySummaryViewTests(TestCase):
         self.assertContains(response, "Tasks by idea")
         self.assertContains(response, "6</strong> tasks")
         self.assertContains(response, "Idea #9 — Parent + children (total)")
-        self.assertContains(response, "Idea #9 — Repeat task status")
+        self.assertContains(
+            response,
+            f'href="{reverse("ideas:detail", args=[parent.pk])}">Idea #9 — Parent</a>',
+        )
+        self.assertNotContains(response, "Idea #9 — Repeat task status")
         self.assertContains(response, "Created / reviewed / closed")
         self.assertContains(response, "Open pull requests")
         self.assertContains(response, "Persist feed backfill cutoff")

@@ -49,7 +49,7 @@
                 <h4>{{ section.title }}</h4>
                 {% for row in section.rows %}
                   <div class="metric-row">
-                    <span title="{{ row.label }}">{{ row.label }}</span>
+                    <span title="{{ row.label }}">{% if row.idea_id %}<a href="{% url 'ideas:detail' row.idea_id %}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</span>
                     <div><div class="metric-track previous"><i style="width: {{ row.previous_width }}%"></i></div><div class="metric-track"><i style="width: {{ row.width }}%"></i></div></div>
                     <strong>{{ row.value }} <small class="{% if row.delta > 0 %}up{% elif row.delta < 0 %}down{% endif %}">{% if row.delta > 0 %}+{% endif %}{{ row.delta }}</small></strong>
                   </div>

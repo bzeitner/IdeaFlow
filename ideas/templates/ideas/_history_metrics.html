@@ -12,7 +12,7 @@
           <h4>{{ section.title }}</h4>
           {% for row in section.rows %}
             <div class="metric-row">
-              <span title="{{ row.label }}">{{ row.label }}</span>
+              <span title="{{ row.label }}">{% if row.idea_id %}<a href="{% url 'ideas:detail' row.idea_id %}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</span>
               <div><div class="metric-track"><i style="width: {{ row.width }}%"></i></div></div>
               <strong>{{ row.value }}</strong>
             </div>

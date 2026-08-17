@@ -69,6 +69,12 @@ class HomeViewTests(TestCase):
         self.assertContains(response, "2</strong> tasks")
         self.assertContains(response, "2000</strong> tokens total")
         self.assertContains(response, "Idea #{} — Parent project".format(parent.pk))
+        self.assertContains(
+            response,
+            'href="{}">Idea #{} — Parent project</a>'.format(
+                reverse("ideas:detail", args=[parent.pk]), parent.pk
+            ),
+        )
         self.assertContains(response, "Idea #{} — Child project".format(child.pk))
         self.assertContains(response, "Parent project + children (total)")
         self.assertContains(response, "gpt-5-codex")

@@ -14,6 +14,7 @@ Unset token disables the whole API, so it stays off until you opt in.
 import json
 from collections import defaultdict
 from functools import wraps
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.db import transaction
@@ -185,6 +186,53 @@ def idea_resource(request, pk, resource_pk):
     deleted = {"id": resource.pk, "label": resource.label, "url": resource.url}
     resource.delete()
     return JsonResponse({"deleted": deleted})
+
+
+@require_api_token
+@transaction.atomic
+def idea_reconcile_pr(request, pk):
+    """Apply a verified external PR closure without manufacturing an effort."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    url = str(payload.get("url") or "").strip().rstrip("/")
+    state = str(payload.get("state") or "").strip().upper()
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc.lower() != "github.com" or "/pull/" not in parsed.path:
+        return JsonResponse({"error": "url must be an HTTPS GitHub pull-request URL."}, status=400)
+    if state not in {"CLOSED", "MERGED"}:
+        return JsonResponse({"error": "state must be CLOSED or MERGED."}, status=400)
+    idea = get_object_or_404(Idea.objects.prefetch_related("resources"), pk=pk)
+    removed = []
+    for resource in idea.resources.all():
+        if resource.url.rstrip("/") == url:
+            removed.append(resource.pk)
+            resource.delete()
+    advanced = url in idea.next_action.rstrip("/")
+    if advanced:
+        idea.replace_active_next_action("")
+        idea.agent_runs_since_feedback = 0
+        idea.save(
+            update_fields=[
+                "next_action",
+                "next_actions",
+                "agent_runs_since_feedback",
+                "updated_at",
+            ]
+        )
+    return JsonResponse(
+        {
+            "idea_id": idea.pk,
+            "url": url,
+            "state": state,
+            "removed_resource_ids": removed,
+            "advanced_next_action": advanced,
+            "next_action": idea.next_action,
+        }
+    )
 
 
 @require_api_token
@@ -640,6 +688,7 @@ urlpatterns = [
     path("ideas/", idea_list, name="api_idea_list"),
     path("weekly-summaries/", weekly_summary_list, name="api_weekly_summary_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path("ideas/<int:pk>/reconcile-pr/", idea_reconcile_pr, name="api_idea_reconcile_pr"),
     path("ideas/<int:pk>/repeat-results/", idea_repeat_results, name="api_idea_repeat_results"),
     path(
         "ideas/<int:pk>/resources/<int:resource_pk>/",

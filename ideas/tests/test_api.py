@@ -90,6 +90,46 @@ class ApiReadTests(TestCase):
         self.assertEqual(response.json()["deleted"]["id"], resource.pk)
         self.assertFalse(idea.resources.filter(pk=resource.pk).exists())
 
+    def test_reconcile_closed_pr_removes_resource_and_advances_queue(self):
+        url = "https://github.com/x/y/pull/17"
+        idea = make_idea(
+            next_action=f"Review {url}",
+            next_actions=[f"Review {url}", "Deploy the accepted change"],
+            agent_runs_since_feedback=2,
+        )
+        resource = idea.resources.create(label="PR", url=url)
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/reconcile-pr/",
+            data=json.dumps({"url": url, "state": "MERGED"}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["removed_resource_ids"], [resource.pk])
+        self.assertTrue(response.json()["advanced_next_action"])
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Deploy the accepted change")
+        self.assertEqual(idea.agent_runs_since_feedback, 0)
+        self.assertFalse(idea.resources.exists())
+
+    def test_reconcile_pr_rejects_open_or_non_github_state(self):
+        idea = make_idea(next_action="Keep this")
+        for payload in (
+            {"url": "https://github.com/x/y/pull/17", "state": "OPEN"},
+            {"url": "https://example.com/pull/17", "state": "CLOSED"},
+        ):
+            response = self.client.post(
+                f"/api/ideas/{idea.pk}/reconcile-pr/",
+                data=json.dumps(payload),
+                content_type="application/json",
+                **AUTH,
+            )
+            self.assertEqual(response.status_code, 400)
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Keep this")
+
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
 class ApiEffortTests(TestCase):
