@@ -50,6 +50,7 @@ class TabAccessTests(TestCase):
         ("ideas:tracking", "role_tracking"),
         ("ideas:archive", "role_archive"),
         ("ideas:graph", "role_graph"),
+        ("ideas:weekly_summaries", "role_weekly_summary"),
     ]
 
     def test_anonymous_is_redirected_to_login(self):
@@ -361,6 +362,35 @@ class UserManagementViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, other.email)
         self.assertContains(response, admin.email)
+
+    def test_user_rows_show_last_login_and_owned_idea_count(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        other = make_user(email="owner@example.com")
+        other.last_login = timezone.now() - timedelta(days=2)
+        other.save(update_fields=["last_login"])
+        make_idea(title="First owned idea", created_by=other)
+        make_idea(title="Second owned idea", created_by=other)
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:user_management"))
+
+        row = next(
+            row for row in response.context["rows"] if row["profile"].user_id == other.pk
+        )
+        self.assertEqual(row["profile"].idea_count, 2)
+        self.assertContains(
+            response,
+            date(timezone.localtime(other.last_login), "M j, Y g:i A T"),
+        )
+
+    def test_user_who_never_logged_in_is_labeled_never(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        make_user(email="never@example.com")
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:user_management"))
+
+        self.assertContains(response, "Never")
 
     def test_admin_post_updates_roles_for_multiple_users(self):
         admin = make_user(email="admin@example.com", roles=["role_admin"])

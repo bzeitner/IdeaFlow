@@ -10,6 +10,8 @@
       <thead>
         <tr>
           <th>User</th>
+          <th>Last login</th>
+          <th>Ideas</th>
           {% for field, label in role_columns %}<th>{{ label }}</th>{% endfor %}
         </tr>
       </thead>
@@ -17,6 +19,8 @@
         {% for row in rows %}
           <tr>
             <td>{{ row.profile.user.email|default:row.profile.user.username }}</td>
+            <td>{% if row.profile.user.last_login %}{{ row.profile.user.last_login|date:"M j, Y g:i A T" }}{% else %}<span class="dim">Never</span>{% endif %}</td>
+            <td><a href="{% url 'ideas:idea_ownership' %}">{{ row.profile.idea_count }}</a></td>
             {% for field, checked in row.cells %}
               <td>
                 <input type="checkbox" name="role-{{ row.profile.user_id }}-{{ field }}" {% if checked %}checked{% endif %}>
@@ -24,7 +28,7 @@
             {% endfor %}
           </tr>
         {% empty %}
-          <tr><td colspan="{{ role_columns|length|add:1 }}">No users yet.</td></tr>
+          <tr><td colspan="{{ role_columns|length|add:3 }}">No users yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>

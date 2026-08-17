@@ -20,8 +20,9 @@ from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSe
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
 from .presentation import render_research_context
+from .weekly_metrics import metric_comparison_rows
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -44,6 +45,7 @@ ROLE_COLUMNS = [
     ("role_archive", "Archive"),
     ("role_add_ideas", "Add Ideas"),
     ("role_graph", "Knowledge Graph"),
+    ("role_weekly_summary", "Weekly Summary"),
 ]
 ROLE_FIELDS = [field for field, _label in ROLE_COLUMNS]
 
@@ -95,7 +97,70 @@ def _tabs(profile):
                 "count": IdeaRelation.objects.count(),
             }
         )
+    if profile.has_role("role_weekly_summary"):
+        tabs.append(
+            {
+                "value": "weekly-summary",
+                "label": "Weekly Summary",
+                "route": "ideas:weekly_summaries",
+                "count": WeeklySummary.objects.count(),
+            }
+        )
     return tabs
+
+
+@role_required("role_weekly_summary")
+def weekly_summaries(request):
+    summaries = list(WeeklySummary.objects.all())
+    section_specs = (
+        ("Tasks by type", "tasks_by_type"),
+        ("Pull requests", "prs"),
+        ("Tokens by task", "tokens_by_task"),
+        ("Tokens by model", "tokens_by_model"),
+        ("Tokens by category", "tokens_by_category"),
+    )
+    for index, summary in enumerate(summaries):
+        previous = summaries[index + 1].metrics if index + 1 < len(summaries) else {}
+        summary.metric_sections = [
+            {
+                "title": title,
+                "rows": metric_comparison_rows(
+                    (summary.metrics or {}).get(key), (previous or {}).get(key)
+                ),
+            }
+            for title, key in section_specs
+        ]
+    chronological = list(reversed(summaries))
+    max_tokens = max(
+        [1, *[(summary.metrics or {}).get("total_tokens", 0) for summary in chronological]]
+    )
+    max_prs = max(
+        [1, *[sum(((summary.metrics or {}).get("prs") or {}).values()) for summary in chronological]]
+    )
+    trends = [
+        {
+            "summary": summary,
+            "tokens": (summary.metrics or {}).get("total_tokens", 0),
+            "token_width": round(
+                (summary.metrics or {}).get("total_tokens", 0) * 100 / max_tokens
+            ),
+            "prs": (summary.metrics or {}).get("prs") or {},
+            "pr_width": round(
+                sum(((summary.metrics or {}).get("prs") or {}).values()) * 100 / max_prs
+            ),
+        }
+        for summary in chronological
+    ]
+    return render(
+        request,
+        "ideas/weekly_summaries.html",
+        {
+            "summaries": summaries,
+            "trends": trends,
+            "tabs": _tabs(request.user.profile),
+            "active": "weekly-summary",
+        },
+    )
 
 
 @role_required("role_graph")
@@ -940,7 +1005,11 @@ def rate_feed_item(request, pk):
 @role_required()
 def user_management(request):
     """Admin-only: a checkbox matrix of every user's roles, saved in one POST."""
-    profiles = Profile.objects.select_related("user").order_by("user__email")
+    profiles = (
+        Profile.objects.select_related("user")
+        .annotate(idea_count=Count("user__ideas_created"))
+        .order_by("user__email")
+    )
     if request.method == "POST":
         for profile in profiles:
             for field in ROLE_FIELDS:

@@ -237,6 +237,7 @@ IDEAFLOW_TASK_MODELS = {
     'review': os.getenv('IDEAFLOW_MODEL_REVIEW', 'claude-opus-4-8'),
     'execute': os.getenv('IDEAFLOW_MODEL_EXECUTE', 'claude-opus-4-8'),
     'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-opus-4-8'),
+    'weekly_summary': os.getenv('IDEAFLOW_MODEL_WEEKLY_SUMMARY', 'claude-opus-4-8'),
 }
 
 # Semantic graph enrichment. The worker uses OpenAI-compatible JSON endpoints;

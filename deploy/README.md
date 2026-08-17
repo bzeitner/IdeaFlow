@@ -403,6 +403,17 @@ systemctl enable --now ideaflow-refresh-feeds.timer
 systemctl list-timers ideaflow-refresh-feeds.timer --no-pager
 ```
 
+Weekly portfolio summary (Sunday at 12:01 AM, covering the prior Sunday-Saturday and backfilling any missing activity weeks):
+
+```bash
+# as root; /etc/ideaflow/agent.env must contain IDEAFLOW_API_TOKEN and the
+# configured headless agent must be available to the ideaflow user.
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-weekly-summary.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-weekly-summary.timer
+systemctl list-timers ideaflow-weekly-summary.timer --no-pager
+```
+
 Nightly DB backup (kept 14 days):
 
 ```bash

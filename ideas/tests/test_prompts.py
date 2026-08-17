@@ -21,6 +21,7 @@ class PromptRevisionTests(TestCase):
             "effort-quality-standard", "child-suggestion-standard",
             "next-action-standard", "semantic-relationship-classifier",
             "open-question-single", "open-question-batch",
+            "agent-weekly-summary",
         }
         self.assertTrue(expected.issubset(set(PromptTemplate.objects.values_list("key", flat=True))))
         for key in expected:

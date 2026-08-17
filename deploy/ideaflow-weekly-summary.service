@@ -1,0 +1,13 @@
+[Unit]
+Description=IdeaFlow weekly portfolio executive summary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+EnvironmentFile=/etc/ideaflow/agent.env
+ExecStart=/home/ideaflow/IdeaFlow/weekly_summary.sh
+TimeoutStartSec=90min

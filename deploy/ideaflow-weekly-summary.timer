@@ -1,0 +1,10 @@
+[Unit]
+Description=Generate IdeaFlow weekly executive summary each Sunday
+
+[Timer]
+OnCalendar=Sun *-*-* 00:01:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

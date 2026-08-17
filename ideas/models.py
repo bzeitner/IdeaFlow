@@ -684,6 +684,34 @@ class RepeatResult(models.Model):
         return self.title
 
 
+class WeeklySummary(models.Model):
+    period_start = models.DateField()
+    period_end = models.DateField()
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    model = models.CharField(max_length=100, blank=True)
+    tokens_used = models.PositiveIntegerField(null=True, blank=True)
+    metrics = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured task, pull-request, and token metrics for the reporting period.",
+    )
+    generated_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-generated_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["period_start", "period_end"],
+                name="unique_weekly_summary_period",
+            )
+        ]
+
+    def __str__(self):
+        return self.title
+
+
 class Feed(models.Model):
     """An RSS/Atom feed tracked once and shared across ideas, so it's downloaded
     and its entries summarized a single time regardless of how many ideas
@@ -870,6 +898,9 @@ class Profile(models.Model):
         default=False, help_text="Create new ideas."
     )
     role_graph = models.BooleanField(default=False, help_text="View the knowledge graph.")
+    role_weekly_summary = models.BooleanField(
+        default=False, help_text="View weekly portfolio executive summaries."
+    )
 
     STATUS_ROLE = {
         Status.CURRENT: "role_current",

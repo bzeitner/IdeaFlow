@@ -30,6 +30,7 @@ from .models import (
     RepeatResult,
     ResearchEntry,
     Stage,
+    WeeklySummary,
 )
 
 admin.site.site_header = "IdeaFlow Administration"
@@ -144,6 +145,15 @@ class ResearchEntryAdmin(TooltipAdminMixin, admin.ModelAdmin):
     search_fields = ("topic", "focus", "context", "idea__title")
     list_select_related = ("idea", "model")
     date_hierarchy = "occurred_at"
+
+
+@admin.register(WeeklySummary)
+class WeeklySummaryAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "period_start", "period_end", "generated_at", "model", "tokens_used")
+    list_filter = ("model",)
+    search_fields = ("title", "content")
+    readonly_fields = ("created_at",)
+    date_hierarchy = "generated_at"
 
 
 @admin.register(IdeaRelation)
@@ -361,6 +371,7 @@ class ProfileAdmin(TooltipAdminMixin, admin.ModelAdmin):
         "role_archive",
         "role_add_ideas",
         "role_graph",
+        "role_weekly_summary",
     )
     list_editable = (
         "role_admin",
@@ -369,7 +380,8 @@ class ProfileAdmin(TooltipAdminMixin, admin.ModelAdmin):
         "role_archive",
         "role_add_ideas",
         "role_graph",
+        "role_weekly_summary",
     )
-    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas", "role_graph")
+    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas", "role_graph", "role_weekly_summary")
     search_fields = ("user__email", "user__username")
     list_select_related = ("user",)

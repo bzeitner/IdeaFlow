@@ -191,6 +191,8 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | --- | --- |
 | `GET /api/ideas/` | List ideas (optional `?status=current\|tracking\|archived`) |
 | `GET /api/ideas/<id>/` | One idea with resources + research entries |
+| `GET /api/weekly-summaries/` | List portfolio-wide weekly executive summaries |
+| `POST /api/weekly-summaries/` | Create or replace one reporting period (`{period_start, period_end, title, content, model?, tokens_used?}`) |
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report; supports `open_questions`, replaces `next_action`, and appends `queued_next_actions` |
@@ -220,6 +222,10 @@ export IDEAFLOW_API_TOKEN=<the token from the server .env>
 
 ./tools/ideaflow list-ideas
 ./tools/ideaflow dump-idea 12
+./tools/ideaflow weekly-summaries
+./tools/ideaflow log-weekly-summary --period-start 2026-08-09 --period-end 2026-08-15 \
+  --title "Week ending 2026-08-15" --summary-file weekly.md --metrics-file metrics.json \
+  --model claude-opus-4-8
 ./tools/ideaflow log-effort 12 --topic "Prototyped it" --model claude-opus-4-8 \
   --context-file report.md --effort 4 --quality 5 --tokens 180000 --status tracking
 ./tools/ideaflow add-feed --url https://example.com/feed.xml --idea 12
@@ -249,7 +255,7 @@ previous approved version is retained as superseded, while rejected proposals
 remain reviewable. Prompt revision bodies cannot be edited in place.
 
 The registry covers research, review, execution, critique, repeat tasks,
-portfolio reflection, feed scoring, shared agent standards, semantic relationship
+portfolio reflection, weekly portfolio summaries, feed scoring, shared agent standards, semantic relationship
 classification, and open-question extraction. Agent scripts fetch only active,
 approved revisions through the authenticated API and retain source-controlled
 fallbacks for availability during a deployment or API outage. The admin UI also
@@ -288,7 +294,7 @@ recommendations created before this guard existed.
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
-lighter model (Haiku) while research/review/execute/critique use the heavy one.
+lighter model (Haiku) while research/review/execute/critique/weekly-summary use the heavy one.
 `research_idea.sh` fetches its model from there per mode. Feed summarizing is
 bounded — `feed-items --idea <id> --per-feed 5` caps summaries per feed per idea
 per run, and `--limit/--offset` page the queue instead of downloading the whole
@@ -301,6 +307,12 @@ window) and runs a headless agent that writes one factual, idea-neutral summary
 and rates each item 1-5 against *that* idea. Assessments are stored per idea, so
 a shared item can be essential to one idea and irrelevant to another.
 `deploy/ideaflow-score-items.{service,timer}` runs it daily.
+
+**Weekly portfolio summary.** `weekly_summary.sh` runs each Sunday at 12:01 AM through
+`deploy/ideaflow-weekly-summary.{service,timer}`, reads every idea and its full
+research history through the HTTP client, and stores one executive summary for
+the prior Sunday-Saturday and backfills older activity weeks with no stored summary. The permission-gated **Weekly Summary** tab expands the
+latest report and keeps older reports collapsed but available.
 
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical

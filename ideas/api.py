@@ -21,13 +21,13 @@ from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import path
 from django.utils.crypto import constant_time_compare
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status, WeeklySummary
 from .reporting import record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -35,6 +35,7 @@ from .serialize import (
     idea_to_dict,
     research_entry_to_dict,
 )
+from .weekly_metrics import missing_weekly_periods, normalize_weekly_metrics
 
 _DETAIL_PREFETCH = (
     "resources",
@@ -96,6 +97,68 @@ def approved_prompt_view(request, key):
     if revision is None:
         return JsonResponse({"error": "This prompt has no approved revision."}, status=409)
     return JsonResponse({"key": key, "version": revision.version, "content": revision.content})
+
+
+def weekly_summary_to_dict(summary):
+    return {
+        "id": summary.pk,
+        "period_start": summary.period_start.isoformat(),
+        "period_end": summary.period_end.isoformat(),
+        "title": summary.title,
+        "content": summary.content,
+        "model": summary.model,
+        "tokens_used": summary.tokens_used,
+        "metrics": summary.metrics,
+        "generated_at": summary.generated_at.isoformat(),
+    }
+
+
+@require_api_token
+def weekly_summary_list(request):
+    if request.method == "GET":
+        activity = list(Idea.objects.values_list("created_at", flat=True))
+        activity += list(Idea.objects.values_list("updated_at", flat=True))
+        activity += list(ResearchEntry.objects.values_list("occurred_at", flat=True))
+        activity += list(RepeatResult.objects.values_list("found_at", flat=True))
+        existing = WeeklySummary.objects.values_list("period_start", "period_end")
+        return JsonResponse(
+            {
+                "weekly_summaries": [weekly_summary_to_dict(s) for s in WeeklySummary.objects.all()],
+                "missing_periods": missing_weekly_periods(activity, existing),
+            }
+        )
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    period_start = parse_date(payload.get("period_start") or "")
+    period_end = parse_date(payload.get("period_end") or "")
+    content = (payload.get("content") or "").strip()
+    if not period_start or not period_end or period_end < period_start:
+        return JsonResponse({"error": "Provide a valid period_start and period_end."}, status=400)
+    if not content:
+        return JsonResponse({"error": "content is required."}, status=400)
+    tokens_used = payload.get("tokens_used")
+    if tokens_used is not None and (not isinstance(tokens_used, int) or tokens_used < 0):
+        return JsonResponse({"error": "tokens_used must be a non-negative integer."}, status=400)
+    try:
+        metrics = normalize_weekly_metrics(payload.get("metrics") or {})
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    defaults = {
+        "title": (payload.get("title") or f"Weekly summary: {period_start}–{period_end}")[:200],
+        "content": content,
+        "model": (payload.get("model") or "")[:100],
+        "tokens_used": tokens_used,
+        "metrics": metrics,
+        "generated_at": timezone.now(),
+    }
+    summary, created = WeeklySummary.objects.update_or_create(
+        period_start=period_start, period_end=period_end, defaults=defaults
+    )
+    return JsonResponse(weekly_summary_to_dict(summary), status=201 if created else 200)
 
 
 @require_api_token
@@ -571,6 +634,7 @@ urlpatterns = [
     path("graph/neighborhood/", graph_neighborhood, name="api_graph_neighborhood"),
     path("graph/search/", graph_search_view, name="api_graph_search"),
     path("ideas/", idea_list, name="api_idea_list"),
+    path("weekly-summaries/", weekly_summary_list, name="api_weekly_summary_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
     path("ideas/<int:pk>/repeat-results/", idea_repeat_results, name="api_idea_repeat_results"),
     path(

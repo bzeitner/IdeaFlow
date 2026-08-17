@@ -1,0 +1,53 @@
+{% extends "ideas/base.html" %}
+{% block title %}Weekly Summaries · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Weekly Executive Summaries</h2>
+  <p class="lede">Portfolio-wide state, next steps, and blockers synthesized from the prior week’s IdeaFlow activity.</p>
+  {% if trends %}
+    <section class="weekly-trends" aria-label="Weekly metrics over time">
+      <h3>Trends over time</h3>
+      <div class="trend-grid">
+        <div>
+          <h4>Portfolio token usage</h4>
+          {% for row in trends %}<div class="trend-row"><span>{{ row.summary.period_end|date:"M j" }}</span><div class="metric-track"><i style="width: {{ row.token_width }}%"></i></div><strong>{{ row.tokens }}</strong></div>{% endfor %}
+        </div>
+        <div>
+          <h4>Pull-request activity</h4>
+          {% for row in trends %}<div class="trend-row"><span>{{ row.summary.period_end|date:"M j" }}</span><div class="metric-track pr"><i style="width: {{ row.pr_width }}%"></i></div><strong>{{ row.prs.created|default:0 }}/{{ row.prs.reviewed|default:0 }}/{{ row.prs.closed|default:0 }}</strong></div>{% endfor %}
+          <p class="dim metric-legend">Created / reviewed / closed</p>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+  {% for summary in summaries %}
+    <details class="weekly-summary"{% if forloop.first %} open{% endif %}>
+      <summary>
+        <strong>{{ summary.title }}</strong>
+        <span class="dim">Run {{ summary.generated_at|date:"M j, Y g:i A T" }} · covering {{ summary.period_start|date:"M j" }}–{{ summary.period_end|date:"M j, Y" }}</span>
+      </summary>
+      <div class="weekly-summary-body">{{ summary.content|urlize|linebreaksbr }}</div>
+      {% if summary.metrics %}
+        <div class="weekly-metrics">
+          <h3>Metrics <span class="dim">(solid: this week; outline: previous week)</span></h3>
+          <div class="metric-section-grid">
+            {% for section in summary.metric_sections %}
+              <section>
+                <h4>{{ section.title }}</h4>
+                {% for row in section.rows %}
+                  <div class="metric-row">
+                    <span title="{{ row.label }}">{{ row.label }}</span>
+                    <div><div class="metric-track previous"><i style="width: {{ row.previous_width }}%"></i></div><div class="metric-track"><i style="width: {{ row.width }}%"></i></div></div>
+                    <strong>{{ row.value }} <small class="{% if row.delta > 0 %}up{% elif row.delta < 0 %}down{% endif %}">{% if row.delta > 0 %}+{% endif %}{{ row.delta }}</small></strong>
+                  </div>
+                {% empty %}<p class="dim">No recorded metrics.</p>{% endfor %}
+              </section>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+      {% if summary.model or summary.tokens_used %}<div class="dim weekly-summary-meta">{% if summary.model %}{{ summary.model }}{% endif %}{% if summary.tokens_used %} · {{ summary.tokens_used }} tokens{% endif %}</div>{% endif %}
+    </details>
+  {% empty %}
+    <p class="empty">No weekly summary has been generated yet.</p>
+  {% endfor %}
+{% endblock %}

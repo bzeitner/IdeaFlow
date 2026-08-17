@@ -19,6 +19,23 @@ def prompt(mode):
 
 
 class AgentPromptTests(SimpleTestCase):
+    def test_weekly_summary_prompt_covers_every_idea_and_persists_once(self):
+        text = subprocess.check_output(
+            [str(ROOT / "weekly_summary.sh"), "--print-prompt"],
+            cwd=ROOT,
+            env={**os.environ, "IDEAFLOW_API_TOKEN": ""},
+            text=True,
+        )
+
+        self.assertIn("dump-idea <id> for every listed", text)
+        self.assertIn("# Executive summary", text)
+        self.assertIn("# Recommended next steps", text)
+        self.assertIn("# Blockers", text)
+        self.assertIn("log-weekly-summary", text)
+        self.assertIn("missing_periods", text)
+        self.assertIn("--metrics-file", text)
+        self.assertIn("Sunday 12:01 AM through Saturday midnight", text)
+
     def test_repeat_prompt_collects_structured_results_without_padding(self):
         text = prompt("repeat")
 

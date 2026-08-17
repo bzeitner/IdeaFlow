@@ -12,6 +12,9 @@ Configure via environment:
 Commands:
   ideaflow list-ideas [--status current|tracking|archived]
   ideaflow dump-idea <id>
+  ideaflow weekly-summaries
+  ideaflow log-weekly-summary --period-start YYYY-MM-DD --period-end YYYY-MM-DD
+                              --summary-file F [--title T] [--model M]
   ideaflow remove-resource <idea-id> <resource-id>
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
@@ -90,6 +93,30 @@ def cmd_list_ideas(a):
 
 def cmd_dump_idea(a):
     return _request("GET", f"/ideas/{a.id}/")
+
+
+def cmd_weekly_summaries(a):
+    return _request("GET", "/weekly-summaries/")
+
+
+def cmd_log_weekly_summary(a):
+    metrics = {}
+    if a.metrics_file:
+        with open(a.metrics_file, encoding="utf-8") as fh:
+            metrics = json.load(fh)
+    return _request(
+        "POST",
+        "/weekly-summaries/",
+        body={
+            "period_start": a.period_start,
+            "period_end": a.period_end,
+            "title": a.title,
+            "content": _read_text(a.summary, a.summary_file),
+            "model": a.model,
+            "tokens_used": a.tokens,
+            "metrics": metrics,
+        },
+    )
 
 
 def cmd_remove_resource(a):
@@ -207,6 +234,20 @@ def build_parser():
     s = sub.add_parser("dump-idea")
     s.add_argument("id", type=int)
     s.set_defaults(func=cmd_dump_idea)
+
+    s = sub.add_parser("weekly-summaries", help="List generated weekly portfolio summaries.")
+    s.set_defaults(func=cmd_weekly_summaries)
+
+    s = sub.add_parser("log-weekly-summary", help="Create or replace one weekly portfolio summary.")
+    s.add_argument("--period-start", required=True)
+    s.add_argument("--period-end", required=True)
+    s.add_argument("--title", default="")
+    s.add_argument("--summary", default="")
+    s.add_argument("--summary-file")
+    s.add_argument("--model", default="")
+    s.add_argument("--tokens", type=int)
+    s.add_argument("--metrics-file", help="JSON file containing structured weekly metrics.")
+    s.set_defaults(func=cmd_log_weekly_summary)
 
     s = sub.add_parser(
         "remove-resource", help="Remove a stale resource from an idea."
