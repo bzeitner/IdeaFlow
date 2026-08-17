@@ -71,6 +71,22 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("Sunday 12:01 AM through Saturday midnight", text)
         self.assertIn("gh pr view <url> --json state,title,url", text)
         self.assertIn("reports state OPEN", text)
+        self.assertIn("every period in missing_periods plus the existing weekly_summaries item", text)
+        self.assertIn("refreshes the latest completed week", text)
+        self.assertIn("Deduplicate by period", text)
+
+    def test_weekly_summary_refresh_rebuilds_existing_periods(self):
+        text = subprocess.check_output(
+            [str(ROOT / "weekly_summary.sh"), "--refresh", "--print-prompt"],
+            cwd=ROOT,
+            env={**os.environ, "IDEAFLOW_API_TOKEN": ""},
+            text=True,
+        )
+
+        self.assertIn("weekly_summaries array is the authoritative refresh queue", text)
+        self.assertIn("Regenerate every listed completed period, oldest first", text)
+        self.assertIn("replace its existing summary", text)
+        self.assertNotIn("every period in missing_periods plus", text)
 
     def test_repeat_prompt_collects_structured_results_without_padding(self):
         text = prompt("repeat")
