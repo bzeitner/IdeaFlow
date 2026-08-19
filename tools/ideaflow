@@ -17,6 +17,7 @@ Commands:
                               --summary-file F [--title T] [--model M]
   ideaflow remove-resource <idea-id> <resource-id>
   ideaflow reconcile-pr <idea-id> --url URL --state CLOSED|MERGED
+  ideaflow submit-persona-review <idea-id> --review-file FILE
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
@@ -178,6 +179,12 @@ def cmd_log_repeat_results(a):
     return _request("POST", f"/ideas/{a.id}/repeat-results/", body={"results": results})
 
 
+def cmd_submit_persona_review(a):
+    with open(a.review_file, encoding="utf-8") as fh:
+        body = json.load(fh)
+    return _request("POST", f"/ideas/{a.id}/persona-reviews/", body=body)
+
+
 def cmd_feed_items(a):
     params = {
         "feed": a.feed,
@@ -329,6 +336,11 @@ def build_parser():
     s.add_argument("id", type=int)
     s.add_argument("--results-file", required=True, help="JSON array of result objects.")
     s.set_defaults(func=cmd_log_repeat_results)
+
+    s = sub.add_parser("submit-persona-review", help="Submit a persona council proposal and votes.")
+    s.add_argument("id", type=int)
+    s.add_argument("--review-file", required=True, help="JSON object containing proposal and votes.")
+    s.set_defaults(func=cmd_submit_persona_review)
 
     s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
     s.add_argument("id", type=int)

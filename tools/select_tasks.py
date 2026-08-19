@@ -115,6 +115,8 @@ def main():
             na = (detail[i].get("next_action") or "").strip().lower()
             if na.startswith("critical pr review"):
                 return "critique"                 # a PR is waiting for a critical pass
+            if (detail[i].get("persona_review") or {}).get("is_due"):
+                return "persona"                  # stalled project needs its council
             if (
                 detail[i].get("repo")
                 and is_build_action(na)

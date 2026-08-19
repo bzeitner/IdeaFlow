@@ -144,6 +144,46 @@ def idea_to_dict(idea, *, detail=True):
         data["suggested_children"] = idea.suggested_children
         data["agent_runs_since_feedback"] = idea.agent_runs_since_feedback
         data["is_paused"] = idea.is_paused
+        data["persona_review"] = {
+            "enabled": idea.persona_review_enabled,
+            "stall_days": idea.persona_stall_days,
+            "last_meaningful_progress_at": idea.last_meaningful_progress_at.isoformat(),
+            "last_review_at": (
+                idea.last_persona_review_at.isoformat()
+                if idea.last_persona_review_at else None
+            ),
+            "is_due": idea.persona_review_is_due,
+            "personas": [
+                {
+                    "id": assignment.persona_id,
+                    "name": assignment.persona.name,
+                    "description": assignment.persona.description,
+                    "goals": assignment.persona.goals,
+                    "constraints": assignment.persona.constraints,
+                    "required": assignment.required,
+                }
+                for assignment in idea.idea_personas.all()
+                if assignment.active and assignment.persona.is_active
+            ],
+            "recent_reviews": [
+                {
+                    "id": review.pk,
+                    "status": review.status,
+                    "proposal": review.proposal,
+                    "created_at": review.created_at.isoformat(),
+                    "votes": [
+                        {
+                            "persona_id": vote.persona_id,
+                            "persona": vote.persona.name,
+                            "decision": vote.decision,
+                            "rationale": vote.rationale,
+                        }
+                        for vote in review.votes.all()
+                    ],
+                }
+                for review in list(idea.persona_reviews.all())[:10]
+            ],
+        }
         data["feed_cap"] = idea.feed_cap
         data["resources"] = [resource_to_dict(r) for r in idea.resources.all()]
         data["research_entries"] = [

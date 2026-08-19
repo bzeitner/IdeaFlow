@@ -28,7 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status, WeeklySummary
 from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -44,6 +44,8 @@ _DETAIL_PREFETCH = (
     "research_entries__model",
     "children",
     "repeat_results",
+    "idea_personas__persona",
+    "persona_reviews__votes__persona",
 )
 
 # ?content=1 on /api/feed-items/ pulls full stored bodies; without an
@@ -215,11 +217,13 @@ def idea_reconcile_pr(request, pk):
     if advanced:
         idea.replace_active_next_action("")
         idea.agent_runs_since_feedback = 0
+        idea.last_meaningful_progress_at = timezone.now()
         idea.save(
             update_fields=[
                 "next_action",
                 "next_actions",
                 "agent_runs_since_feedback",
+                "last_meaningful_progress_at",
                 "updated_at",
             ]
         )
@@ -686,6 +690,136 @@ def idea_suggest_children(request, pk):
     return JsonResponse(idea_to_dict(idea, detail=True), status=201)
 
 
+@require_api_token
+@transaction.atomic
+def idea_persona_review(request, pk):
+    """Record one required-persona vote each and act only on unanimous approval."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk, persona_review_enabled=True)
+    if idea.is_archived:
+        return JsonResponse({"error": "Idea is archived."}, status=409)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    proposal = payload.get("proposal") if isinstance(payload, dict) else None
+    votes = payload.get("votes") if isinstance(payload, dict) else None
+    if not isinstance(proposal, dict) or not isinstance(votes, list):
+        return JsonResponse({"error": "proposal must be an object and votes a list."}, status=400)
+    if proposal.get("reversible") is not True:
+        return JsonResponse(
+            {"error": "Persona councils may act only on explicitly reversible proposals."},
+            status=400,
+        )
+    safe_action_types = {"research", "analysis", "draft", "prototype", "test", "planning"}
+    if proposal.get("action_type") not in safe_action_types:
+        return JsonResponse(
+            {"error": "Persona action_type must be one of the reversible allowlisted types.", "allowed": sorted(safe_action_types)},
+            status=400,
+        )
+    raw_answers = proposal.get("question_answers", [])
+    if not isinstance(raw_answers, list) or len(raw_answers) > 50:
+        return JsonResponse({"error": "question_answers must be a list of at most 50 items."}, status=400)
+    entry_ids = {
+        raw.get("research_entry_id")
+        for raw in raw_answers
+        if isinstance(raw, dict)
+    }
+    entries = {
+        entry.pk: entry
+        for entry in ResearchEntry.objects.filter(idea=idea, pk__in=entry_ids)
+    }
+    normalized_answers = []
+    for raw in raw_answers:
+        if not isinstance(raw, dict):
+            return JsonResponse({"error": "Each persona question answer must be an object."}, status=400)
+        entry = entries.get(raw.get("research_entry_id"))
+        index = raw.get("question_index")
+        answer = str(raw.get("answer") or "").strip()
+        questions = entry.open_questions if entry and isinstance(entry.open_questions, list) else []
+        if not isinstance(index, int) or index < 0 or index >= len(questions) or not answer:
+            return JsonResponse({"error": "Each persona answer must reference an open question on this idea and include an answer."}, status=400)
+        normalized_answers.append(
+            {"research_entry_id": entry.pk, "question_index": index, "answer": answer}
+        )
+    proposal["question_answers"] = normalized_answers
+    assignments = {
+        row.persona_id: row
+        for row in idea.idea_personas.select_related("persona").filter(
+            active=True, persona__is_active=True
+        )
+    }
+    required_ids = {pk for pk, row in assignments.items() if row.required}
+    if not required_ids:
+        return JsonResponse({"error": "At least one active required persona is needed."}, status=409)
+    parsed = {}
+    for raw in votes:
+        if not isinstance(raw, dict) or raw.get("persona_id") not in assignments:
+            return JsonResponse({"error": "Every vote must name an assigned active persona."}, status=400)
+        persona_id = raw["persona_id"]
+        decision = str(raw.get("decision") or "").lower()
+        if decision not in PersonaVote.Decision.values or persona_id in parsed:
+            return JsonResponse({"error": "Votes must be unique and use approve, reject, or abstain."}, status=400)
+        parsed[persona_id] = (decision, str(raw.get("rationale") or "").strip())
+    missing = required_ids - parsed.keys()
+    if missing:
+        return JsonResponse(
+            {"error": "Every required persona must explicitly approve, reject, or abstain.", "missing_persona_ids": sorted(missing)},
+            status=400,
+        )
+    consensus = bool(required_ids) and all(
+        parsed[persona_id][0] == PersonaVote.Decision.APPROVE
+        for persona_id in required_ids
+    )
+    context = graph_context(idea, depth=2, task="persona")
+    review = PersonaReview.objects.create(
+        idea=idea,
+        proposal=proposal,
+        context=context,
+        status=(PersonaReview.Status.CONSENSUS if consensus else PersonaReview.Status.NO_CONSENSUS),
+    )
+    PersonaVote.objects.bulk_create(
+        [
+            PersonaVote(
+                review=review,
+                persona_id=persona_id,
+                decision=decision,
+                rationale=rationale,
+            )
+            for persona_id, (decision, rationale) in parsed.items()
+        ]
+    )
+    acted = False
+    if consensus:
+        next_action = str(proposal.get("next_action") or "").strip()
+        if not next_action:
+            transaction.set_rollback(True)
+            return JsonResponse({"error": "A unanimous proposal requires a concrete next_action."}, status=400)
+        safe_verbs = {
+            "analyze", "compare", "document", "draft", "inventory", "investigate",
+            "plan", "prototype", "research", "review", "summarize", "test", "validate",
+        }
+        first_word = next_action.split()[0].lower().strip(".,:;!?")
+        if first_word not in safe_verbs:
+            transaction.set_rollback(True)
+            return JsonResponse(
+                {"error": "Persona next_action must begin with an allowlisted reversible verb.", "allowed": sorted(safe_verbs)},
+                status=400,
+            )
+        idea.replace_active_next_action(next_action)
+        acted = True
+    idea.last_persona_review_at = timezone.now()
+    update_fields = ["last_persona_review_at", "updated_at"]
+    if acted:
+        update_fields.extend(["next_action", "next_actions"])
+    idea.save(update_fields=update_fields)
+    return JsonResponse(
+        {"review_id": review.pk, "status": review.status, "acted": acted, "next_action": idea.next_action},
+        status=201,
+    )
+
+
 urlpatterns = [
     path("prompts/<slug:key>/", approved_prompt_view, name="api_approved_prompt"),
     path("graph/", graph_data, name="api_graph"),
@@ -709,6 +843,7 @@ urlpatterns = [
         name="api_research_open_questions",
     ),
     path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),
+    path("ideas/<int:pk>/persona-reviews/", idea_persona_review, name="api_idea_persona_review"),
     path(
         "ideas/<int:pk>/suggest-children/",
         idea_suggest_children,

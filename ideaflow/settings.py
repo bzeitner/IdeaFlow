@@ -237,6 +237,7 @@ IDEAFLOW_TASK_MODELS = {
     'review': os.getenv('IDEAFLOW_MODEL_REVIEW', 'claude-sonnet-5'),
     'execute': os.getenv('IDEAFLOW_MODEL_EXECUTE', 'claude-opus-4-8'),
     'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-sonnet-5'),
+    'persona': os.getenv('IDEAFLOW_MODEL_PERSONA', 'claude-sonnet-5'),
     'weekly_summary': os.getenv('IDEAFLOW_MODEL_WEEKLY_SUMMARY', 'claude-opus-4-8'),
 }
 

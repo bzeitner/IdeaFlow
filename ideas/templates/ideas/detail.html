@@ -21,6 +21,13 @@
     {% if idea.repo %}
       <p class="parent-line dim">Repo: <code>{{ idea.repo }}</code></p>
     {% endif %}
+    {% if idea.persona_review_enabled %}
+      <div class="exec-summary">
+        <h4>Persona council</h4>
+        <p>Reviews after {{ idea.persona_stall_days }} day{{ idea.persona_stall_days|pluralize }} without meaningful progress. Required personas must unanimously approve; abstention does not authorize action.</p>
+        <p>{% for assignment in idea.idea_personas.all %}{% if assignment.active %}<span class="pill">{{ assignment.persona.name }}{% if assignment.required %} · required{% endif %}</span> {% endif %}{% empty %}<span class="dim">No personas assigned.</span>{% endfor %}</p>
+      </div>
+    {% endif %}
 
     {% if not idea.repeat_enabled %}<div class="exec-summary">
       <h4>Latest effort summary</h4>

@@ -134,7 +134,10 @@ def graph_context(idea, *, depth=1, max_nodes=30, token_budget=None, task="resea
     token_budget = max(500, min(token_budget, maximum_budget))
     graph = neighborhood(idea, depth=depth, max_nodes=max_nodes, include_archived=False)
     by_id = {node["id"]: node for node in graph["nodes"]}
-    grouped = {"parents": [], "children": [], "dependencies": [], "dependents": [], "related": []}
+    grouped = {
+        "parents": [], "children": [], "siblings": [], "dependencies": [],
+        "dependents": [], "related": [],
+    }
     center = f"idea-{idea.pk}"
     for edge in graph["edges"]:
         other = None
@@ -156,10 +159,19 @@ def graph_context(idea, *, depth=1, max_nodes=30, token_budget=None, task="resea
         if other and other in by_id:
             grouped[bucket].append(_context_row(by_id[other], edge))
 
+    if idea.parent_id:
+        for sibling in Idea.objects.select_related("category", "stage").filter(
+            parent_id=idea.parent_id
+        ).exclude(pk=idea.pk).exclude(status="archived"):
+            grouped["siblings"].append(
+                _context_row(_node(sibling), {"type": "sibling", "provenance": "derived"})
+            )
+
     priorities = {
         "execute": ["dependencies", "parents", "children", "dependents", "related"],
         "critique": ["dependencies", "related", "parents", "dependents", "children"],
-        "review": ["parents", "dependencies", "children", "related", "dependents"],
+        "review": ["parents", "dependencies", "children", "siblings", "related", "dependents"],
+        "persona": ["parents", "children", "siblings", "dependencies", "dependents", "related"],
         "research": ["parents", "children", "dependencies", "related", "dependents"],
     }
     task = task if task in priorities else "research"

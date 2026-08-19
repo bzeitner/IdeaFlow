@@ -118,6 +118,28 @@ class Stage(LookupBase):
     pass
 
 
+class Persona(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField()
+    goals = models.TextField(help_text="Prioritized goals this persona protects.")
+    constraints = models.TextField(
+        blank=True,
+        help_text="Decision limits, non-goals, and facts this persona must not invent.",
+    )
+    is_default = models.BooleanField(
+        default=False, help_text="Assign this persona to newly created ideas."
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Idea(models.Model):
     title = models.CharField(max_length=200)
     summary = models.TextField(blank=True)
@@ -197,6 +219,17 @@ class Idea(models.Model):
     repeat_target_count = models.PositiveSmallIntegerField(default=5)
     repeat_interval_days = models.PositiveSmallIntegerField(default=1)
     last_repeat_run_at = models.DateTimeField(null=True, blank=True)
+    persona_review_enabled = models.BooleanField(default=False)
+    persona_stall_days = models.PositiveSmallIntegerField(
+        default=14,
+        validators=[MinValueValidator(1)],
+        help_text="Schedule a persona council review after this many days without meaningful progress.",
+    )
+    last_meaningful_progress_at = models.DateTimeField(default=timezone.now)
+    last_persona_review_at = models.DateTimeField(null=True, blank=True)
+    personas = models.ManyToManyField(
+        Persona, through="IdeaPersona", related_name="ideas", blank=True
+    )
     proposed_by_agent = models.BooleanField(
         default=False,
         help_text="Created by a research agent (child ideas). Counts toward the "
@@ -265,6 +298,19 @@ class Idea(models.Model):
             days=self.repeat_interval_days
         )
 
+    @property
+    def persona_review_is_due(self):
+        if not self.persona_review_enabled or self.is_archived or self.is_paused:
+            return False
+        if not self.idea_personas.filter(active=True, required=True).exists():
+            return False
+        baseline = max(
+            value
+            for value in (self.last_meaningful_progress_at, self.last_persona_review_at)
+            if value is not None
+        )
+        return baseline <= timezone.now() - timedelta(days=self.persona_stall_days)
+
     def replace_active_next_action(self, value):
         """Replace the queue head while retaining actions queued behind it."""
         value = (value or "").strip()
@@ -299,6 +345,54 @@ class Idea(models.Model):
             if "/pull/" in r.url or "pr" in (r.label or "").lower():
                 return r.url
         return ""
+
+
+class IdeaPersona(models.Model):
+    idea = models.ForeignKey(Idea, related_name="idea_personas", on_delete=models.CASCADE)
+    persona = models.ForeignKey(
+        Persona, related_name="idea_assignments", on_delete=models.CASCADE
+    )
+    required = models.BooleanField(default=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["persona__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idea", "persona"], name="unique_persona_per_idea"
+            )
+        ]
+
+
+class PersonaReview(models.Model):
+    class Status(models.TextChoices):
+        CONSENSUS = "consensus", "Consensus"
+        NO_CONSENSUS = "no_consensus", "No consensus"
+
+    idea = models.ForeignKey(Idea, related_name="persona_reviews", on_delete=models.CASCADE)
+    proposal = models.JSONField(default=dict)
+    context = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PersonaVote(models.Model):
+    class Decision(models.TextChoices):
+        APPROVE = "approve", "Approve"
+        REJECT = "reject", "Reject"
+        ABSTAIN = "abstain", "Abstain"
+
+    review = models.ForeignKey(PersonaReview, related_name="votes", on_delete=models.CASCADE)
+    persona = models.ForeignKey(Persona, on_delete=models.PROTECT)
+    decision = models.CharField(max_length=8, choices=Decision.choices)
+    rationale = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "persona"], name="unique_persona_vote_per_review"
+            )
+        ]
 
 
 class IdeaRelation(models.Model):
@@ -955,4 +1049,15 @@ def provision_profile(sender, instance, created, **kwargs):
             "role_add_ideas": is_admin,
             "role_graph": is_admin,
         },
+    )
+
+
+@receiver(post_save, sender=Idea)
+def assign_default_personas(sender, instance, created, **kwargs):
+    if not created:
+        return
+    IdeaPersona.objects.bulk_create(
+        [IdeaPersona(idea=instance, persona=persona, required=True)
+         for persona in Persona.objects.filter(is_active=True, is_default=True)],
+        ignore_conflicts=True,
     )

@@ -196,6 +196,7 @@ Pass it as `Authorization: Bearer <token>` (or an `X-API-Token` header):
 | `DELETE /api/ideas/<id>/resources/<resource-id>/` | Remove a verified stale resource |
 | `GET /api/ideas/<id>/graph-context/` | Token-budgeted context (`?task=research|review|execute|critique&token_budget=2500`) |
 | `POST /api/ideas/<id>/effort/` | Record an effort report; supports `open_questions`, replaces `next_action`, and appends `queued_next_actions` |
+| `POST /api/ideas/<id>/persona-reviews/` | Record explicit persona votes and apply only a unanimous reversible proposal |
 | `POST /api/ideas/<id>/research/<entry-id>/open-questions/` | Additively merge extracted questions into an existing non-archived research entry |
 | `POST /api/ideas/<id>/repeat-results/` | Store a completed repeat run (`{results: [{title, url?, details?}]}`), deduplicate URLs, and advance its schedule |
 | `GET /api/graph/` | Active knowledge-graph projection (`?archived=1` includes archived ideas) |
@@ -317,13 +318,27 @@ latest report and keeps older reports collapsed but available.
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical
 PR review** as the next action; `critique` runs a deliberately critical persona
-over that PR. Both run on your laptop with your `gh` auth. Every successful agent
+over that PR. When that review finds no issues and required checks pass, the
+reviewer merges the PR, verifies the merged state, and reconciles the completed
+review action in IdeaFlow. Both run on your laptop with your `gh` auth. Every successful agent
 effort replaces the idea's **Latest effort summary** with a concise outcome and
 up to three recommended next steps for human readers (shown at the top of the
 detail page, where each effort's in-depth write-up is collapsed behind a click).
 Review and critique
 agents check every listed GitHub PR and remove its resource after `gh` reports it
 closed or merged; failed lookups are left untouched.
+
+**Persona councils.** Each idea can enable stalled-work review with its own
+day threshold and one or more assigned personas. New ideas receive draft
+owner-goals, delivery, and risk personas by default; administrators can edit
+personas and each idea's required membership. After the configured interval
+without meaningful progress, the task runner selects a persona review using
+bounded parent, child, sibling, and relationship context. Every required persona
+must explicitly approve, reject, or abstain. Only unanimous proposals act, and
+the API additionally requires an allowlisted reversible action type and verb;
+rejection or abstention records the review without changing the idea.
+Council-supported question answers are retained inside the review proposal with
+persona-consensus provenance and never overwrite fields reserved for human answers.
 
 `research_all.sh` researches ideas with no research yet and **reviews**
 already-researched ideas only when they have a clear next action. Researched

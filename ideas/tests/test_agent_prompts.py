@@ -145,7 +145,7 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("<report-path> is non-empty", text)
         self.assertIn("--exec-summary", text)
 
-    def test_critique_prompt_is_evidence_driven_and_can_approve(self):
+    def test_critique_prompt_reviews_and_merges_a_clean_pr(self):
         text = prompt("critique")
 
         self.assertIn("do not invent findings", text)
@@ -157,6 +157,12 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("resources and next action", text)
         self.assertIn("If there's no open PR, stop", text)
         self.assertIn("--exec-summary", text)
+        self.assertIn("A clean review is not", text)
+        self.assertIn("verify required checks pass", text)
+        self.assertIn("reports MERGED", text)
+        self.assertIn("reconcile-pr 123", text)
+        self.assertIn("approved-and-merged", text)
+        self.assertIn("Never merge with a failing", text)
 
     def test_feed_scoring_prompt_is_neutral_and_idea_specific(self):
         text = (ROOT / "score_items.sh").read_text()
@@ -168,6 +174,17 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("--idea ${ID}", text)
         self.assertIn("--relevance-note", text)
         self.assertNotIn("--model claude-opus-4-8", text)
+
+    def test_persona_prompt_requires_unanimity_abstention_and_reversible_action(self):
+        text = prompt("persona")
+
+        self.assertIn("parent,", text)
+        self.assertIn("siblings", text)
+        self.assertIn("approve, reject, or abstain", text)
+        self.assertIn("every required", text)
+        self.assertIn("reversible", text)
+        self.assertIn("not spend money", text)
+        self.assertIn("submit-persona-review 123", text)
 
     def test_every_agent_prompt_composes_shared_standards(self):
         for mode in ("research", "review", "execute", "critique"):

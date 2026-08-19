@@ -2,7 +2,7 @@ import json
 
 from django.test import TestCase, override_settings
 
-from ideas.models import ResearchEntry, Status
+from ideas.models import AIModel, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status
 
 from .helpers import make_idea, make_stage, make_user
 
@@ -285,6 +285,28 @@ class ApiEffortTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(idea.resources.get().url, "https://github.com/x/y")
 
+    def test_pr_resource_schedules_review_and_preserves_followup(self):
+        idea = make_idea()
+        pr_url = "https://github.com/x/y/pull/42"
+
+        response = self._post(
+            idea,
+            {
+                "topic": "Implemented it",
+                "model": "other",
+                "resource": {"label": "PR", "url": pr_url},
+                "next_action": "Deploy after merge",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, f"Critical PR review: {pr_url}")
+        self.assertEqual(
+            idea.next_actions,
+            [f"Critical PR review: {pr_url}", "Deploy after merge"],
+        )
+
     def test_effort_can_append_queued_next_actions(self):
         idea = make_idea(next_action="Active")
         response = self._post(
@@ -309,6 +331,106 @@ class ApiEffortTests(TestCase):
             {"topic": "Bad queue", "model": "other", "queued_next_actions": "nope"},
         )
         self.assertEqual(response.status_code, 400)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiPersonaReviewTests(TestCase):
+    def setUp(self):
+        self.idea = make_idea(persona_review_enabled=True, next_action="Stale action")
+        self.idea.idea_personas.all().delete()
+        self.personas = [
+            Persona.objects.create(
+                name=f"Council {index}", description="Role", goals="Progress", constraints="Reversible only"
+            )
+            for index in range(2)
+        ]
+        for persona in self.personas:
+            IdeaPersona.objects.create(idea=self.idea, persona=persona, required=True)
+
+    def post_review(self, votes, *, reversible=True, question_answers=None):
+        return self.client.post(
+            f"/api/ideas/{self.idea.pk}/persona-reviews/",
+            data=json.dumps(
+                {
+                    "proposal": {
+                        "summary": "Run a bounded test",
+                        "action_type": "test",
+                        "next_action": "Test the reversible validation approach",
+                        "reversible": reversible,
+                        "question_answers": question_answers or [],
+                    },
+                    "votes": votes,
+                }
+            ),
+            content_type="application/json",
+            **AUTH,
+        )
+
+    def test_required_personas_must_unanimously_approve(self):
+        response = self.post_review(
+            [
+                {"persona_id": self.personas[0].pk, "decision": "approve"},
+                {"persona_id": self.personas[1].pk, "decision": "abstain", "rationale": "Needs owner input"},
+            ]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["status"], "no_consensus")
+        self.assertFalse(response.json()["acted"])
+        self.idea.refresh_from_db()
+        self.assertEqual(self.idea.next_action, "Stale action")
+
+    def test_unanimous_reversible_proposal_sets_next_action(self):
+        response = self.post_review(
+            [
+                {"persona_id": persona.pk, "decision": "approve", "rationale": "Within goals"}
+                for persona in self.personas
+            ]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["acted"])
+        self.idea.refresh_from_db()
+        self.assertEqual(self.idea.next_action, "Test the reversible validation approach")
+
+    def test_irreversible_proposal_is_rejected_even_with_unanimity(self):
+        response = self.post_review(
+            [{"persona_id": persona.pk, "decision": "approve"} for persona in self.personas],
+            reversible=False,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("only", response.json()["error"])
+
+    def test_every_required_persona_must_vote_explicitly(self):
+        response = self.post_review(
+            [{"persona_id": self.personas[0].pk, "decision": "approve"}]
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["missing_persona_ids"], [self.personas[1].pk])
+
+    def test_consensus_answer_keeps_persona_provenance_not_human_provenance(self):
+        entry = ResearchEntry.objects.create(
+            idea=self.idea,
+            topic="Decision",
+            model=AIModel.objects.get(slug="other"),
+            open_questions=["Which direction fits the project goals?"],
+        )
+        response = self.post_review(
+            [{"persona_id": persona.pk, "decision": "approve"} for persona in self.personas],
+            question_answers=[
+                {"research_entry_id": entry.pk, "question_index": 0, "answer": "Run the smaller validation first."}
+            ],
+        )
+
+        self.assertEqual(response.status_code, 201)
+        entry.refresh_from_db()
+        self.assertEqual(entry.question_answers, {})
+        self.assertEqual(
+            PersonaReview.objects.get(pk=response.json()["review_id"]).proposal["question_answers"][0]["answer"],
+            "Run the smaller validation first.",
+        )
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)

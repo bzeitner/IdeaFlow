@@ -125,3 +125,19 @@ class TaskSelectionStateTests(SimpleTestCase):
         output, _state = self.run_selector(listing, details)
 
         self.assertIn("10 review Validate it", output)
+
+    def test_due_persona_review_is_selected(self):
+        listing = [{"id": 11, "status": "tracking", "title": "Stalled project"}]
+        details = {
+            11: {
+                "title": "Stalled project",
+                "is_paused": False,
+                "research_entries": [{"id": 1}],
+                "next_action": "",
+                "persona_review": {"enabled": True, "is_due": True},
+            }
+        }
+
+        output, _state = self.run_selector(listing, details)
+
+        self.assertIn("11 persona Stalled project", output)

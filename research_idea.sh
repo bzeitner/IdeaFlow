@@ -35,13 +35,13 @@ PRINT_PROMPT=0
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
-  echo "usage: $0 <idea-id> [research|review|execute|critique]" >&2
+  echo "usage: $0 <idea-id> [research|review|execute|critique|persona]" >&2
   exit 2
 fi
 
 case "$MODE" in
-  research|review|execute|critique|repeat) ;;
-  *) echo "error: mode must be research|review|execute|critique|repeat, got '$MODE'." >&2; exit 2 ;;
+  research|review|execute|critique|persona|repeat) ;;
+  *) echo "error: mode must be research|review|execute|critique|persona|repeat, got '$MODE'." >&2; exit 2 ;;
 esac
 case "$AGENT" in
   claude|codex) ;;
@@ -209,10 +209,19 @@ Steps:
    non-blocking, or a question, and do not duplicate prior comments.
 4. Choose the review action from the evidence: request changes only for blocking
    issues; comment for non-blocking findings or questions; approve when no
-   material issue remains. Use the matching gh pr review action.
+   issue remains. Use the matching gh pr review action. A clean review is not
+   finished at approval: verify required checks pass, merge the PR using a
+   repository-supported merge method, then verify gh pr view <url> --json state
+   reports MERGED. If branch protection only requires pending checks,
+   enable auto-merge when the repository permits it. Never merge with a failing
+   required check, an unresolved finding, or an uncertain merge state.
 5. Write the complete markdown review to ${REPORT}, including the verdict,
    findings, checks inspected or run, and residual risks.
-6. Record it — not done until this succeeds:
+6. If the PR was merged, run ${IFCLI} reconcile-pr ${ID} --url '<PR_URL>'
+   --state MERGED to remove its resource and complete the active review action.
+   Record the effort after reconciliation. For a merged PR, omit --next-action
+   so the existing queued action (if any) remains active. Otherwise set a
+   concrete next action for the named finding, failed check, or merge blocker:
      ${IFCLI} log-effort ${ID} \\
        --topic 'Critical PR review' \\
        --model ${MODEL} \\
@@ -220,10 +229,12 @@ Steps:
        --context-file ${REPORT} \\
        --effort <1-5> --quality <1-5> --tokens <approx> \\
        --exec-summary '<latest effort outcome and recommended next steps>' \\
-       --next-action '<fix named blockers; address named nits; or merge the PR>'
+       [--next-action '<fix named finding or resolve named check/merge blocker>']
 7. Completion checklist: the PR review is posted once, ${REPORT} is non-empty,
-   the effort is logged, and its next action matches the verdict. Print one of:
-   request-changes, comment-with-nits, or approve.
+   and the effort is logged. When no issue was found, the PR is verified MERGED
+   and reconciled in IdeaFlow; otherwise its next action matches the verdict.
+   Print one of: request-changes, comment-with-findings, blocked-by-checks, or
+   approved-and-merged.
 
 ${SHARED_STANDARDS}
 ${PR_RESOURCE_STANDARD}
@@ -292,7 +303,7 @@ ${SHARED_STANDARDS}
 ${PR_RESOURCE_STANDARD}
 ${HUMAN_SUMMARY_STANDARD}
 PROMPT
-else
+elif [[ "$MODE" == "research" ]]; then
   read -r -d '' PROMPT <<PROMPT || true
 Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}"
 (HTTP API at ${BASE}); do not touch any local database. Steps:
@@ -353,6 +364,36 @@ ${CHILD_STANDARD}
 ${EFFORT_QUALITY_STANDARD}
 ${SHARED_STANDARDS}
 ${HUMAN_SUMMARY_STANDARD}
+PROMPT
+elif [[ "$MODE" == "persona" ]]; then
+  read -r -d '' PROMPT <<PROMPT || true
+Review stalled IdeaFlow idea ${ID} as its configured persona council. Use
+"${IFCLI}" for IdeaFlow. This task may authorize only a reversible next action.
+
+1. Dump the idea and confirm persona_review is enabled, due, and has active
+   required personas. Read graph-context ${ID} --depth 2 for the parent,
+   children, siblings, dependencies, and dependents. Treat related ideas as
+   decision context, not additional voters.
+2. Evaluate each required persona independently from its description, goals,
+   constraints, and the same evidence snapshot. Do not let one persona's view
+   anchor another. Each must explicitly approve, reject, or abstain. Abstain
+   whenever authority, private context, or evidence is missing.
+3. Synthesize one concrete, bounded next action. It must be reversible and must
+   not spend money, publish, delete data, merge or close work, contact external
+   people, change permissions, enter commitments, or claim human approval.
+4. Write exactly one JSON object to ${REPORT} with:
+   {"proposal":{"summary":"...","action_type":"research|analysis|draft|prototype|test|planning","next_action":"...","reversible":true,
+    "question_answers":[{"research_entry_id":1,"question_index":0,"answer":"..."}]},
+    "votes":[{"persona_id":1,"decision":"approve|reject|abstain","rationale":"..."}]}
+   Include one unique vote for every required persona. Consensus requires every
+   required vote to be approve; never omit or reinterpret an abstention.
+   Include an answer only when it follows directly from documented persona
+   goals. It remains persona-consensus provenance, never a human answer.
+5. Submit it with ${IFCLI} submit-persona-review ${ID} --review-file ${REPORT}.
+   The server enforces unanimity and will not act on rejection or abstention.
+   Do not log a separate effort or mutate the idea another way.
+
+${SHARED_STANDARDS}
 PROMPT
 fi
 

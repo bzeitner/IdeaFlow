@@ -8,6 +8,7 @@ identically.
 """
 
 import re
+from urllib.parse import urlparse
 
 from django.db import transaction
 from django.utils import timezone
@@ -15,6 +16,15 @@ from django.utils import timezone
 from .models import AIModel, ResearchEntry, Resource, Stage, Status
 
 VALID_STATUS = {s.value for s in Status}
+
+
+def _github_pr_url(value):
+    parts = urlparse(value or "")
+    return bool(
+        parts.scheme == "https"
+        and parts.netloc.lower() == "github.com"
+        and re.fullmatch(r"/[^/]+/[^/]+/pull/\d+/?", parts.path)
+    )
 
 
 def _question_key(question):
@@ -168,6 +178,12 @@ def record_effort(
         resource = Resource.objects.create(
             idea=idea, label=resource_label or "", url=resource_url
         )
+    followup_actions = list(queued_next_actions or [])
+    if _github_pr_url(resource_url):
+        review_action = f"Critical PR review: {resource_url}"
+        if next_action and next_action.strip() != review_action:
+            followup_actions.insert(0, next_action)
+        next_action = review_action
     changed = []
     if stage is not None:
         idea.stage = resolve_stage(stage)
@@ -180,12 +196,14 @@ def record_effort(
     if next_action is not None:
         idea.replace_active_next_action(next_action)
         changed.extend(["next_action", "next_actions"])
-    for queued_action in queued_next_actions or []:
+    for queued_action in followup_actions:
         if idea.enqueue_next_action(queued_action) and "next_actions" not in changed:
             changed.extend(["next_action", "next_actions"])
     if exec_summary is not None:
         idea.exec_summary = exec_summary
         changed.append("exec_summary")
+    idea.last_meaningful_progress_at = timezone.now()
+    changed.append("last_meaningful_progress_at")
     # Every effort is an agent run; count it toward the pause-for-feedback limit.
     idea.agent_runs_since_feedback = (idea.agent_runs_since_feedback or 0) + 1
     changed.append("agent_runs_since_feedback")

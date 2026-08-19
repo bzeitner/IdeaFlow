@@ -71,6 +71,11 @@
         <div class="field field-wide"><label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>{{ form.notes }}{{ form.notes.errors }}</div>
         <div class="field field-wide"><label for="{{ form.exec_summary.id_for_label }}">{{ form.exec_summary.label }}</label>{{ form.exec_summary }}{% if form.exec_summary.help_text %}<small class="dim">{{ form.exec_summary.help_text }}</small>{% endif %}{{ form.exec_summary.errors }}</div>
         </div></section>
+        <section class="settings-group"><h3>Persona council</h3><div class="settings-grid">
+        <label class="checkbox-field">{{ form.persona_review_enabled }} <span>{{ form.persona_review_enabled.label }}</span></label>{{ form.persona_review_enabled.errors }}
+        <div class="field field-compact"><label for="{{ form.persona_stall_days.id_for_label }}">{{ form.persona_stall_days.label }}</label>{{ form.persona_stall_days }}{% if form.persona_stall_days.help_text %}<small class="dim">{{ form.persona_stall_days.help_text }}</small>{% endif %}{{ form.persona_stall_days.errors }}</div>
+        {% if idea and request.user.is_staff %}<p class="field-wide dim">Persona membership and required-participant settings are managed in the <a href="{% url 'admin:ideas_idea_change' idea.pk %}">Idea admin</a>.</p>{% endif %}
+        </div></section>
         <section class="settings-group"><h3>Visibility</h3><label class="checkbox-field">{{ form.is_public }} <span>{{ form.is_public.label }}</span></label>{{ form.is_public.errors }}</section>
       </div>
     </details>

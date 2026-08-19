@@ -25,6 +25,9 @@ class IdeaForm(forms.ModelForm):
     repeat_interval_days = forms.IntegerField(
         required=False, min_value=1, initial=1, label="Run every (days)"
     )
+    persona_stall_days = forms.IntegerField(
+        required=False, min_value=1, initial=14, label="Review after no progress (days)"
+    )
     include_archived_parents = forms.BooleanField(
         required=False, label="Include archived"
     )
@@ -59,6 +62,7 @@ class IdeaForm(forms.ModelForm):
         cleaned = super().clean()
         cleaned["repeat_target_count"] = cleaned.get("repeat_target_count") or 5
         cleaned["repeat_interval_days"] = cleaned.get("repeat_interval_days") or 1
+        cleaned["persona_stall_days"] = cleaned.get("persona_stall_days") or 14
         if cleaned.get("repeat_enabled") and not (cleaned.get("repeat_goal") or "").strip():
             self.add_error("repeat_goal", "A repeatable task requires a measurable goal.")
         parent = cleaned.get("parent")
@@ -116,6 +120,8 @@ class IdeaForm(forms.ModelForm):
             "repeat_goal",
             "repeat_target_count",
             "repeat_interval_days",
+            "persona_review_enabled",
+            "persona_stall_days",
         ]
         labels = {
             "title": "Idea Title",
@@ -131,6 +137,8 @@ class IdeaForm(forms.ModelForm):
             "repeat_goal": "Goal for each run",
             "repeat_target_count": "Target results per run",
             "repeat_interval_days": "Run every (days)",
+            "persona_review_enabled": "Enable stalled persona reviews",
+            "persona_stall_days": "Review after no progress (days)",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),

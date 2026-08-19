@@ -635,7 +635,8 @@ def archive(request):
 def detail(request, pk):
     idea = get_object_or_404(
         Idea.objects.select_related("parent", "created_by").prefetch_related(
-            "resources", "research_entries", "research_entries__model", "children", "repeat_results"
+            "resources", "research_entries", "research_entries__model", "children", "repeat_results",
+            "idea_personas__persona",
         ),
         pk=pk,
     )
@@ -773,11 +774,13 @@ def set_next_action(request, pk):
     idea.replace_active_next_action(request.POST.get("next_action", ""))
     # A human next action is feedback — clear the pause counter.
     idea.agent_runs_since_feedback = 0
+    idea.last_meaningful_progress_at = timezone.now()
     idea.save(
         update_fields=[
             "next_action",
             "next_actions",
             "agent_runs_since_feedback",
+            "last_meaningful_progress_at",
             "updated_at",
         ]
     )
@@ -824,11 +827,13 @@ def queue_next_action(request, pk):
             idea.next_action = queue[0] if queue else ""
 
     idea.agent_runs_since_feedback = 0
+    idea.last_meaningful_progress_at = timezone.now()
     idea.save(
         update_fields=[
             "next_action",
             "next_actions",
             "agent_runs_since_feedback",
+            "last_meaningful_progress_at",
             "updated_at",
         ]
     )
@@ -891,7 +896,8 @@ def answer_research_questions(request, pk, entry_pk):
     entry.question_answers = answers
     entry.save(update_fields=["question_answers"])
     idea.agent_runs_since_feedback = 0
-    idea.save(update_fields=["agent_runs_since_feedback", "updated_at"])
+    idea.last_meaningful_progress_at = timezone.now()
+    idea.save(update_fields=["agent_runs_since_feedback", "last_meaningful_progress_at", "updated_at"])
     if wants_json:
         return JsonResponse({"ok": True, "saved": saved})
     messages.success(request, "Research answers saved for the next run.")

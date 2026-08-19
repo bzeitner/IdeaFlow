@@ -17,6 +17,7 @@ from .models import (
     FeedItemAssessment,
     Idea,
     IdeaFeed,
+    IdeaPersona,
     IdeaRelation,
     GraphAccessCapability,
     IdeaRelationSuggestion,
@@ -26,6 +27,8 @@ from .models import (
     PromptRevision,
     PromptRevisionStatus,
     PromptTemplate,
+    Persona,
+    PersonaReview,
     Resource,
     RepeatResult,
     ResearchEntry,
@@ -119,6 +122,12 @@ class RepeatResultInline(admin.TabularInline):
     fields = ("title", "url", "status", "found_at")
 
 
+class IdeaPersonaInline(admin.TabularInline):
+    model = IdeaPersona
+    extra = 1
+    autocomplete_fields = ("persona",)
+
+
 @admin.register(Idea)
 class IdeaAdmin(TooltipAdminMixin, admin.ModelAdmin):
     list_display = ("title", "created_by", "category", "parent", "status", "stage", "interest_level", "is_public", "rank")
@@ -127,7 +136,21 @@ class IdeaAdmin(TooltipAdminMixin, admin.ModelAdmin):
     search_fields = ("title", "summary", "notes")
     list_select_related = ("created_by", "category", "stage", "parent")
     autocomplete_fields = ("created_by", "parent")
-    inlines = [ResourceInline, ResearchEntryInline, RepeatResultInline, IdeaFeedInline]
+    inlines = [IdeaPersonaInline, ResourceInline, ResearchEntryInline, RepeatResultInline, IdeaFeedInline]
+
+
+@admin.register(Persona)
+class PersonaAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "is_default", "is_active", "updated_at")
+    list_editable = ("is_default", "is_active")
+    search_fields = ("name", "description", "goals", "constraints")
+
+
+@admin.register(PersonaReview)
+class PersonaReviewAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("idea", "status", "created_at")
+    list_filter = ("status",)
+    readonly_fields = ("idea", "proposal", "context", "status", "created_at")
 
 
 @admin.register(RepeatResult)
