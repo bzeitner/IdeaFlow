@@ -35,6 +35,7 @@ urlpatterns = [
         name="update_repeat_result",
     ),
     path("<int:pk>/repeat/pause/", views.toggle_repeat_pause, name="toggle_repeat_pause"),
+    path("<int:pk>/persona-council/", views.update_persona_council, name="update_persona_council"),
     path(
         "<int:pk>/suggested-children/create/",
         views.create_suggested_child,

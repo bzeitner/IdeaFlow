@@ -633,6 +633,76 @@ class NextActionTests(TestCase):
         self.assertEqual(idea.next_action, "")
 
 
+class PersonaCouncilSettingsTests(TestCase):
+    def test_manager_can_enable_reviews_and_change_timeframe_from_detail(self):
+        idea = make_idea(
+            status=Status.CURRENT,
+            persona_review_enabled=False,
+            persona_stall_days=14,
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        detail = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(detail, "Save council settings")
+        response = self.client.post(
+            reverse("ideas:update_persona_council", args=[idea.pk]),
+            {"persona_review_enabled": "on", "persona_stall_days": "30"},
+        )
+
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        idea.refresh_from_db()
+        self.assertTrue(idea.persona_review_enabled)
+        self.assertEqual(idea.persona_stall_days, 30)
+
+    def test_manager_can_disable_reviews_without_changing_timeframe(self):
+        idea = make_idea(
+            status=Status.CURRENT,
+            persona_review_enabled=True,
+            persona_stall_days=21,
+        )
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        self.client.post(
+            reverse("ideas:update_persona_council", args=[idea.pk]),
+            {"persona_stall_days": "21"},
+        )
+
+        idea.refresh_from_db()
+        self.assertFalse(idea.persona_review_enabled)
+        self.assertEqual(idea.persona_stall_days, 21)
+
+    def test_invalid_timeframe_is_not_saved(self):
+        idea = make_idea(status=Status.CURRENT, persona_stall_days=14)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        self.client.post(
+            reverse("ideas:update_persona_council", args=[idea.pk]),
+            {"persona_review_enabled": "on", "persona_stall_days": "0"},
+        )
+
+        idea.refresh_from_db()
+        self.assertFalse(idea.persona_review_enabled)
+        self.assertEqual(idea.persona_stall_days, 14)
+
+    def test_update_requires_permission_for_the_idea_status(self):
+        idea = make_idea(status=Status.CURRENT, persona_stall_days=14)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:update_persona_council", args=[idea.pk]),
+            {"persona_review_enabled": "on", "persona_stall_days": "30"},
+        )
+
+        self.assertRedirects(response, reverse("ideas:home"), fetch_redirect_response=False)
+        idea.refresh_from_db()
+        self.assertFalse(idea.persona_review_enabled)
+        self.assertEqual(idea.persona_stall_days, 14)
+
+
 class ResearchQuestionViewTests(TestCase):
     def test_open_question_is_displayed_and_answer_is_saved_for_next_run(self):
         from ideas.reporting import record_effort

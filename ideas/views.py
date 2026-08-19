@@ -919,6 +919,29 @@ def toggle_repeat_pause(request, pk):
 
 
 @login_required
+def update_persona_council(request, pk):
+    """Update stalled council-review scheduling directly from the idea page."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    try:
+        stall_days = int(request.POST.get("persona_stall_days", ""))
+    except (TypeError, ValueError):
+        stall_days = 0
+    if not 1 <= stall_days <= 3650:
+        messages.error(request, "Council review timeframe must be between 1 and 3650 days.")
+        return redirect("ideas:detail", pk=pk)
+    idea.persona_review_enabled = request.POST.get("persona_review_enabled") == "on"
+    idea.persona_stall_days = stall_days
+    idea.save(update_fields=["persona_review_enabled", "persona_stall_days", "updated_at"])
+    messages.success(request, "Persona council review settings saved.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
 def create_suggested_child(request, pk):
     """Turn one agent suggestion into a child idea with a single click."""
     if request.method != "POST":
