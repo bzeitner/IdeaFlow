@@ -5,6 +5,7 @@ Core idea endpoints, all guarded by a single shared token in IDEAFLOW_API_TOKEN:
     GET  /api/ideas/                 list ideas (optional ?status=)
     GET  /api/ideas/<pk>/            one idea, with resources + research entries
     POST /api/ideas/<pk>/effort/     record a work-effort report (ResearchEntry)
+    POST /api/ideas/<pk>/artifacts/  upload a durable report/list artifact
     DELETE /api/ideas/<pk>/resources/<resource_pk>/ remove a stale resource
 
 The token goes in an `Authorization: Bearer <token>` (or `X-API-Token`) header.
@@ -28,7 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, WeeklySummary
 from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -40,6 +41,7 @@ from .weekly_metrics import missing_weekly_periods, normalize_weekly_metrics
 
 _DETAIL_PREFETCH = (
     "resources",
+    "artifacts__research_entry",
     "research_entries",
     "research_entries__model",
     "children",
@@ -188,6 +190,69 @@ def idea_resource(request, pk, resource_pk):
     deleted = {"id": resource.pk, "label": resource.label, "url": resource.url}
     resource.delete()
     return JsonResponse({"deleted": deleted})
+
+
+@require_api_token
+def idea_artifact(request, pk, artifact_pk=None):
+    """Create or update a durable agent deliverable using multipart form data."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk)
+    artifact = (
+        get_object_or_404(Artifact, pk=artifact_pk, idea=idea)
+        if artifact_pk else None
+    )
+    title = (request.POST.get("title") or "").strip()
+    description = (request.POST.get("description") or "").strip()
+    kind = (request.POST.get("kind") or Artifact.Kind.REPORT).strip()
+    external_url = (request.POST.get("url") or "").strip()
+    uploaded = request.FILES.get("file")
+    if not title:
+        return JsonResponse({"error": "title is required."}, status=400)
+    if kind not in Artifact.Kind.values:
+        return JsonResponse({"error": "kind must be report, list, or summary."}, status=400)
+    if uploaded and uploaded.size > settings.IDEAFLOW_ARTIFACT_MAX_BYTES:
+        return JsonResponse({"error": "Artifact files must be 10 MB or smaller."}, status=413)
+    if artifact is None and not uploaded and not external_url:
+        return JsonResponse({"error": "Upload a file or provide an external link."}, status=400)
+    entry = None
+    entry_id = request.POST.get("research_entry_id")
+    if entry_id:
+        entry = get_object_or_404(ResearchEntry, pk=entry_id, idea=idea)
+    generated_at = parse_datetime(request.POST.get("generated_at") or "") or timezone.now()
+    created = artifact is None
+    if artifact is None and kind == Artifact.Kind.SUMMARY:
+        artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
+        created = artifact is None
+    artifact = artifact or Artifact(idea=idea)
+    old_file_name = artifact.file.name if artifact.pk and artifact.file and uploaded else ""
+    artifact.title = title[:200]
+    artifact.description = description
+    artifact.kind = kind
+    artifact.url = external_url
+    artifact.research_entry = entry
+    artifact.generated_at = generated_at
+    if uploaded:
+        artifact.file.save(uploaded.name, uploaded, save=False)
+    artifact.save()
+    if old_file_name and old_file_name != artifact.file.name:
+        artifact.file.storage.delete(old_file_name)
+    if kind == Artifact.Kind.SUMMARY and idea.summary_requested_at:
+        idea.summary_requested_at = None
+        idea.save(update_fields=["summary_requested_at", "updated_at"])
+    return JsonResponse(
+        {
+            "artifact": {
+                "id": artifact.pk,
+                "title": artifact.title,
+                "kind": artifact.kind,
+                "url": artifact.link,
+                "research_entry_id": artifact.research_entry_id,
+                "generated_at": artifact.generated_at.isoformat(),
+            }
+        },
+        status=201 if created else 200,
+    )
 
 
 @require_api_token
@@ -984,6 +1049,8 @@ urlpatterns = [
     path("ideas/", idea_list, name="api_idea_list"),
     path("weekly-summaries/", weekly_summary_list, name="api_weekly_summary_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path("ideas/<int:pk>/artifacts/", idea_artifact, name="api_idea_artifact_create"),
+    path("ideas/<int:pk>/artifacts/<int:artifact_pk>/", idea_artifact, name="api_idea_artifact_update"),
     path("ideas/<int:pk>/reconcile-pr/", idea_reconcile_pr, name="api_idea_reconcile_pr"),
     path("ideas/<int:pk>/repeat-results/", idea_repeat_results, name="api_idea_repeat_results"),
     path(

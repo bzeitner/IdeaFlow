@@ -23,6 +23,8 @@ Commands:
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
+  ideaflow upload-artifact <id> --file F --title T
+                      [--kind report|list|summary] [--research-entry ID]
   ideaflow add-feed --url URL [--idea <id>] [--title T]
   ideaflow feed-items [--unsummarized | --unassessed --idea <id>] [--feed <id>]
                       [--per-feed N] [--limit N] [--offset N] [--content]
@@ -40,6 +42,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 DEFAULT_BASE = "https://ideaflow.bitesoftheweek.com"
 
@@ -74,6 +77,44 @@ def _request(method, path, *, params=None, body=None):
         sys.exit(f"error: HTTP {exc.code} from {url}\n{detail}")
     except urllib.error.URLError as exc:
         sys.exit(f"error: could not reach {url}: {exc.reason}")
+
+
+def _multipart_request(path, fields, file_path):
+    boundary = f"----IdeaFlow{uuid.uuid4().hex}"
+    chunks = []
+    for name, value in fields.items():
+        if value is None:
+            continue
+        chunks.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode()
+        )
+    filename = os.path.basename(file_path)
+    with open(file_path, "rb") as fh:
+        content = fh.read()
+    chunks.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n".encode()
+        + content
+        + b"\r\n"
+    )
+    chunks.append(f"--{boundary}--\r\n".encode())
+    base = os.environ.get("IDEAFLOW_API_BASE", DEFAULT_BASE).rstrip("/")
+    token = os.environ.get("IDEAFLOW_API_TOKEN", "").strip()
+    if not token:
+        sys.exit("error: IDEAFLOW_API_TOKEN is not set.")
+    endpoint = f"{base}/api{path}"
+    req = urllib.request.Request(endpoint, data=b"".join(chunks), method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("User-Agent", "IdeaFlow-Agent/1.0 (+https://ideaflow.bitesoftheweek.com)")
+    req.add_header("Accept", "application/json")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        sys.exit(f"error: HTTP {exc.code} from {endpoint}\n{detail}")
+    except urllib.error.URLError as exc:
+        sys.exit(f"error: could not reach {endpoint}: {exc.reason}")
 
 
 def _read_text(inline, path):
@@ -173,6 +214,22 @@ def cmd_log_effort(a):
     if a.repo_url:
         body["resource"] = {"url": a.repo_url, "label": a.repo_label or ""}
     return _request("POST", f"/ideas/{a.id}/effort/", body=body)
+
+
+def cmd_upload_artifact(a):
+    endpoint = f"/ideas/{a.id}/artifacts/"
+    if a.artifact_id:
+        endpoint = f"/ideas/{a.id}/artifacts/{a.artifact_id}/"
+    return _multipart_request(
+        endpoint,
+        {
+            "title": a.title,
+            "description": a.description or "",
+            "kind": a.kind,
+            "research_entry_id": a.research_entry,
+        },
+        a.file,
+    )
 
 
 def cmd_log_repeat_results(a):
@@ -347,6 +404,16 @@ def build_parser():
         help="Question requiring human input before a later run; repeatable.",
     )
     s.set_defaults(func=cmd_log_effort)
+
+    s = sub.add_parser("upload-artifact", help="Upload a durable report or list for an idea.")
+    s.add_argument("id", type=int)
+    s.add_argument("--file", required=True)
+    s.add_argument("--title", required=True)
+    s.add_argument("--description")
+    s.add_argument("--kind", choices=["report", "list", "summary"], default="report")
+    s.add_argument("--research-entry", type=int)
+    s.add_argument("--artifact-id", type=int)
+    s.set_defaults(func=cmd_upload_artifact)
 
     s = sub.add_parser("log-repeat-results", help="Record one completed repeat run.")
     s.add_argument("id", type=int)

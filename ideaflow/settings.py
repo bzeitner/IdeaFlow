@@ -165,6 +165,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 # collectstatic gathers everything here for WhiteNoise to serve in production.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
@@ -227,6 +229,7 @@ SOCIALACCOUNT_PROVIDERS = {
 # uses to read ideas and report effort. Empty (the default) disables the API
 # entirely, so it stays off until you deliberately set a token.
 IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
+IDEAFLOW_ARTIFACT_MAX_BYTES = env_int('IDEAFLOW_ARTIFACT_MAX_BYTES', 10 * 1024 * 1024)
 
 # Task -> model routing. Cheap, high-volume work (feed/blog summaries) goes to a
 # lighter model; deeper work uses the heavy model. Agents fetch this from

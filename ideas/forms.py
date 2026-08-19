@@ -1,9 +1,10 @@
 from django import forms
+from django.conf import settings
 from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage, Status
+from .models import Artifact, AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage, Status
 
 
 class ParentIdeaSelect(forms.Select):
@@ -229,6 +230,38 @@ class ResearchEntryForm(forms.ModelForm):
             "effort": forms.RadioSelect,
             "quality": forms.RadioSelect,
         }
+
+
+class ArtifactForm(forms.ModelForm):
+    generated_at = forms.DateTimeField(
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(
+            attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+        ),
+    )
+
+    def __init__(self, *args, idea, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["research_entry"].queryset = idea.research_entries.all()
+        self.fields["research_entry"].label_from_instance = (
+            lambda entry: f"#{entry.pk} — {entry.topic}"
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("file") and not cleaned.get("url"):
+            raise forms.ValidationError("Upload a file or provide an external link.")
+        uploaded = cleaned.get("file")
+        if uploaded and uploaded.size > settings.IDEAFLOW_ARTIFACT_MAX_BYTES:
+            self.add_error("file", "Artifact files must be 10 MB or smaller.")
+        return cleaned
+
+    class Meta:
+        model = Artifact
+        fields = [
+            "title", "kind", "description", "file", "url", "generated_at", "research_entry"
+        ]
+        widgets = {"description": forms.Textarea(attrs={"rows": 3})}
 
 
 ResearchEntryFormSet = inlineformset_factory(

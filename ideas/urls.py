@@ -43,6 +43,10 @@ urlpatterns = [
     ),
     path("<int:pk>/quick-update/", views.quick_update, name="quick_update"),
     path("<int:pk>/research/new/", views.add_research, name="add_research"),
+    path("<int:pk>/artifacts/new/", views.artifact_form, name="add_artifact"),
+    path("<int:pk>/artifacts/summary/", views.request_summary, name="request_summary"),
+    path("<int:pk>/artifacts/<int:artifact_pk>/edit/", views.artifact_form, name="edit_artifact"),
+    path("<int:pk>/artifacts/<int:artifact_pk>/download/", views.download_artifact, name="download_artifact"),
     path(
         "<int:pk>/research/<int:entry_pk>/answers/",
         views.answer_research_questions,

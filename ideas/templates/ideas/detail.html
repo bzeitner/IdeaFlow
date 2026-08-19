@@ -52,6 +52,12 @@
       <div class="detail-primary-actions">
         <a class="btn primary" href="{% url 'ideas:edit' idea.pk %}">Edit idea</a>
         <a class="btn" href="{% url 'ideas:add_research' idea.pk %}">+ Log research</a>
+        <form method="post" action="{% url 'ideas:request_summary' idea.pk %}">
+          {% csrf_token %}
+          <button class="btn" type="submit"{% if idea.summary_requested_at %} disabled{% endif %}>
+            {% if idea.summary_requested_at %}Summary scheduled{% else %}Summary{% endif %}
+          </button>
+        </form>
       </div>
     {% endif %}
 
@@ -241,6 +247,30 @@
           </li>
         {% endfor %}
       </ul>
+    {% endif %}
+
+    <div class="card-head research-heading">
+      <h4>Artifacts</h4>
+      {% if can_manage %}<a class="btn small" href="{% url 'ideas:add_artifact' idea.pk %}">+ Add artifact</a>{% endif %}
+    </div>
+    {% if idea.artifacts.all %}
+      <ul class="research-list artifact-list">
+        {% for artifact in idea.artifacts.all %}
+          <li>
+            <div class="card-head">
+              <strong><a href="{{ artifact.link }}" target="_blank" rel="noopener">{{ artifact.title }}</a></strong>
+              <span class="dim">{{ artifact.generated_at|date:"M j, Y" }}</span>
+            </div>
+            {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
+            <div class="meta">
+              {% if artifact.research_entry %}<a class="pill" href="#research-entry-{{ artifact.research_entry.pk }}">Research #{{ artifact.research_entry.pk }}</a>{% endif %}
+              {% if can_manage %}<a href="{% url 'ideas:edit_artifact' idea.pk artifact.pk %}">Update</a>{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="dim">No artifacts yet.</p>
     {% endif %}
 
     <div class="card-head research-heading">

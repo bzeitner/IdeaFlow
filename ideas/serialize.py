@@ -117,6 +117,9 @@ def idea_to_dict(idea, *, detail=True):
         from .feeds import recent_articles
 
         data["notes"] = idea.notes
+        data["summary_requested_at"] = (
+            idea.summary_requested_at.isoformat() if idea.summary_requested_at else None
+        )
         data["next_action"] = idea.next_action
         data["next_actions"] = idea.next_action_queue
         data["repeat_task"] = {
@@ -186,6 +189,19 @@ def idea_to_dict(idea, *, detail=True):
         }
         data["feed_cap"] = idea.feed_cap
         data["resources"] = [resource_to_dict(r) for r in idea.resources.all()]
+        data["artifacts"] = [
+            {
+                "id": artifact.pk,
+                "title": artifact.title,
+                "kind": artifact.kind,
+                "description": artifact.description,
+                "url": artifact.link,
+                "research_entry_id": artifact.research_entry_id,
+                "generated_at": artifact.generated_at.isoformat(),
+                "updated_at": artifact.updated_at.isoformat(),
+            }
+            for artifact in idea.artifacts.all()
+        ]
         data["research_entries"] = [
             research_entry_to_dict(e) for e in idea.research_entries.all()
         ]

@@ -10,18 +10,18 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, CharField, Count, F, IntegerField, OuterRef, Q, Subquery, When
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
-from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
+from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
 
@@ -671,7 +671,7 @@ def archive(request):
 def detail(request, pk):
     idea = get_object_or_404(
         Idea.objects.select_related("parent", "created_by").prefetch_related(
-            "resources", "research_entries", "research_entries__model", "children", "repeat_results",
+            "resources", "artifacts__research_entry", "research_entries", "research_entries__model", "children", "repeat_results",
             "idea_personas__persona",
         ),
         pk=pk,
@@ -1066,6 +1066,80 @@ def add_research(request, pk):
             "tabs": _tabs(request.user.profile),
             "active": idea.status,
         },
+    )
+
+
+@login_required
+def artifact_form(request, pk, artifact_pk=None):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    artifact = (
+        get_object_or_404(Artifact, pk=artifact_pk, idea=idea)
+        if artifact_pk else Artifact(idea=idea)
+    )
+    form = ArtifactForm(
+        request.POST or None,
+        request.FILES or None,
+        instance=artifact,
+        idea=idea,
+    )
+    if request.method == "POST" and form.is_valid():
+        old_file_name = ""
+        if artifact.pk and "file" in form.changed_data:
+            old_file_name = Artifact.objects.get(pk=artifact.pk).file.name
+        artifact = form.save(commit=False)
+        artifact.idea = idea
+        artifact.save()
+        if old_file_name and old_file_name != artifact.file.name:
+            artifact.file.storage.delete(old_file_name)
+        messages.success(request, f"Artifact saved for “{idea.title}”.")
+        return redirect("ideas:detail", pk=pk)
+    return render(
+        request,
+        "ideas/artifact_form.html",
+        {
+            "idea": idea,
+            "artifact": artifact if artifact.pk else None,
+            "form": form,
+            "tabs": _tabs(request.user.profile),
+            "active": idea.status,
+        },
+    )
+
+
+@login_required
+@require_POST
+def request_summary(request, pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    if idea.summary_requested_at:
+        messages.info(request, "A Summary artifact is already scheduled.")
+    else:
+        idea.summary_requested_at = timezone.now()
+        idea.save(update_fields=["summary_requested_at", "updated_at"])
+        messages.success(request, f"Summary artifact scheduled for “{idea.title}”.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+def download_artifact(request, pk, artifact_pk):
+    artifact = get_object_or_404(
+        Artifact.objects.select_related("idea"), pk=artifact_pk, idea_id=pk
+    )
+    idea = artifact.idea
+    if not (idea.is_public or request.user.profile.can_manage_status(idea.status)):
+        messages.error(request, "You don't have access to that.")
+        return redirect("ideas:home")
+    if not artifact.file:
+        return redirect(artifact.url)
+    return FileResponse(
+        artifact.file.open("rb"),
+        as_attachment=True,
+        filename=artifact.file.name.rsplit("/", 1)[-1],
     )
 
 

@@ -240,6 +240,11 @@ class Idea(models.Model):
         help_text="Child ideas an agent suggested for a human to create (used "
         "when the agent isn't allowed to create them itself).",
     )
+    summary_requested_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When set, the agent queue will generate or refresh the idea's Summary artifact.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -801,6 +806,52 @@ class ResearchEntry(models.Model):
     @property
     def unanswered_question_items(self):
         return [item for item in self.open_question_items if not item["answer"].strip()]
+
+
+class Artifact(models.Model):
+    class Kind(models.TextChoices):
+        REPORT = "report", "Report"
+        LIST = "list", "List"
+        SUMMARY = "summary", "Summary"
+
+    idea = models.ForeignKey(
+        Idea, related_name="artifacts", on_delete=models.CASCADE
+    )
+    research_entry = models.ForeignKey(
+        ResearchEntry,
+        related_name="artifacts",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="The research effort that most recently generated or updated this artifact.",
+    )
+    title = models.CharField(max_length=200)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.REPORT)
+    description = models.TextField(blank=True)
+    file = models.FileField(upload_to="artifacts/%Y/%m/", blank=True)
+    url = models.URLField(blank=True, help_text="Use for an artifact hosted elsewhere.")
+    generated_at = models.DateTimeField(
+        default=timezone.now, help_text="When this version of the artifact was generated."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-generated_at", "-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idea"],
+                condition=models.Q(kind="summary"),
+                name="one_summary_artifact_per_idea",
+            )
+        ]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def link(self):
+        return reverse("ideas:download_artifact", args=[self.idea_id, self.pk]) if self.file else self.url
 
 
 class RepeatResultStatus(models.TextChoices):

@@ -1,8 +1,10 @@
 import json
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
-from ideas.models import AIModel, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status
+from ideas.models import Artifact, AIModel, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status
 
 from .helpers import make_idea, make_stage, make_user
 
@@ -65,6 +67,39 @@ class ApiReadTests(TestCase):
         self.assertEqual(body["resources"][0]["url"], "https://example.com")
         self.assertIsInstance(body["resources"][0]["id"], int)
         self.assertIn("research_entries", body)
+        self.assertIn("artifacts", body)
+
+    def test_summary_upload_upserts_and_completes_request_even_when_archived(self):
+        idea = make_idea(status=Status.ARCHIVED, summary_requested_at=timezone.now())
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Summary",
+                "kind": "summary",
+                "description": "High-level report",
+                "file": SimpleUploadedFile("summary.md", b"# Executive summary\nUseful."),
+            },
+            **AUTH,
+        )
+        self.assertEqual(response.status_code, 201)
+        artifact = idea.artifacts.get(kind=Artifact.Kind.SUMMARY)
+        self.addCleanup(artifact.file.delete, save=False)
+        idea.refresh_from_db()
+        self.assertIsNone(idea.summary_requested_at)
+
+        replacement = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Summary",
+                "kind": "summary",
+                "file": SimpleUploadedFile("summary.md", b"# Executive summary\nUpdated."),
+            },
+            **AUTH,
+        )
+        self.assertEqual(replacement.status_code, 200)
+        self.assertEqual(idea.artifacts.filter(kind=Artifact.Kind.SUMMARY).count(), 1)
+        artifact.refresh_from_db()
+        self.addCleanup(artifact.file.delete, save=False)
 
     def test_detail_404_for_unknown_idea(self):
         response = self.client.get("/api/ideas/999999/", **AUTH)

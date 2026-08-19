@@ -60,6 +60,23 @@ class TaskSelectionStateTests(SimpleTestCase):
         self.assertEqual(state["paused_ids"], [2])
         self.assertEqual(state["archived_ids"], [3])
 
+    def test_requested_summary_is_selected_for_archived_idea(self):
+        listing = [{"id": 4, "status": "archived", "title": "Old project"}]
+        details = {
+            4: {
+                "title": "Old project",
+                "is_paused": True,
+                "research_entries": [{"id": 1}],
+                "next_action": "",
+                "summary_requested_at": "2026-08-19T12:00:00Z",
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertIn("4 summary Old project", output)
+        self.assertEqual(state["reason"], "actionable")
+
     def test_reports_when_no_ideas_match(self):
         output, state = self.run_selector([], {})
 

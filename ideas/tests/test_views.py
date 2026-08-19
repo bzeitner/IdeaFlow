@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.template.defaultfilters import date
 from django.urls import reverse
@@ -1045,6 +1046,91 @@ class AddResearchViewTests(TestCase):
         self.client.force_login(user, backend=MODEL_BACKEND)
         response = self.client.get(reverse("ideas:add_research", args=[idea.pk]))
         self.assertRedirects(response, reverse("ideas:home"), fetch_redirect_response=False)
+
+
+class ArtifactViewTests(TestCase):
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT)
+        self.user = make_user(roles=["role_current"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_can_upload_artifact_and_see_it_on_idea(self):
+        response = self.client.post(
+            reverse("ideas:add_artifact", args=[self.idea.pk]),
+            {
+                "title": "Competitor report",
+                "kind": "report",
+                "description": "A ranked comparison.",
+                "file": SimpleUploadedFile("report.csv", b"name,score\nA,5\n"),
+                "url": "",
+                "generated_at": "2026-08-19T10:30",
+                "research_entry": "",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        artifact = self.idea.artifacts.get()
+        self.addCleanup(artifact.file.delete, save=False)
+        detail = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertContains(detail, "Competitor report")
+        self.assertContains(detail, "A ranked comparison.")
+        self.assertContains(
+            detail,
+            reverse("ideas:download_artifact", args=[self.idea.pk, artifact.pk]),
+        )
+        self.assertContains(detail, "Aug 19, 2026")
+
+        download = self.client.get(
+            reverse("ideas:download_artifact", args=[self.idea.pk, artifact.pk])
+        )
+        self.assertEqual(download.status_code, 200)
+        self.assertIn("attachment;", download["Content-Disposition"])
+
+    def test_later_research_can_be_recorded_when_updating_artifact(self):
+        first = self.idea.research_entries.create(topic="Initial", model=make_ai_model())
+        later = self.idea.research_entries.create(topic="Refresh", model=first.model)
+        artifact = self.idea.artifacts.create(
+            title="Lead list", url="https://example.com/leads", research_entry=first
+        )
+        response = self.client.post(
+            reverse("ideas:edit_artifact", args=[self.idea.pk, artifact.pk]),
+            {
+                "title": "Lead list v2",
+                "kind": "list",
+                "description": "Updated by the refresh.",
+                "url": "https://example.com/leads-v2",
+                "generated_at": "2026-08-19T11:00",
+                "research_entry": later.pk,
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        artifact.refresh_from_db()
+        self.assertEqual(artifact.title, "Lead list v2")
+        self.assertEqual(artifact.research_entry, later)
+
+    def test_artifact_requires_a_file_or_link(self):
+        response = self.client.post(
+            reverse("ideas:add_artifact", args=[self.idea.pk]),
+            {
+                "title": "Missing output",
+                "generated_at": "2026-08-19T10:30",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Upload a file or provide an external link.")
+        self.assertFalse(self.idea.artifacts.exists())
+
+    def test_summary_can_be_scheduled_for_archived_idea(self):
+        idea = make_idea(status=Status.ARCHIVED)
+        self.user.profile.role_archive = True
+        self.user.profile.save(update_fields=["role_archive"])
+
+        response = self.client.post(reverse("ideas:request_summary", args=[idea.pk]))
+
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        idea.refresh_from_db()
+        self.assertIsNotNone(idea.summary_requested_at)
+        detail = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+        self.assertContains(detail, "Summary scheduled")
 
 
 class PublicDetailAccessTests(TestCase):

@@ -11,6 +11,7 @@ from django.utils.safestring import mark_safe
 
 from .models import (
     AIModel,
+    Artifact,
     Category,
     Feed,
     FeedItem,
@@ -110,6 +111,12 @@ class ResearchEntryInline(admin.TabularInline):
     fields = ("topic", "focus", "occurred_at", "model", "effort", "quality", "tokens_used")
 
 
+class ArtifactInline(admin.TabularInline):
+    model = Artifact
+    extra = 0
+    fields = ("title", "kind", "description", "file", "url", "generated_at", "research_entry")
+
+
 class IdeaFeedInline(admin.TabularInline):
     model = IdeaFeed
     extra = 0
@@ -137,7 +144,7 @@ class IdeaAdmin(TooltipAdminMixin, admin.ModelAdmin):
     search_fields = ("title", "summary", "notes")
     list_select_related = ("created_by", "category", "stage", "parent")
     autocomplete_fields = ("created_by", "parent")
-    inlines = [IdeaPersonaInline, ResourceInline, ResearchEntryInline, RepeatResultInline, IdeaFeedInline]
+    inlines = [IdeaPersonaInline, ResourceInline, ResearchEntryInline, ArtifactInline, RepeatResultInline, IdeaFeedInline]
 
 
 @admin.register(Persona)

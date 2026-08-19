@@ -92,6 +92,12 @@ def main():
             selected.append((i, mode))
             seen.add(i)
 
+    # Explicit summary requests are status-independent and may intentionally
+    # target archived ideas. They run before the ordinary archived/paused filter.
+    for it in listed_ideas:
+        if detail[it["id"]].get("summary_requested_at"):
+            add(it["id"], "summary")
+
     if selected_repeat:
         add(*selected_repeat)
 
