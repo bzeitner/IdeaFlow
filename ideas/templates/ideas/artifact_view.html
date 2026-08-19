@@ -1,0 +1,20 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ artifact.title }} · {{ idea.title }} · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail">
+    <div class="card-head">
+      <h2>{{ artifact.title }}</h2>
+      <a class="btn" href="{{ idea.get_absolute_url }}">Back to idea</a>
+    </div>
+    <p class="dim">Artifact on <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></p>
+    {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
+    <div class="card-actions">
+      <a class="btn primary" href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download {{ artifact.download_filename }}</a>
+    </div>
+    {% if artifact.is_html %}
+      <iframe class="artifact-frame" sandbox srcdoc="{{ content }}"></iframe>
+    {% else %}
+      <pre class="artifact-text">{{ content }}</pre>
+    {% endif %}
+  </article>
+{% endblock %}

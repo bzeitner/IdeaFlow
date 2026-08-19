@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from string import Formatter
 
@@ -12,6 +13,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 from pgvector.django import VectorField
 
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
@@ -814,6 +816,12 @@ class Artifact(models.Model):
         LIST = "list", "List"
         SUMMARY = "summary", "Summary"
 
+    # Extensions plain-text/markup enough to render safely inline on the idea page.
+    TEXT_VIEW_EXTENSIONS = {
+        ".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".json",
+        ".yaml", ".yml", ".html", ".htm", ".xml",
+    }
+
     idea = models.ForeignKey(
         Idea, related_name="artifacts", on_delete=models.CASCADE
     )
@@ -852,6 +860,31 @@ class Artifact(models.Model):
     @property
     def link(self):
         return reverse("ideas:download_artifact", args=[self.idea_id, self.pk]) if self.file else self.url
+
+    @property
+    def file_extension(self):
+        if not self.file:
+            return ""
+        return os.path.splitext(self.file.name)[1].lower()
+
+    @property
+    def is_html(self):
+        return self.file_extension in (".html", ".htm")
+
+    @property
+    def is_viewable(self):
+        """Reports and other text-ish artifacts can be viewed inline on the idea page."""
+        return bool(self.file) and self.file_extension in self.TEXT_VIEW_EXTENSIONS
+
+    @property
+    def view_link(self):
+        return reverse("ideas:view_artifact", args=[self.idea_id, self.pk]) if self.is_viewable else ""
+
+    @property
+    def download_filename(self):
+        """A human-friendly download name that keeps the original extension."""
+        base = slugify(self.title) or f"artifact-{self.pk}"
+        return f"{base}{self.file_extension}"
 
 
 class RepeatResultStatus(models.TextChoices):
