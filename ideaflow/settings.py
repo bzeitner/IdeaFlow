@@ -234,9 +234,9 @@ IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
 IDEAFLOW_TASK_MODELS = {
     'summary': os.getenv('IDEAFLOW_MODEL_SUMMARY', 'claude-haiku-4-5'),
     'research': os.getenv('IDEAFLOW_MODEL_RESEARCH', 'claude-opus-4-8'),
-    'review': os.getenv('IDEAFLOW_MODEL_REVIEW', 'claude-opus-4-8'),
+    'review': os.getenv('IDEAFLOW_MODEL_REVIEW', 'claude-sonnet-5'),
     'execute': os.getenv('IDEAFLOW_MODEL_EXECUTE', 'claude-opus-4-8'),
-    'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-opus-4-8'),
+    'critique': os.getenv('IDEAFLOW_MODEL_CRITIQUE', 'claude-sonnet-5'),
     'weekly_summary': os.getenv('IDEAFLOW_MODEL_WEEKLY_SUMMARY', 'claude-opus-4-8'),
 }
 

@@ -17,6 +17,37 @@ from .models import AIModel, ResearchEntry, Resource, Stage, Status
 VALID_STATUS = {s.value for s in Status}
 
 
+def _question_key(question):
+    """Normalize a question enough to recognize repeated human prompts."""
+    return " ".join(str(question).split()).casefold()
+
+
+def new_open_questions(idea, questions, *, exclude_entry=None):
+    """Return unique questions that are not already open for this idea."""
+    entries = ResearchEntry.objects.filter(idea=idea)
+    if exclude_entry is not None:
+        entries = entries.exclude(pk=exclude_entry.pk)
+
+    already_open = set()
+    for open_questions, question_answers in entries.values_list(
+        "open_questions", "question_answers"
+    ):
+        answers = question_answers if isinstance(question_answers, dict) else {}
+        for index, question in enumerate(open_questions if isinstance(open_questions, list) else []):
+            if not str(answers.get(str(index), "")).strip():
+                already_open.add(_question_key(question))
+
+    result = []
+    seen = set(already_open)
+    for raw_question in questions:
+        question = " ".join(str(raw_question).split())
+        key = _question_key(question)
+        if question and key not in seen:
+            result.append(question)
+            seen.add(key)
+    return result
+
+
 def extract_open_questions(context):
     """Extract bullet/numbered items from a Markdown Open Questions section."""
     questions = []
@@ -117,6 +148,7 @@ def record_effort(
     clean_questions = [str(question).strip() for question in (open_questions or []) if str(question).strip()]
     if not clean_questions:
         clean_questions = extract_open_questions(context)
+    clean_questions = new_open_questions(idea, clean_questions)
     entry = ResearchEntry.objects.create(
         idea=idea,
         topic=topic,

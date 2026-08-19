@@ -181,6 +181,61 @@ class ApiEffortTests(TestCase):
             ["Which market should we prioritize?"],
         )
 
+    def test_does_not_repeat_questions_already_open_on_the_idea(self):
+        idea = make_idea()
+        first = self._post(
+            idea,
+            {
+                "topic": "First pass",
+                "model": "other",
+                "open_questions": ["Which market should we prioritize?"],
+            },
+        )
+        second = self._post(
+            idea,
+            {
+                "topic": "Second pass",
+                "model": "other",
+                "open_questions": ["  WHICH market should we prioritize?  ", "What budget?"],
+            },
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(
+            ResearchEntry.objects.get(topic="Second pass").open_questions,
+            ["What budget?"],
+        )
+
+    def test_answered_historical_question_does_not_block_a_new_question(self):
+        idea = make_idea()
+        first = self._post(
+            idea,
+            {
+                "topic": "First pass",
+                "model": "other",
+                "open_questions": ["Which market should we prioritize?"],
+            },
+        )
+        entry = ResearchEntry.objects.get(pk=first.json()["research_entry"]["id"])
+        entry.question_answers = {"0": "Enterprise"}
+        entry.save(update_fields=["question_answers"])
+
+        second = self._post(
+            idea,
+            {
+                "topic": "Second pass",
+                "model": "other",
+                "open_questions": ["Which market should we prioritize?"],
+            },
+        )
+
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(
+            ResearchEntry.objects.get(topic="Second pass").open_questions,
+            ["Which market should we prioritize?"],
+        )
+
     def test_records_actual_execution_identity_separately_from_routing_model(self):
         idea = make_idea()
         response = self._post(
@@ -300,6 +355,22 @@ class ApiResearchQuestionTests(TestCase):
             ["Existing question?", "New human decision?"],
         )
         self.assertEqual(entry.question_answers, {"0": "Existing answer"})
+
+    def test_does_not_merge_a_question_open_on_another_entry(self):
+        idea = make_idea()
+        self._entry(idea, open_questions=["Which market?"])
+        entry = self._entry(idea)
+
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/research/{entry.pk}/open-questions/",
+            data=json.dumps({"questions": [" WHICH market? ", "What budget?"]}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        entry.refresh_from_db()
+        self.assertEqual(entry.open_questions, ["What budget?"])
 
     def test_entry_must_belong_to_idea(self):
         idea = make_idea()

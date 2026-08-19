@@ -29,7 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
 from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status, WeeklySummary
-from .reporting import record_effort
+from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
     feed_to_dict,
@@ -427,7 +427,13 @@ def research_open_questions(request, pk, entry_pk):
         if question not in clean:
             clean.append(question)
     existing = [str(item).strip() for item in entry.open_questions if str(item).strip()]
-    merged = existing + [question for question in clean if question not in existing]
+    additions = new_open_questions(idea, clean, exclude_entry=entry)
+    existing_keys = {" ".join(question.split()).casefold() for question in existing}
+    merged = existing + [
+        question
+        for question in additions
+        if " ".join(question.split()).casefold() not in existing_keys
+    ]
     if merged != existing:
         entry.open_questions = merged
         entry.save(update_fields=["open_questions"])
