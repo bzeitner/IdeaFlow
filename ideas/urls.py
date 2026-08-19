@@ -47,6 +47,7 @@ urlpatterns = [
     path("<int:pk>/artifacts/summary/", views.request_summary, name="request_summary"),
     path("<int:pk>/artifacts/<int:artifact_pk>/edit/", views.artifact_form, name="edit_artifact"),
     path("<int:pk>/artifacts/<int:artifact_pk>/download/", views.download_artifact, name="download_artifact"),
+    path("<int:pk>/artifacts/<int:artifact_pk>/view/", views.view_artifact, name="view_artifact"),
     path(
         "<int:pk>/research/<int:entry_pk>/answers/",
         views.answer_research_questions,

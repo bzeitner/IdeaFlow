@@ -15,6 +15,17 @@
       {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
     </div>
 
+    {% if idea.artifacts.all %}
+      <ul class="artifact-links">
+        {% for artifact in idea.artifacts.all %}
+          <li>
+            <a href="{% if artifact.is_viewable %}{{ artifact.view_link }}{% else %}{{ artifact.link }}{% endif %}"{% if not artifact.is_viewable %} target="_blank" rel="noopener"{% endif %}>{{ artifact.title }}</a>
+            {% if artifact.file %}<a class="pill" href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}" title="Download {{ artifact.download_filename }}" aria-label="Download {{ artifact.download_filename }}">↓</a>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
     {% if idea.parent %}
       <p class="parent-line dim">Part of <a href="{{ idea.parent.get_absolute_url }}">{{ idea.parent.title }}</a></p>
     {% endif %}
@@ -264,6 +275,8 @@
             {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
             <div class="meta">
               {% if artifact.research_entry %}<a class="pill" href="#research-entry-{{ artifact.research_entry.pk }}">Research #{{ artifact.research_entry.pk }}</a>{% endif %}
+              {% if artifact.is_viewable %}<a href="{{ artifact.view_link }}">View</a>{% endif %}
+              {% if artifact.file %}<a href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download</a>{% endif %}
               {% if can_manage %}<a href="{% url 'ideas:edit_artifact' idea.pk artifact.pk %}">Update</a>{% endif %}
             </div>
           </li>

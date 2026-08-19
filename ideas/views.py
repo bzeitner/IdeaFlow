@@ -1125,21 +1125,54 @@ def request_summary(request, pk):
     return redirect("ideas:detail", pk=pk)
 
 
+def _artifact_access_or_denied(request, artifact):
+    idea = artifact.idea
+    if idea.is_public or request.user.profile.can_manage_status(idea.status):
+        return None
+    messages.error(request, "You don't have access to that.")
+    return redirect("ideas:home")
+
+
 @login_required
 def download_artifact(request, pk, artifact_pk):
     artifact = get_object_or_404(
         Artifact.objects.select_related("idea"), pk=artifact_pk, idea_id=pk
     )
-    idea = artifact.idea
-    if not (idea.is_public or request.user.profile.can_manage_status(idea.status)):
-        messages.error(request, "You don't have access to that.")
-        return redirect("ideas:home")
+    denied = _artifact_access_or_denied(request, artifact)
+    if denied:
+        return denied
     if not artifact.file:
         return redirect(artifact.url)
     return FileResponse(
         artifact.file.open("rb"),
         as_attachment=True,
-        filename=artifact.file.name.rsplit("/", 1)[-1],
+        filename=artifact.download_filename,
+    )
+
+
+@login_required
+def view_artifact(request, pk, artifact_pk):
+    artifact = get_object_or_404(
+        Artifact.objects.select_related("idea"), pk=artifact_pk, idea_id=pk
+    )
+    denied = _artifact_access_or_denied(request, artifact)
+    if denied:
+        return denied
+    if not artifact.is_viewable:
+        return redirect(artifact.link)
+    idea = artifact.idea
+    with artifact.file.open("rb") as f:
+        raw = f.read()
+    content = raw.decode("utf-8", errors="replace")
+    return render(
+        request,
+        "ideas/artifact_view.html",
+        {
+            "idea": idea,
+            "artifact": artifact,
+            "content": content,
+            "tabs": _tabs(request.user.profile),
+        },
     )
 
 
