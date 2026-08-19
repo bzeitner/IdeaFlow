@@ -29,6 +29,7 @@ from .models import (
     PromptTemplate,
     Persona,
     PersonaReview,
+    RelationshipCouncilReview,
     Resource,
     RepeatResult,
     ResearchEntry,
@@ -151,6 +152,13 @@ class PersonaReviewAdmin(TooltipAdminMixin, admin.ModelAdmin):
     list_display = ("idea", "status", "created_at")
     list_filter = ("status",)
     readonly_fields = ("idea", "proposal", "context", "status", "created_at")
+
+
+@admin.register(RelationshipCouncilReview)
+class RelationshipCouncilReviewAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("suggestion", "outcome", "reviewed_at")
+    list_filter = ("outcome",)
+    readonly_fields = ("suggestion", "outcome", "reviewed_at")
 
 
 @admin.register(RepeatResult)

@@ -1,3 +1,5 @@
+import json
+
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -6,7 +8,7 @@ from django.utils import timezone
 from ideas.graph.projection import graph_context, graph_projection, neighborhood
 from ideas.graph.revision import current_revision
 from ideas.graph.semantic import content_hash, process_idea, semantic_text
-from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, ResearchEntry, SemanticGraphSettings, SemanticStatus, Status, SuggestionStatus
+from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, RelationshipCouncilReview, ResearchEntry, SemanticGraphSettings, SemanticStatus, Status, SuggestionStatus
 
 from .helpers import MODEL_BACKEND, make_ai_model, make_idea, make_user
 
@@ -103,6 +105,107 @@ class GraphViewTests(TestCase):
         self.client.post(reverse("ideas:graph_relation_create"), {"source": source.pk, "target": target.pk, "relation_type": "related_to", "confidence": 5})
         self.assertFalse(IdeaRelation.objects.exists())
 
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class RelationshipCouncilApiTests(TestCase):
+    def setUp(self):
+        self.source = make_idea(title="Council source", status=Status.TRACKING)
+        self.target = make_idea(title="Council target", status=Status.TRACKING)
+        self.suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=self.source,
+            source=self.source,
+            target=self.target,
+            relation_type=RelationType.SUPPORTS,
+            description="The source supports the target.",
+            evidence="Both cite the same measured result.",
+            confidence=0.75,
+            source_content_hash="source-hash",
+            target_content_hash="target-hash",
+            classifier_model="test",
+        )
+        self.persona_ids = list(
+            self.source.idea_personas.filter(active=True, required=True)
+            .order_by("persona__name")
+            .values_list("persona_id", flat=True)
+        )
+
+    def votes(self, decisions, providers=("claude", "codex", "claude")):
+        return [
+            {
+                "persona_id": persona_id,
+                "provider": provider,
+                "model": f"{provider}-test",
+                "decision": decision,
+                "rationale": f"Evidence supports {decision}.",
+            }
+            for persona_id, provider, decision in zip(
+                self.persona_ids, providers, decisions, strict=True
+            )
+        ]
+
+    def submit(self, decisions, providers=("claude", "codex", "claude")):
+        return self.client.post(
+            f"/api/relationship-council-reviews/{self.suggestion.pk}/",
+            data=json.dumps({"votes": self.votes(decisions, providers)}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+    def test_queue_returns_three_required_personas(self):
+        response = self.client.get(
+            "/api/relationship-council-reviews/?limit=5", **AUTH
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["suggestions"][0]
+        self.assertEqual(item["suggestion_id"], self.suggestion.pk)
+        self.assertEqual(len(item["personas"]), 3)
+
+    def test_all_three_accept_promotes_relationship(self):
+        response = self.submit(("accept", "accept", "accept"))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["outcome"], "accepted")
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.status, SuggestionStatus.ACCEPTED)
+        self.assertTrue(IdeaRelation.objects.filter(source=self.source, target=self.target).exists())
+
+    def test_two_reject_votes_reject_suggestion(self):
+        response = self.submit(("reject", "reject", "accept"))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["outcome"], "rejected")
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.status, SuggestionStatus.REJECTED)
+
+    def test_split_vote_marks_reviewed_without_decision(self):
+        response = self.submit(("accept", "reject", "abstain"))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["outcome"], "no_decision")
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.status, SuggestionStatus.PENDING)
+        self.assertEqual(
+            self.suggestion.relationship_council_review.outcome,
+            RelationshipCouncilReview.Outcome.NO_DECISION,
+        )
+        user = make_user(roles=["role_graph"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        graph = self.client.get(reverse("ideas:graph"))
+        self.assertContains(graph, "Council reviewed · no decision")
+        self.assertContains(graph, "Council votes")
+
+    def test_both_claude_and_codex_are_required(self):
+        response = self.submit(
+            ("accept", "accept", "accept"),
+            providers=("claude", "claude", "claude"),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Claude", response.json()["error"])
+
+
+class GraphSuggestionViewTests(TestCase):
     def test_manager_can_create_relation(self):
         source, target = make_idea(status=Status.CURRENT), make_idea()
         user = make_user(roles=["role_graph", "role_current"])

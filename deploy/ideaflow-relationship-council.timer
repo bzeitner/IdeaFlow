@@ -1,0 +1,11 @@
+[Unit]
+Description=Review pending IdeaFlow relationships with Claude and Codex personas
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=15min
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

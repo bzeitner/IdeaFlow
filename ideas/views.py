@@ -255,7 +255,11 @@ def graph(request):
             "include_archived": include_archived,
             "statuses": Status.choices,
             "relation_types": [("parent_of", "Parent of"), *RelationType.choices],
-            "suggestions": IdeaRelationSuggestion.objects.filter(status=SuggestionStatus.PENDING).select_related("analyzed_idea", "source", "target"),
+            "suggestions": IdeaRelationSuggestion.objects.filter(
+                status=SuggestionStatus.PENDING
+            ).select_related(
+                "analyzed_idea", "source", "target", "relationship_council_review"
+            ).prefetch_related("relationship_council_review__votes__persona"),
             "graph_lab_enabled": settings.IDEAFLOW_GRAPH_LAB_ENABLED,
         },
     )

@@ -293,6 +293,18 @@ Dependency recommendations that would create a cycle are discarded before
 review. `manage.py prune_cyclic_suggestions` cleans up any older pending cyclic
 recommendations created before this guard existed.
 
+Pending suggestions can also be reviewed by the source idea's three required
+personas with `tools/review_relationships.py`. The fixed provider plan runs two
+personas through Claude and one through Codex, and the API refuses a review
+unless both providers and all three distinct personas are represented. Three
+accept votes promote the relationship; two or more reject votes reject it. Any
+other split remains pending and is visibly marked **Council reviewed · no
+decision** with its attributed votes on the Graph page. Install and enable
+`deploy/ideaflow-relationship-council.{service,timer}` to run this review every
+15 minutes. Both CLIs must be installed and authenticated for the `ideaflow`
+service account; model and binary overrides are listed in
+`deploy/env.production.example`.
+
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
 lighter model (Haiku) while research/review/execute/critique/weekly-summary use the heavy one.

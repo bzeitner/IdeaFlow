@@ -241,6 +241,12 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
                 "accepted_relation": None,
             },
         )
+        if existing and not hashes_unchanged:
+            # A council verdict applies only to the exact evidence snapshot it
+            # reviewed. Materially changed source/target content gets a fresh pass.
+            council_review = getattr(suggestion, "relationship_council_review", None)
+            if council_review:
+                council_review.delete()
         if confidence > auto_accept_threshold:
             # Cycles and other invalid relationships stay pending rather than
             # failing the entire semantic-processing batch.

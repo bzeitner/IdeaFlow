@@ -28,7 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RepeatResult, ResearchEntry, Resource, Status, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, AIModel, Category, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, WeeklySummary
 from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -820,6 +820,162 @@ def idea_persona_review(request, pk):
     )
 
 
+@require_api_token
+def relationship_council_queue(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    try:
+        limit = max(1, min(int(request.GET.get("limit", 10)), 50))
+    except ValueError:
+        return JsonResponse({"error": "limit must be an integer."}, status=400)
+    suggestions = (
+        IdeaRelationSuggestion.objects.filter(
+            status=SuggestionStatus.PENDING,
+            relationship_council_review__isnull=True,
+        )
+        .select_related("source", "target")
+        .prefetch_related("source__idea_personas__persona")
+    )
+    items = []
+    for suggestion in suggestions:
+        assignments = [
+            assignment
+            for assignment in suggestion.source.idea_personas.all()
+            if assignment.active
+            and assignment.required
+            and assignment.persona.is_active
+        ]
+        if len(assignments) != 3:
+            continue
+        items.append(
+            {
+                "suggestion_id": suggestion.pk,
+                "source": {
+                    "id": suggestion.source_id,
+                    "title": suggestion.source.title,
+                    "summary": suggestion.source.summary,
+                },
+                "target": {
+                    "id": suggestion.target_id,
+                    "title": suggestion.target.title,
+                    "summary": suggestion.target.summary,
+                },
+                "relationship": {
+                    "type": suggestion.relation_type,
+                    "description": suggestion.description,
+                    "evidence": suggestion.evidence,
+                    "confidence": suggestion.confidence,
+                },
+                "personas": [
+                    {
+                        "id": assignment.persona_id,
+                        "name": assignment.persona.name,
+                        "description": assignment.persona.description,
+                        "goals": assignment.persona.goals,
+                        "constraints": assignment.persona.constraints,
+                    }
+                    for assignment in assignments
+                ],
+            }
+        )
+        if len(items) >= limit:
+            break
+    return JsonResponse({"suggestions": items})
+
+
+@require_api_token
+@transaction.atomic
+def relationship_council_submit(request, suggestion_pk):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    suggestion = get_object_or_404(
+        IdeaRelationSuggestion.objects.select_related("source", "target"),
+        pk=suggestion_pk,
+    )
+    if suggestion.status != SuggestionStatus.PENDING:
+        return JsonResponse({"error": "Suggestion is no longer pending."}, status=409)
+    if hasattr(suggestion, "relationship_council_review"):
+        return JsonResponse({"error": "Suggestion was already reviewed by the council."}, status=409)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    votes = payload.get("votes") if isinstance(payload, dict) else None
+    if not isinstance(votes, list) or len(votes) != 3:
+        return JsonResponse({"error": "Exactly three council votes are required."}, status=400)
+    assignments = {
+        assignment.persona_id: assignment
+        for assignment in suggestion.source.idea_personas.select_related("persona").filter(
+            active=True, required=True, persona__is_active=True
+        )
+    }
+    if len(assignments) != 3:
+        return JsonResponse({"error": "The source idea must have exactly three active required personas."}, status=409)
+    parsed = {}
+    providers = set()
+    for raw in votes:
+        if not isinstance(raw, dict) or raw.get("persona_id") not in assignments:
+            return JsonResponse({"error": "Each vote must name an assigned required persona."}, status=400)
+        persona_id = raw["persona_id"]
+        decision = str(raw.get("decision") or "").lower()
+        provider = str(raw.get("provider") or "").lower()
+        rationale = str(raw.get("rationale") or "").strip()
+        if persona_id in parsed or decision not in RelationshipCouncilVote.Decision.values:
+            return JsonResponse({"error": "Votes must be unique and use accept, reject, or abstain."}, status=400)
+        if provider not in {"claude", "codex"} or not rationale:
+            return JsonResponse({"error": "Each vote requires a Claude/Codex provider and rationale."}, status=400)
+        providers.add(provider)
+        parsed[persona_id] = {
+            "decision": decision,
+            "provider": provider,
+            "model": str(raw.get("model") or "")[:100],
+            "rationale": rationale[:4000],
+        }
+    if set(parsed) != set(assignments) or providers != {"claude", "codex"}:
+        return JsonResponse({"error": "All three personas must vote, using at least one Claude and one Codex run."}, status=400)
+    accept_count = sum(vote["decision"] == "accept" for vote in parsed.values())
+    reject_count = sum(vote["decision"] == "reject" for vote in parsed.values())
+    if accept_count == 3:
+        from .graph.semantic import accept_suggestion
+
+        outcome = (
+            RelationshipCouncilReview.Outcome.ACCEPTED
+            if accept_suggestion(suggestion)
+            else RelationshipCouncilReview.Outcome.NO_DECISION
+        )
+    elif reject_count >= 2:
+        outcome = RelationshipCouncilReview.Outcome.REJECTED
+        suggestion.status = SuggestionStatus.REJECTED
+        suggestion.reviewed_at = timezone.now()
+        suggestion.save(update_fields=["status", "reviewed_at", "updated_at"])
+    else:
+        outcome = RelationshipCouncilReview.Outcome.NO_DECISION
+    review = RelationshipCouncilReview.objects.create(
+        suggestion=suggestion,
+        outcome=outcome,
+    )
+    RelationshipCouncilVote.objects.bulk_create(
+        [
+            RelationshipCouncilVote(
+                review=review,
+                persona_id=persona_id,
+                **vote,
+            )
+            for persona_id, vote in parsed.items()
+        ]
+    )
+    return JsonResponse(
+        {
+            "review_id": review.pk,
+            "suggestion_id": suggestion.pk,
+            "outcome": outcome,
+            "accept_votes": accept_count,
+            "reject_votes": reject_count,
+        },
+        status=201,
+    )
+
+
 urlpatterns = [
     path("prompts/<slug:key>/", approved_prompt_view, name="api_approved_prompt"),
     path("graph/", graph_data, name="api_graph"),
@@ -844,6 +1000,8 @@ urlpatterns = [
     ),
     path("ideas/<int:pk>/children/", idea_children, name="api_idea_children"),
     path("ideas/<int:pk>/persona-reviews/", idea_persona_review, name="api_idea_persona_review"),
+    path("relationship-council-reviews/", relationship_council_queue, name="api_relationship_council_queue"),
+    path("relationship-council-reviews/<int:suggestion_pk>/", relationship_council_submit, name="api_relationship_council_submit"),
     path(
         "ideas/<int:pk>/suggest-children/",
         idea_suggest_children,

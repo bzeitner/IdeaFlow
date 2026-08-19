@@ -661,6 +661,49 @@ class IdeaRelationSuggestion(models.Model):
     def __str__(self):
         return f"{self.source} {self.get_relation_type_display()} {self.target} ({self.get_status_display()})"
 
+    @property
+    def council_review(self):
+        return getattr(self, "relationship_council_review", None)
+
+
+class RelationshipCouncilReview(models.Model):
+    class Outcome(models.TextChoices):
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+        NO_DECISION = "no_decision", "Reviewed — no decision"
+
+    suggestion = models.OneToOneField(
+        IdeaRelationSuggestion,
+        related_name="relationship_council_review",
+        on_delete=models.CASCADE,
+    )
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    reviewed_at = models.DateTimeField(auto_now_add=True)
+
+
+class RelationshipCouncilVote(models.Model):
+    class Decision(models.TextChoices):
+        ACCEPT = "accept", "Accept"
+        REJECT = "reject", "Reject"
+        ABSTAIN = "abstain", "Abstain"
+
+    review = models.ForeignKey(
+        RelationshipCouncilReview, related_name="votes", on_delete=models.CASCADE
+    )
+    persona = models.ForeignKey(Persona, on_delete=models.PROTECT)
+    provider = models.CharField(max_length=16)
+    model = models.CharField(max_length=100, blank=True)
+    decision = models.CharField(max_length=8, choices=Decision.choices)
+    rationale = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "persona"],
+                name="unique_relationship_council_vote",
+            )
+        ]
+
 
 class Resource(models.Model):
     idea = models.ForeignKey(Idea, related_name="resources", on_delete=models.CASCADE)

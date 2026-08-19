@@ -18,6 +18,8 @@ Commands:
   ideaflow remove-resource <idea-id> <resource-id>
   ideaflow reconcile-pr <idea-id> --url URL --state CLOSED|MERGED
   ideaflow submit-persona-review <idea-id> --review-file FILE
+  ideaflow relationship-council-queue [--limit N]
+  ideaflow submit-relationship-council-review <suggestion-id> --review-file FILE
   ideaflow log-effort <id> --topic T --model M [--context-file F | --context S]
                       [--focus F] [--effort N] [--quality N] [--tokens N]
                       [--repo-url U --repo-label L] [--stage S] [--status S]
@@ -185,6 +187,20 @@ def cmd_submit_persona_review(a):
     return _request("POST", f"/ideas/{a.id}/persona-reviews/", body=body)
 
 
+def cmd_relationship_council_queue(a):
+    return _request("GET", "/relationship-council-reviews/", params={"limit": a.limit})
+
+
+def cmd_submit_relationship_council_review(a):
+    with open(a.review_file, encoding="utf-8") as fh:
+        body = json.load(fh)
+    return _request(
+        "POST",
+        f"/relationship-council-reviews/{a.suggestion_id}/",
+        body=body,
+    )
+
+
 def cmd_feed_items(a):
     params = {
         "feed": a.feed,
@@ -341,6 +357,15 @@ def build_parser():
     s.add_argument("id", type=int)
     s.add_argument("--review-file", required=True, help="JSON object containing proposal and votes.")
     s.set_defaults(func=cmd_submit_persona_review)
+
+    s = sub.add_parser("relationship-council-queue", help="List unreviewed pending relationship suggestions.")
+    s.add_argument("--limit", type=int, default=10)
+    s.set_defaults(func=cmd_relationship_council_queue)
+
+    s = sub.add_parser("submit-relationship-council-review", help="Submit three attributed relationship votes.")
+    s.add_argument("suggestion_id", type=int)
+    s.add_argument("--review-file", required=True)
+    s.set_defaults(func=cmd_submit_relationship_council_review)
 
     s = sub.add_parser("add-child", help="Propose a child idea (top-level ideas only, max 5).")
     s.add_argument("id", type=int)

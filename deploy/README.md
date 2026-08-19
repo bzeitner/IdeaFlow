@@ -214,6 +214,22 @@ Backfill existing ideas once after deployment:
 .venv/bin/python manage.py process_semantic_graph --all --limit 100000
 ```
 
+To have the three required source-idea personas review pending suggestions,
+install and authenticate both the Claude and Codex CLIs for the `ideaflow`
+service user, configure the optional relationship model/binary overrides, and
+enable the mixed-provider council timer:
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-relationship-council.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-relationship-council.timer
+systemctl list-timers ideaflow-relationship-council.timer --no-pager
+```
+
+Preview provider assignments without invoking either agent with
+`.venv/bin/python tools/review_relationships.py --dry-run`.
+
 If it fails, `journalctl -u ideaflow -n 50 --no-pager` shows why (almost always
 a `.env` value or DB password).
 

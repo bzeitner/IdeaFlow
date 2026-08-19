@@ -1,0 +1,14 @@
+[Unit]
+Description=IdeaFlow mixed-provider council review of relationship suggestions
+After=network-online.target postgresql.service ideaflow.service
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+EnvironmentFile=/home/ideaflow/IdeaFlow/.env
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python tools/review_relationships.py --limit 10
+
+[Install]
+WantedBy=multi-user.target
