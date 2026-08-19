@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Case, Count, F, IntegerField, Q, When
+from django.db.models import Case, CharField, Count, F, IntegerField, OuterRef, Q, Subquery, When
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,7 +21,7 @@ from .forms import IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSe
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
 
@@ -494,9 +494,19 @@ def home(request):
 
 def _tab_view(request, status, template):
     owner_filter = request.GET.get("owner", "")
+    query = request.GET.get("q", "").strip()
     ideas = Idea.objects.filter(status=status).select_related("created_by", "category", "parent").prefetch_related("resources")
+    if query:
+        ideas = ideas.filter(
+            Q(title__icontains=query)
+            | Q(summary__icontains=query)
+            | Q(notes__icontains=query)
+            | Q(next_action__icontains=query)
+        )
     if owner_filter == "mine":
         ideas = ideas.filter(created_by=request.user)
+    elif owner_filter.isdigit():
+        ideas = ideas.filter(created_by_id=int(owner_filter))
     ideas = list(ideas)
     return render(
         request,
@@ -508,6 +518,10 @@ def _tab_view(request, status, template):
             "active": status,
             "can_manage": True,
             "owner_filter": owner_filter,
+            "q": query,
+            "owners": get_user_model().objects.filter(
+                ideas_created__isnull=False
+            ).distinct().order_by("email", "username"),
         },
     )
 
@@ -527,6 +541,14 @@ def tracking(request):
     stage = request.GET.get("stage", "")
     attention = request.GET.get("attention", "")
     owner_filter = request.GET.get("owner", "")
+    ideas = ideas.annotate(
+        latest_persona_review_status=Subquery(
+            PersonaReview.objects.filter(idea_id=OuterRef("pk"))
+            .order_by("-created_at")
+            .values("status")[:1],
+            output_field=CharField(),
+        )
+    )
     if query:
         ideas = ideas.filter(
             Q(title__icontains=query)
@@ -540,12 +562,19 @@ def tracking(request):
         ideas = ideas.filter(stage__slug=stage)
     if owner_filter == "mine":
         ideas = ideas.filter(created_by=request.user)
+    elif owner_filter.isdigit():
+        ideas = ideas.filter(created_by_id=int(owner_filter))
     if attention == "paused":
         ideas = ideas.filter(
             agent_runs_since_feedback__gte=AGENT_RUNS_BEFORE_FEEDBACK
         )
     elif attention == "no-next-action":
         ideas = ideas.filter(next_action="")
+    elif attention == "council":
+        ideas = ideas.filter(
+            latest_persona_review_status=PersonaReview.Status.NO_CONSENSUS,
+            last_persona_review_at__gte=F("last_meaningful_progress_at"),
+        )
 
     ideas = ideas.annotate(
         tracking_child_count=Count(
@@ -614,6 +643,9 @@ def tracking(request):
             "can_manage": True,
             "categories": Category.objects.filter(is_active=True),
             "stages": Stage.objects.filter(is_active=True),
+            "owners": get_user_model().objects.filter(
+                ideas_created__isnull=False
+            ).distinct().order_by("email", "username"),
             "filters": {
                 "q": query,
                 "category": category,

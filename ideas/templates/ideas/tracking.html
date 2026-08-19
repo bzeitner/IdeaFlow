@@ -26,10 +26,12 @@
       <option value="">All ideas</option>
       <option value="paused"{% if filters.attention == 'paused' %} selected{% endif %}>Paused</option>
       <option value="no-next-action"{% if filters.attention == 'no-next-action' %} selected{% endif %}>Missing next action</option>
+      <option value="council"{% if filters.attention == 'council' %} selected{% endif %}>Council intervention</option>
     </select>
     <select name="owner" aria-label="Filter by owner">
-      <option value="">Everyone's ideas</option>
+      <option value="">All owners</option>
       <option value="mine"{% if filters.owner == 'mine' %} selected{% endif %}>My ideas</option>
+      {% for owner in owners %}{% with owner_id=owner.pk|stringformat:"s" %}<option value="{{ owner.pk }}"{% if filters.owner == owner_id %} selected{% endif %}>{{ owner.email|default:owner.username }}</option>{% endwith %}{% endfor %}
     </select>
     <select name="sort" aria-label="Sort ideas">
       <option value="questions"{% if filters.sort == 'questions' %} selected{% endif %}>Human input needed</option>
@@ -46,7 +48,7 @@
   {% if ideas %}
     <div class="tracking-list">
       {% for idea in ideas %}
-        <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused or idea.open_question_count %} needs-attention{% endif %}" data-idea-id="{{ idea.pk }}"{% if idea.parent_id %} data-parent-id="{{ idea.parent_id }}"{% endif %}>
+        <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused or idea.open_question_count %} needs-attention{% endif %}{% if idea.needs_persona_intervention %} council-intervention{% endif %}" data-idea-id="{{ idea.pk }}"{% if idea.parent_id %} data-parent-id="{{ idea.parent_id }}"{% endif %}>
           <div class="tracking-item-main">
             <div class="card-head">
               <h3>{% if idea.parent_id %}<span class="child-marker" aria-label="Child idea">↳</span> {% endif %}<span class="idea-id dim">#{{ idea.id }}</span> <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a>{% if filters.sort == 'family' and idea.tracking_child_count %} <button class="family-toggle" type="button" aria-expanded="true" data-family-toggle="{{ idea.pk }}"><span class="family-toggle-icon" aria-hidden="true">▾</span><span>{{ idea.tracking_child_count }} {% if idea.tracking_child_count == 1 %}child{% else %}children{% endif %}</span></button>{% endif %}</h3>
@@ -57,6 +59,7 @@
               {% include "ideas/_pill.html" with obj=idea.stage %}
               {% if idea.is_paused %}<span class="pill attention-pill">Paused</span>{% endif %}
               {% if idea.open_question_count %}<a class="pill question-pill" href="{{ idea.get_absolute_url }}#open-questions">❓ Human input needed ({{ idea.open_question_count }})</a>{% endif %}
+              {% if idea.needs_persona_intervention %}<a class="pill council-intervention-pill" href="{{ idea.get_absolute_url }}#persona-council">⚠ Council disagreed — intervention needed</a>{% endif %}
               <span class="dim">Updated {{ idea.updated_at|date:"M j, Y" }}</span>
               {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
               {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener">Open PR ↗</a>{% endif %}

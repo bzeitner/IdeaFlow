@@ -311,6 +311,18 @@ class Idea(models.Model):
         )
         return baseline <= timezone.now() - timedelta(days=self.persona_stall_days)
 
+    @property
+    def needs_persona_intervention(self):
+        status = getattr(self, "latest_persona_review_status", None)
+        if status is None:
+            latest = self.persona_reviews.order_by("-created_at").first()
+            status = latest.status if latest else None
+        return bool(
+            status == PersonaReview.Status.NO_CONSENSUS
+            and self.last_persona_review_at
+            and self.last_persona_review_at >= self.last_meaningful_progress_at
+        )
+
     def replace_active_next_action(self, value):
         """Replace the queue head while retaining actions queued behind it."""
         value = (value or "").strip()

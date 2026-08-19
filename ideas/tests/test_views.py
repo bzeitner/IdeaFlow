@@ -6,7 +6,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import Idea, Profile, Status
+from ideas.models import Idea, PersonaReview, Profile, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -831,6 +831,40 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "Matching roadmap")
         self.assertNotContains(response, "Other idea")
 
+    def test_council_disagreement_is_prominent_and_filterable(self):
+        needs_help = make_idea(
+            title="Council needs intervention",
+            status=Status.TRACKING,
+        )
+        needs_help.last_persona_review_at = timezone.now()
+        needs_help.save(update_fields=["last_persona_review_at"])
+        PersonaReview.objects.create(
+            idea=needs_help,
+            status=PersonaReview.Status.NO_CONSENSUS,
+            proposal={"summary": "Personas disagreed"},
+        )
+        ordinary = make_idea(title="Ordinary tracking idea", status=Status.TRACKING)
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertContains(response, "Council disagreed — intervention needed")
+        self.assertContains(response, 'class="tracking-item council-intervention"')
+        self.assertContains(response, f'href="{needs_help.get_absolute_url()}#persona-council"')
+
+        filtered = self.client.get(
+            reverse("ideas:tracking"), {"attention": "council"}
+        )
+        self.assertContains(filtered, needs_help.title)
+        self.assertNotContains(filtered, ordinary.title)
+
+        PersonaReview.objects.create(
+            idea=needs_help,
+            status=PersonaReview.Status.CONSENSUS,
+            proposal={"summary": "Resolved"},
+        )
+        resolved = self.client.get(reverse("ideas:tracking"))
+        self.assertNotContains(resolved, "Council disagreed — intervention needed")
+
     def test_filters_are_marked_for_immediate_application(self):
         response = self.client.get(reverse("ideas:tracking"))
 
@@ -1238,6 +1272,26 @@ class IdeaOwnershipTests(TestCase):
         self.assertContains(response, "Mine")
         self.assertNotContains(response, "Theirs")
 
+    def test_current_list_can_search_across_owners_and_select_an_owner(self):
+        user = make_user(email="viewer@example.com", roles=["role_current"])
+        first_owner = make_user(email="first@example.com")
+        second_owner = make_user(email="second@example.com")
+        make_idea(title="Shared roadmap", created_by=first_owner)
+        make_idea(title="Other owner's plan", created_by=second_owner)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        searched = self.client.get(reverse("ideas:current"), {"q": "roadmap"})
+        self.assertContains(searched, "Shared roadmap")
+        self.assertNotContains(searched, "Other owner&#x27;s plan")
+        self.assertContains(searched, "first@example.com")
+        self.assertContains(searched, "second@example.com")
+
+        selected = self.client.get(
+            reverse("ideas:current"), {"owner": str(second_owner.pk)}
+        )
+        self.assertContains(selected, "Other owner&#x27;s plan")
+        self.assertNotContains(selected, "Shared roadmap")
+
     def test_tracking_list_can_filter_to_signed_in_users_ideas(self):
         user = make_user(email="mine@example.com", roles=["role_tracking"])
         other = make_user(email="other@example.com")
@@ -1249,6 +1303,22 @@ class IdeaOwnershipTests(TestCase):
 
         self.assertContains(response, "Mine tracked")
         self.assertNotContains(response, "Their tracked")
+
+    def test_tracking_list_can_select_any_owner(self):
+        user = make_user(email="viewer@example.com", roles=["role_tracking"])
+        owner = make_user(email="project-owner@example.com")
+        other = make_user(email="another-owner@example.com")
+        make_idea(title="Selected owner's idea", status=Status.TRACKING, created_by=owner)
+        make_idea(title="Other tracked idea", status=Status.TRACKING, created_by=other)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(
+            reverse("ideas:tracking"), {"owner": str(owner.pk)}
+        )
+
+        self.assertContains(response, "Selected owner&#x27;s idea")
+        self.assertNotContains(response, "Other tracked idea")
+        self.assertContains(response, "project-owner@example.com")
 
 
 class TrackingPrIconTests(TestCase):

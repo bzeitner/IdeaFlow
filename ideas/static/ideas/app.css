@@ -116,6 +116,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .tracking-item { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(280px, .8fr) auto;
   gap: 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .tracking-item.needs-attention { border-left: 4px solid var(--star); padding-left: 13px; }
+.tracking-item.council-intervention { border: 2px solid #b42318; border-left-width: 6px; padding-left: 11px; background: #fff6f4; }
 .tracking-item.child-item { margin-left: 24px; }
 .child-marker { color: var(--dim); }
 .family-toggle { display: inline-flex; align-items: center; gap: 4px; margin-left: 7px; padding: 2px 7px;
@@ -133,6 +134,9 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .question-pill { color: #774700; border-color: #dfb354; background: #fff3cf;
   text-decoration: none; font-weight: 600; }
 .question-pill:hover { border-color: #bd8730; background: #ffe9ad; }
+.council-intervention-pill { color: #8f160d; border-color: #e3978f; background: #ffe1dd;
+  text-decoration: none; font-weight: 700; }
+.council-intervention-pill:hover { border-color: #b42318; background: #ffc9c2; }
 .quick-fields { display: flex; flex-direction: column; gap: 7px; }
 .quick-form { display: flex; align-items: end; gap: 6px; margin: 0; }
 .quick-form label { flex: 1; color: var(--dim); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }

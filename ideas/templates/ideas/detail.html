@@ -22,7 +22,7 @@
       <p class="parent-line dim">Repo: <code>{{ idea.repo }}</code></p>
     {% endif %}
     {% if idea.persona_review_enabled or can_manage %}
-      <div class="exec-summary">
+      <div class="exec-summary" id="persona-council">
         <h4>Persona council</h4>
         {% if can_manage %}
           <form method="post" action="{% url 'ideas:update_persona_council' idea.pk %}" class="next-action-form">
