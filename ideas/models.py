@@ -822,6 +822,15 @@ class Artifact(models.Model):
         ".yaml", ".yml", ".html", ".htm", ".xml",
     }
 
+    # Recognized extensions worth keeping verbatim from an upload's filename.
+    # Anything else (notably a random mktemp suffix like ".k3JZaq") is not a
+    # real extension and gets replaced rather than preserved.
+    KNOWN_UPLOAD_EXTENSIONS = TEXT_VIEW_EXTENSIONS | {
+        ".pdf", ".zip", ".tsv", ".ipynb",
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+        ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    }
+
     idea = models.ForeignKey(
         Idea, related_name="artifacts", on_delete=models.CASCADE
     )
@@ -885,6 +894,24 @@ class Artifact(models.Model):
         """A human-friendly download name that keeps the original extension."""
         base = slugify(self.title) or f"artifact-{self.pk}"
         return f"{base}{self.file_extension}"
+
+    @staticmethod
+    def build_storage_filename(title, original_name):
+        """A subject-related, extensioned name to store an upload under.
+
+        Agent tooling uploads reports from scratch files named by mktemp (e.g.
+        idea-42-research.k3JZaq) — extensionless in intent, but mktemp's random
+        suffix looks like an extension to a naive split. Relying on it as-is
+        leaves artifacts undownloadable-by-name and unrecognizable as text for
+        inline viewing. Keep the extension only when it's one we recognize;
+        otherwise default to .md, since agent-produced report/list/summary
+        deliverables are always markdown.
+        """
+        ext = os.path.splitext(original_name or "")[1].lower()
+        if ext not in Artifact.KNOWN_UPLOAD_EXTENSIONS:
+            ext = ".md"
+        slug = slugify(title)[:80] or "artifact"
+        return f"{slug}{ext}"
 
 
 class RepeatResultStatus(models.TextChoices):
