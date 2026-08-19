@@ -233,7 +233,8 @@ def idea_artifact(request, pk, artifact_pk=None):
     artifact.research_entry = entry
     artifact.generated_at = generated_at
     if uploaded:
-        artifact.file.save(uploaded.name, uploaded, save=False)
+        filename = Artifact.build_storage_filename(artifact.title, uploaded.name)
+        artifact.file.save(filename, uploaded, save=False)
     artifact.save()
     if old_file_name and old_file_name != artifact.file.name:
         artifact.file.storage.delete(old_file_name)
