@@ -1164,6 +1164,11 @@ class Profile(models.Model):
     role_weekly_summary = models.BooleanField(
         default=False, help_text="View weekly portfolio executive summaries."
     )
+    last_seen_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Last authenticated request, updated by TrackLastSeenMiddleware. "
+                   "Sessions last two weeks, so this is a better read on activity than last login.",
+    )
 
     STATUS_ROLE = {
         Status.CURRENT: "role_current",
