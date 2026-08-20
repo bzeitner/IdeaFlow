@@ -1191,6 +1191,27 @@ def continue_work(request, pk):
     return redirect("ideas:detail", pk=pk)
 
 
+@login_required
+def artifacts(request):
+    """Every artifact this user can see, across all ideas."""
+    profile = request.user.profile
+    accessible_statuses = [status for status in Status.values if profile.can_manage_status(status)]
+    items = (
+        Artifact.objects.select_related("idea")
+        .filter(Q(idea__is_public=True) | Q(idea__status__in=accessible_statuses))
+        .order_by("-generated_at", "-updated_at")
+    )
+    page = Paginator(items, 25).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "ideas/artifacts.html",
+        {
+            "page": page,
+            "tabs": _tabs(profile),
+        },
+    )
+
+
 @role_required("role_current", "role_tracking", "role_archive")
 def feeds(request):
     """Read the shared feed items and rate them (interest + info value)."""

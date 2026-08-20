@@ -17,6 +17,7 @@ urlpatterns = [
     path("graph/relations/new/", views.graph_relation_create, name="graph_relation_create"),
     path("graph/relations/<int:pk>/delete/", views.graph_relation_delete, name="graph_relation_delete"),
     path("graph/suggestions/<int:pk>/<str:decision>/", views.graph_suggestion_review, name="graph_suggestion_review"),
+    path("artifacts/", views.artifacts, name="artifacts"),
     path("feeds/", views.feeds, name="feeds"),
     path("feeds/<int:pk>/rate/", views.rate_feed_item, name="rate_feed_item"),
     path("new/", views.idea_form, name="create"),

@@ -1,0 +1,43 @@
+{% extends "ideas/base.html" %}
+{% block title %}Artifacts · IdeaFlow{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h2>Artifacts</h2>
+  </div>
+  <p class="dim">Every report, list, and summary artifact across all ideas you can see.</p>
+
+  {% if page.object_list %}
+    <ul class="research-list artifact-list">
+      {% for artifact in page.object_list %}
+        <li>
+          <div class="card-head">
+            <strong><a href="{{ artifact.idea.get_absolute_url }}">{{ artifact.idea.title }}</a> — {{ artifact.title }}</strong>
+            <span class="dim">{{ artifact.generated_at|date:"M j, Y" }}</span>
+          </div>
+          {% if artifact.idea.summary %}<p class="summary dim">{{ artifact.idea.summary|truncatewords:30 }}</p>{% endif %}
+          {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
+          <div class="meta">
+            <span class="pill">{{ artifact.get_kind_display }}</span>
+            {% if artifact.is_viewable %}<a href="{{ artifact.view_link }}">View</a>{% endif %}
+            {% if artifact.file %}<a href="{% url 'ideas:download_artifact' artifact.idea_id artifact.pk %}" download="{{ artifact.download_filename }}">Download</a>{% endif %}
+            {% if not artifact.file and artifact.url %}<a href="{{ artifact.url }}" target="_blank" rel="noopener">Open link</a>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="dim">No artifacts yet.</p>
+  {% endif %}
+
+  {% if page.has_other_pages %}
+    <nav class="pager">
+      {% if page.has_previous %}
+        <a class="btn small" href="?page={{ page.previous_page_number }}">← Prev</a>
+      {% endif %}
+      <span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="btn small" href="?page={{ page.next_page_number }}">Next →</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}
