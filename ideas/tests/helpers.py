@@ -2,7 +2,7 @@
 
 from django.contrib.auth.models import User
 
-from ideas.models import AIModel, Category, Feed, FeedItem, Idea, Stage, Status
+from ideas.models import AIModel, Category, Episode, Feed, FeedItem, Idea, PodcastShow, Stage, Status
 
 MODEL_BACKEND = "django.contrib.auth.backends.ModelBackend"
 
@@ -39,6 +39,21 @@ def make_feed(**kwargs):
 def make_feed_item(feed=None, **kwargs):
     kwargs.setdefault("guid", f"guid-{next(_counter)}")
     return FeedItem.objects.create(feed=feed or make_feed(), **kwargs)
+
+
+def make_podcast_show(**kwargs):
+    kwargs.setdefault("idea", make_idea())
+    kwargs.setdefault("slug", f"show-{next(_counter)}")
+    kwargs.setdefault("title", "Test Show")
+    return PodcastShow.objects.create(**kwargs)
+
+
+def make_episode(show=None, **kwargs):
+    kwargs.setdefault("show", show or make_podcast_show())
+    kwargs.setdefault("slug", f"ep-{next(_counter)}")
+    kwargs.setdefault("episode_number", next(_counter))
+    kwargs.setdefault("title", "Test Episode")
+    return Episode.objects.create(**kwargs)
 
 
 def make_user(email="user@example.com", roles=(), **extra):

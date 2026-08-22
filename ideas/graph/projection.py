@@ -173,6 +173,11 @@ def graph_context(idea, *, depth=1, max_nodes=30, token_budget=None, task="resea
         "review": ["parents", "dependencies", "children", "siblings", "related", "dependents"],
         "persona": ["parents", "children", "siblings", "dependencies", "dependents", "related"],
         "research": ["parents", "children", "dependencies", "related", "dependents"],
+        # A recurring task (e.g. a podcast idea drawing on other ideas' research
+        # via a "supports" relation) cares about "related" edges more than
+        # structural parent/child/dependency ones — those are exactly where a
+        # supports relation lands, so put them first.
+        "repeat": ["related", "dependencies", "parents", "children", "dependents", "siblings"],
     }
     task = task if task in priorities else "research"
     result = {

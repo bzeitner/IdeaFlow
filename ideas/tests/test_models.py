@@ -4,9 +4,24 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from ideas.models import AGENT_RUNS_BEFORE_FEEDBACK, STANDING_ADMIN_EMAIL, IdeaPersona, Persona, Profile, Status
+from django.db import IntegrityError, transaction
 
-from .helpers import make_ai_model, make_category, make_idea
+from ideas.models import (
+    AGENT_RUNS_BEFORE_FEEDBACK,
+    STANDING_ADMIN_EMAIL,
+    Episode,
+    EpisodeRun,
+    EpisodeRunStatus,
+    EpisodeStatus,
+    IdeaPersona,
+    Persona,
+    PodcastShow,
+    Profile,
+    Status,
+    VoiceProfile,
+)
+
+from .helpers import make_ai_model, make_category, make_episode, make_idea, make_podcast_show
 
 
 class LookupBaseSlugTests(TestCase):
@@ -192,3 +207,84 @@ class ProvisionProfileSignalTests(TestCase):
 
         profile.refresh_from_db()
         self.assertFalse(profile.role_admin)
+
+
+class PodcastShowTests(TestCase):
+    def test_is_publicly_listed_defaults_to_false(self):
+        # Distinct from Idea.is_public (signed-in-only visibility) — a show
+        # must be explicitly opted in before its feed/episode pages are
+        # reachable by anyone at all.
+        show = make_podcast_show()
+        self.assertFalse(show.is_publicly_listed)
+
+    def test_one_show_per_idea(self):
+        idea = make_idea()
+        make_podcast_show(idea=idea)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                make_podcast_show(idea=idea, slug="second-show")
+
+
+class EpisodeTests(TestCase):
+    def test_new_episode_defaults_to_draft_and_unpublished(self):
+        episode = make_episode()
+        self.assertEqual(episode.status, EpisodeStatus.DRAFT)
+        self.assertFalse(episode.is_published)
+
+    def test_is_published_requires_both_status_and_timestamp(self):
+        episode = make_episode(status=EpisodeStatus.PUBLISHED)
+        self.assertFalse(episode.is_published)  # published_at still unset
+
+        episode.published_at = timezone.now()
+        episode.save()
+        self.assertTrue(episode.is_published)
+
+    def test_unpublish_clears_published_at_but_keeps_the_row(self):
+        episode = make_episode(status=EpisodeStatus.PUBLISHED, published_at=timezone.now())
+        episode.unpublish()
+        episode.refresh_from_db()
+        self.assertEqual(episode.status, EpisodeStatus.UNPUBLISHED)
+        self.assertIsNone(episode.published_at)
+        self.assertTrue(Episode.objects.filter(pk=episode.pk).exists())
+
+    def test_episode_number_is_unique_per_show(self):
+        show = make_podcast_show()
+        make_episode(show=show, episode_number=1, slug="ep-1")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                make_episode(show=show, episode_number=1, slug="ep-1-again")
+
+    def test_same_episode_number_is_fine_on_a_different_show(self):
+        make_episode(episode_number=1, slug="ep-1")
+        # A second show's own episode_number=1 must not collide.
+        make_episode(show=make_podcast_show(slug="other-show"), episode_number=1, slug="ep-1")
+
+
+class EpisodeRunTests(TestCase):
+    def test_no_lease_is_not_expired(self):
+        run = EpisodeRun.objects.create(episode=make_episode(), status=EpisodeRunStatus.QUEUED)
+        self.assertFalse(run.lease_is_expired)
+
+    def test_future_lease_is_not_expired(self):
+        run = EpisodeRun.objects.create(
+            episode=make_episode(),
+            status=EpisodeRunStatus.RENDERING,
+            lease_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        self.assertFalse(run.lease_is_expired)
+
+    def test_past_lease_is_expired(self):
+        run = EpisodeRun.objects.create(
+            episode=make_episode(),
+            status=EpisodeRunStatus.RENDERING,
+            lease_expires_at=timezone.now() - timedelta(minutes=5),
+        )
+        self.assertTrue(run.lease_is_expired)
+
+
+class VoiceProfileTests(TestCase):
+    def test_name_is_unique(self):
+        VoiceProfile.objects.create(name="host-primary", speaker_label="host")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                VoiceProfile.objects.create(name="host-primary", speaker_label="host")
