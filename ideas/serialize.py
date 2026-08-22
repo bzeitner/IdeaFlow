@@ -202,6 +202,22 @@ def idea_to_dict(idea, *, detail=True):
             }
             for artifact in idea.artifacts.all()
         ]
+        data["referenced_artifacts"] = [
+            {
+                "id": artifact.pk,
+                "title": artifact.title,
+                "kind": artifact.kind,
+                "description": artifact.description,
+                "url": artifact.link,
+                "source_idea": {
+                    "id": artifact.idea_id,
+                    "title": artifact.idea.title,
+                },
+                "generated_at": artifact.generated_at.isoformat(),
+                "updated_at": artifact.updated_at.isoformat(),
+            }
+            for artifact in idea.referenced_artifacts.all()
+        ]
         data["research_entries"] = [
             research_entry_to_dict(e) for e in idea.research_entries.all()
         ]

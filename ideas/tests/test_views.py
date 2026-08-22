@@ -866,6 +866,38 @@ class TrackingWorkflowTests(TestCase):
         resolved = self.client.get(reverse("ideas:tracking"))
         self.assertNotContains(resolved, "Council disagreed — intervention needed")
 
+    def test_scheduled_council_review_shows_days_until_action(self):
+        make_idea(
+            title="Scheduled council idea",
+            status=Status.TRACKING,
+            persona_review_enabled=True,
+            persona_stall_days=7,
+            last_meaningful_progress_at=timezone.now() - timedelta(days=2),
+        )
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertContains(response, "Council action in 5 days")
+
+    def test_acted_council_review_shows_following_direction_tag(self):
+        directed = make_idea(
+            title="Council-directed idea",
+            status=Status.TRACKING,
+            persona_review_enabled=True,
+        )
+        directed.last_persona_review_at = timezone.now()
+        directed.save(update_fields=["last_persona_review_at"])
+        PersonaReview.objects.create(
+            idea=directed,
+            status=PersonaReview.Status.CONSENSUS,
+            proposal={"next_action": "Test the agreed approach"},
+        )
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertContains(response, "Following council direction")
+        self.assertNotContains(response, "Council action in 14 days")
+
     def test_filters_are_marked_for_immediate_application(self):
         response = self.client.get(reverse("ideas:tracking"))
 
@@ -1052,7 +1084,22 @@ class ArtifactViewTests(TestCase):
     def setUp(self):
         self.idea = make_idea(status=Status.CURRENT)
         self.user = make_user(roles=["role_current"])
+        self.idea.created_by = self.user
+        self.idea.save(update_fields=["created_by"])
         self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_idea_displays_referenced_artifact_from_same_owner(self):
+        source = make_idea(title="Source idea", created_by=self.user)
+        artifact = source.artifacts.create(
+            title="Reusable report", url="https://example.com/reusable"
+        )
+        self.idea.referenced_artifacts.add(artifact)
+
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+
+        self.assertContains(response, "Referenced artifacts")
+        self.assertContains(response, "Reusable report")
+        self.assertContains(response, "from Source idea")
 
     def test_can_upload_artifact_and_see_it_on_idea(self):
         response = self.client.post(

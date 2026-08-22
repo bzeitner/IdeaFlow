@@ -671,7 +671,7 @@ def archive(request):
 def detail(request, pk):
     idea = get_object_or_404(
         Idea.objects.select_related("parent", "created_by").prefetch_related(
-            "resources", "artifacts__research_entry", "research_entries", "research_entries__model", "children", "repeat_results",
+            "resources", "artifacts__research_entry", "referenced_artifacts__idea", "research_entries", "research_entries__model", "children", "repeat_results",
             "idea_personas__persona",
         ),
         pk=pk,
@@ -729,7 +729,7 @@ def idea_form(request, pk=None):
             return denied
 
     if request.method == "POST":
-        form = IdeaForm(request.POST, instance=idea)
+        form = IdeaForm(request.POST, instance=idea, owner=request.user if idea is None else None)
         formset = ResourceFormSet(request.POST, instance=idea)
         if form.is_valid() and formset.is_valid():
             if idea is None:
@@ -763,7 +763,7 @@ def idea_form(request, pk=None):
             parent_id = request.GET.get("parent")
             if parent_id and parent_id.isdigit():
                 initial["parent"] = parent_id
-        form = IdeaForm(instance=idea, initial=initial or None)
+        form = IdeaForm(instance=idea, initial=initial or None, owner=request.user if idea is None else None)
         formset = ResourceFormSet(instance=idea, initial=resource_initial)
     return render(
         request,

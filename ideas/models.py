@@ -1,8 +1,7 @@
+import math
 import os
 from datetime import timedelta
 from string import Formatter
-
-from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -232,6 +231,12 @@ class Idea(models.Model):
     personas = models.ManyToManyField(
         Persona, through="IdeaPersona", related_name="ideas", blank=True
     )
+    referenced_artifacts = models.ManyToManyField(
+        "Artifact",
+        related_name="referencing_ideas",
+        blank=True,
+        help_text="Artifacts from other ideas owned by the same person.",
+    )
     proposed_by_agent = models.BooleanField(
         default=False,
         help_text="Created by a research agent (child ideas). Counts toward the "
@@ -317,6 +322,32 @@ class Idea(models.Model):
             if value is not None
         )
         return baseline <= timezone.now() - timedelta(days=self.persona_stall_days)
+
+    @property
+    def persona_review_days_until(self):
+        """Whole calendar-style days until the next scheduled council action."""
+        if not self.persona_review_enabled or self.is_archived:
+            return None
+        baseline = max(
+            value
+            for value in (self.last_meaningful_progress_at, self.last_persona_review_at)
+            if value is not None
+        )
+        due_at = baseline + timedelta(days=self.persona_stall_days)
+        return max(0, math.ceil((due_at - timezone.now()).total_seconds() / 86400))
+
+    @property
+    def following_persona_council_direction(self):
+        """Whether the latest active council review acted by unanimous consent."""
+        status = getattr(self, "latest_persona_review_status", None)
+        if status is None:
+            latest = self.persona_reviews.order_by("-created_at").first()
+            status = latest.status if latest else None
+        return bool(
+            status == PersonaReview.Status.CONSENSUS
+            and self.last_persona_review_at
+            and self.last_persona_review_at >= self.last_meaningful_progress_at
+        )
 
     @property
     def needs_persona_intervention(self):

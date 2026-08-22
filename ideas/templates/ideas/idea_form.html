@@ -68,6 +68,7 @@
         </div></section>
         <section class="settings-group"><h3>Agent context</h3><div class="settings-grid">
         <div class="field field-wide"><label for="{{ form.repo.id_for_label }}">{{ form.repo.label }}</label>{{ form.repo }}{% if form.repo.help_text %}<small class="dim">{{ form.repo.help_text }}</small>{% endif %}{{ form.repo.errors }}</div>
+        <div class="field field-wide"><label>{{ form.referenced_artifacts.label }}</label>{{ form.referenced_artifacts }}{% if form.referenced_artifacts.help_text %}<small class="dim">{{ form.referenced_artifacts.help_text }}</small>{% endif %}{{ form.referenced_artifacts.errors }}</div>
         <div class="field field-wide"><label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>{{ form.notes }}{{ form.notes.errors }}</div>
         <div class="field field-wide"><label for="{{ form.exec_summary.id_for_label }}">{{ form.exec_summary.label }}</label>{{ form.exec_summary }}{% if form.exec_summary.help_text %}<small class="dim">{{ form.exec_summary.help_text }}</small>{% endif %}{{ form.exec_summary.errors }}</div>
         </div></section>

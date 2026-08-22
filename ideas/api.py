@@ -42,6 +42,7 @@ from .weekly_metrics import missing_weekly_periods, normalize_weekly_metrics
 _DETAIL_PREFETCH = (
     "resources",
     "artifacts__research_entry",
+    "referenced_artifacts__idea",
     "research_entries",
     "research_entries__model",
     "children",

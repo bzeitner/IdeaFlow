@@ -36,7 +36,7 @@ class IdeaForm(forms.ModelForm):
         required=False, label="Include children"
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, owner=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Offer only active options, but never drop the one already on this idea —
         # deactivating a category shouldn't silently rewrite existing ideas on save.
@@ -58,6 +58,16 @@ class IdeaForm(forms.ModelForm):
         if not self.is_bound and current_parent:
             self.fields["include_archived_parents"].initial = current_parent.status == Status.ARCHIVED
             self.fields["include_child_parents"].initial = bool(current_parent.parent_id)
+        owner_id = getattr(owner, "pk", owner) or getattr(self.instance, "created_by_id", None)
+        artifacts = Artifact.objects.none()
+        if owner_id:
+            artifacts = Artifact.objects.filter(idea__created_by_id=owner_id)
+            if self.instance.pk:
+                artifacts = artifacts.exclude(idea_id=self.instance.pk)
+        self.fields["referenced_artifacts"].queryset = artifacts.select_related("idea")
+        self.fields["referenced_artifacts"].label_from_instance = (
+            lambda artifact: f"{artifact.idea.title} — {artifact.title}"
+        )
 
     def clean(self):
         cleaned = super().clean()
@@ -123,6 +133,7 @@ class IdeaForm(forms.ModelForm):
             "repeat_interval_days",
             "persona_review_enabled",
             "persona_stall_days",
+            "referenced_artifacts",
         ]
         labels = {
             "title": "Idea Title",
@@ -140,6 +151,7 @@ class IdeaForm(forms.ModelForm):
             "repeat_interval_days": "Run every (days)",
             "persona_review_enabled": "Enable stalled persona reviews",
             "persona_stall_days": "Review after no progress (days)",
+            "referenced_artifacts": "Referenced artifacts",
         }
         widgets = {
             "summary": forms.Textarea(attrs={"rows": 4}),
@@ -148,6 +160,7 @@ class IdeaForm(forms.ModelForm):
             "exec_summary": forms.Textarea(attrs={"rows": 5}),
             "repeat_goal": forms.Textarea(attrs={"rows": 3}),
             "interest_level": forms.RadioSelect,
+            "referenced_artifacts": forms.CheckboxSelectMultiple,
         }
 
 

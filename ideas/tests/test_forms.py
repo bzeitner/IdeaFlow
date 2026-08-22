@@ -3,7 +3,7 @@ from django.test import TestCase
 from ideas.forms import IdeaForm, ResearchEntryForm, ResearchEntryFormSet
 from ideas.models import Idea, Status
 
-from .helpers import make_ai_model, make_category, make_idea
+from .helpers import make_ai_model, make_category, make_idea, make_user
 
 
 class IdeaFormActiveOptionsTests(TestCase):
@@ -75,6 +75,22 @@ class IdeaFormActiveOptionsTests(TestCase):
 
         self.assertTrue(form.fields["include_archived_parents"].initial)
         self.assertTrue(form.fields["include_child_parents"].initial)
+
+    def test_artifact_references_are_limited_to_the_same_owner(self):
+        owner = make_user("owner@example.com")
+        other_owner = make_user("other@example.com")
+        idea = make_idea(created_by=owner)
+        same_owner_source = make_idea(created_by=owner)
+        other_owner_source = make_idea(created_by=other_owner)
+        own_artifact = idea.artifacts.create(title="Already here", url="https://example.com/own")
+        available = same_owner_source.artifacts.create(title="Shared report", url="https://example.com/shared")
+        unavailable = other_owner_source.artifacts.create(title="Private report", url="https://example.com/private")
+
+        queryset = IdeaForm(instance=idea).fields["referenced_artifacts"].queryset
+
+        self.assertIn(available, queryset)
+        self.assertNotIn(own_artifact, queryset)
+        self.assertNotIn(unavailable, queryset)
 
 
 class ResearchEntryFormTests(TestCase):

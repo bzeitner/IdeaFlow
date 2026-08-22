@@ -25,6 +25,14 @@
         {% endfor %}
       </ul>
     {% endif %}
+    {% if idea.referenced_artifacts.all %}
+      <p class="dim">Referenced artifacts</p>
+      <ul class="artifact-links">
+        {% for artifact in idea.referenced_artifacts.all %}
+          <li><a href="{% if artifact.is_viewable %}{{ artifact.view_link }}{% else %}{{ artifact.link }}{% endif %}"{% if not artifact.is_viewable %} target="_blank" rel="noopener"{% endif %}>{{ artifact.title }}</a> <span class="dim">from {{ artifact.idea.title }}</span></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
 
     {% if idea.parent %}
       <p class="parent-line dim">Part of <a href="{{ idea.parent.get_absolute_url }}">{{ idea.parent.title }}</a></p>
