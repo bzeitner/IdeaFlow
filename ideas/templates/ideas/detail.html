@@ -50,9 +50,16 @@
             <label>Review after <input type="number" name="persona_stall_days" value="{{ idea.persona_stall_days }}" min="1" max="3650" required> days without meaningful progress</label>
             <button class="btn" type="submit">Save council settings</button>
           </form>
+          {% if idea.persona_review_enabled %}
+            <form method="post" action="{% url 'ideas:toggle_persona_review_pause' idea.pk %}">
+              {% csrf_token %}
+              <button class="btn small" type="submit">{% if idea.persona_review_paused %}Resume council reviews{% else %}Pause council reviews{% endif %}</button>
+            </form>
+          {% endif %}
         {% else %}
           <p>Reviews after {{ idea.persona_stall_days }} day{{ idea.persona_stall_days|pluralize }} without meaningful progress.</p>
         {% endif %}
+        {% if idea.persona_review_paused %}<p class="dim">⏸ Council reviews are manually paused.</p>{% endif %}
         <p class="dim">Required personas must unanimously approve; abstention does not authorize action.</p>
         <p>{% for assignment in idea.idea_personas.all %}{% if assignment.active %}<span class="pill">{{ assignment.persona.name }}{% if assignment.required %} · required{% endif %}</span> {% endif %}{% empty %}<span class="dim">No personas assigned.</span>{% endfor %}</p>
       </div>

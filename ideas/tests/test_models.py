@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 
-from ideas.models import STANDING_ADMIN_EMAIL, Profile, Status
+from ideas.models import AGENT_RUNS_BEFORE_FEEDBACK, STANDING_ADMIN_EMAIL, IdeaPersona, Persona, Profile, Status
 
 from .helpers import make_ai_model, make_category, make_idea
 
@@ -39,6 +42,32 @@ class IdeaStarsTests(TestCase):
     def test_stars_all_filled_at_max(self):
         idea = make_idea(interest_level=5)
         self.assertEqual(idea.stars, "★★★★★")
+
+
+class PersonaReviewIsDueTests(TestCase):
+    def make_stalled_idea(self, **kwargs):
+        idea = make_idea(
+            persona_review_enabled=True,
+            persona_stall_days=7,
+            last_meaningful_progress_at=timezone.now() - timedelta(days=30),
+            **kwargs,
+        )
+        persona = Persona.objects.create(
+            name=f"Persona {idea.pk}", description="d", goals="g"
+        )
+        IdeaPersona.objects.create(idea=idea, persona=persona, required=True, active=True)
+        return idea
+
+    def test_council_review_overrides_the_ordinary_human_feedback_pause(self):
+        idea = self.make_stalled_idea(agent_runs_since_feedback=AGENT_RUNS_BEFORE_FEEDBACK)
+        self.assertTrue(idea.is_paused)
+        self.assertTrue(idea.persona_review_is_due)
+
+    def test_manual_persona_review_pause_holds_review_even_when_not_stalled_on_feedback(self):
+        idea = self.make_stalled_idea(persona_review_paused=True)
+        self.assertFalse(idea.is_paused)
+        self.assertFalse(idea.persona_review_is_due)
+        self.assertIsNone(idea.persona_review_days_until)
 
 
 class ResearchEntryStarsTests(TestCase):

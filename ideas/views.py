@@ -978,6 +978,26 @@ def update_persona_council(request, pk):
 
 
 @login_required
+def toggle_persona_review_pause(request, pk):
+    """Manually hold council review without disabling its schedule. Unlike the
+    ordinary human-feedback pause (is_paused), council review otherwise runs
+    even on a paused idea, so this is its own dedicated switch."""
+    if request.method != "POST":
+        return redirect("ideas:detail", pk=pk)
+    idea = get_object_or_404(Idea, pk=pk, persona_review_enabled=True)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    idea.persona_review_paused = not idea.persona_review_paused
+    idea.save(update_fields=["persona_review_paused", "updated_at"])
+    messages.success(
+        request,
+        "Council review paused." if idea.persona_review_paused else "Council review resumed.",
+    )
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
 def create_suggested_child(request, pk):
     """Turn one agent suggestion into a child idea with a single click."""
     if request.method != "POST":

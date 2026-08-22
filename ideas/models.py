@@ -221,6 +221,10 @@ class Idea(models.Model):
     repeat_interval_days = models.PositiveSmallIntegerField(default=1)
     last_repeat_run_at = models.DateTimeField(null=True, blank=True)
     persona_review_enabled = models.BooleanField(default=False)
+    persona_review_paused = models.BooleanField(
+        default=False,
+        help_text="Manually pause council reviews without disabling the schedule.",
+    )
     persona_stall_days = models.PositiveSmallIntegerField(
         default=14,
         validators=[MinValueValidator(1)],
@@ -312,7 +316,11 @@ class Idea(models.Model):
 
     @property
     def persona_review_is_due(self):
-        if not self.persona_review_enabled or self.is_archived or self.is_paused:
+        # Council review deliberately overrides the ordinary human-feedback
+        # pause (is_paused) — a stalled idea still needs its council even
+        # while it's waiting on a person. persona_review_paused is the
+        # separate, explicit switch for holding council review itself.
+        if not self.persona_review_enabled or self.is_archived or self.persona_review_paused:
             return False
         if not self.idea_personas.filter(active=True, required=True).exists():
             return False
@@ -326,7 +334,7 @@ class Idea(models.Model):
     @property
     def persona_review_days_until(self):
         """Whole calendar-style days until the next scheduled council action."""
-        if not self.persona_review_enabled or self.is_archived:
+        if not self.persona_review_enabled or self.is_archived or self.persona_review_paused:
             return None
         baseline = max(
             value

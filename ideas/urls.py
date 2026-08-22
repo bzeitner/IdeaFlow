@@ -38,6 +38,11 @@ urlpatterns = [
     path("<int:pk>/repeat/pause/", views.toggle_repeat_pause, name="toggle_repeat_pause"),
     path("<int:pk>/persona-council/", views.update_persona_council, name="update_persona_council"),
     path(
+        "<int:pk>/persona-council/pause/",
+        views.toggle_persona_review_pause,
+        name="toggle_persona_review_pause",
+    ),
+    path(
         "<int:pk>/suggested-children/create/",
         views.create_suggested_child,
         name="create_suggested_child",

@@ -79,6 +79,17 @@ def main():
     else:
         selected_repeat = None
 
+    # Persona council review also overrides the ordinary human-feedback pause
+    # (a stalled idea still needs its council even while waiting on a person),
+    # so check it against every non-archived idea, not just the paused-filtered
+    # `ideas` list. persona_review_is_due already honors the idea's own
+    # dedicated persona_review_paused switch.
+    persona_due_ids = [
+        it["id"]
+        for it in listed_ideas
+        if it.get("status") != "archived" and (detail[it["id"]].get("persona_review") or {}).get("is_due")
+    ]
+
     def has_research(i):
         return bool(detail[i].get("research_entries"))
 
@@ -100,6 +111,9 @@ def main():
 
     if selected_repeat:
         add(*selected_repeat)
+
+    for i in persona_due_ids:
+        add(i, "persona")
 
     idle_ids = []
     if force:

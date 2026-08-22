@@ -149,6 +149,7 @@ def idea_to_dict(idea, *, detail=True):
         data["is_paused"] = idea.is_paused
         data["persona_review"] = {
             "enabled": idea.persona_review_enabled,
+            "paused": idea.persona_review_paused,
             "stall_days": idea.persona_stall_days,
             "last_meaningful_progress_at": idea.last_meaningful_progress_at.isoformat(),
             "last_review_at": (

@@ -703,6 +703,33 @@ class PersonaCouncilSettingsTests(TestCase):
         self.assertFalse(idea.persona_review_enabled)
         self.assertEqual(idea.persona_stall_days, 14)
 
+    def test_council_review_can_be_paused_and_resumed(self):
+        idea = make_idea(status=Status.CURRENT, persona_review_enabled=True)
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        url = reverse("ideas:toggle_persona_review_pause", args=[idea.pk])
+
+        self.client.post(url)
+        idea.refresh_from_db()
+        self.assertTrue(idea.persona_review_paused)
+
+        self.client.post(url)
+        idea.refresh_from_db()
+        self.assertFalse(idea.persona_review_paused)
+
+    def test_pause_requires_permission_for_the_idea_status(self):
+        idea = make_idea(status=Status.CURRENT, persona_review_enabled=True)
+        user = make_user(roles=["role_tracking"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:toggle_persona_review_pause", args=[idea.pk])
+        )
+
+        self.assertRedirects(response, reverse("ideas:home"), fetch_redirect_response=False)
+        idea.refresh_from_db()
+        self.assertFalse(idea.persona_review_paused)
+
 
 class ResearchQuestionViewTests(TestCase):
     def test_open_question_is_displayed_and_answer_is_saved_for_next_run(self):
