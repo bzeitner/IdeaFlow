@@ -1,5 +1,6 @@
 import math
 import os
+import uuid
 from datetime import timedelta
 from string import Formatter
 
@@ -1175,6 +1176,238 @@ class IdeaFeed(models.Model):
 
     def __str__(self):
         return f"{self.idea} · {self.feed}"
+
+
+class EpisodeStatus(models.TextChoices):
+    """The episode's own public-facing lifecycle — separate from the render
+    pipeline's finer-grained EpisodeRunStatus below. An episode can be DRAFT
+    or APPROVED for a long time across several failed/retried runs; only the
+    switch to PUBLISHED (and back to UNPUBLISHED) affects what the RSS feed
+    and public episode page show."""
+
+    DRAFT = "draft", "Draft"
+    APPROVED = "approved", "Approved"
+    PUBLISHED = "published", "Published"
+    UNPUBLISHED = "unpublished", "Unpublished"
+
+
+class EpisodeRunStatus(models.TextChoices):
+    """One audio-production attempt's progress, from research through
+    publication. See "Episode workflow" in the podcast production plan."""
+
+    QUEUED = "queued", "Queued"
+    RESEARCHING = "researching", "Researching"
+    SCRIPT_READY = "script_ready", "Script ready"
+    AWAITING_AUDIO = "awaiting_audio", "Awaiting audio"
+    RENDERING = "rendering", "Rendering"
+    READY_FOR_REVIEW = "ready_for_review", "Ready for review"
+    APPROVED = "approved", "Approved"
+    PUBLISHED = "published", "Published"
+    FAILED = "failed", "Failed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class PodcastShow(models.Model):
+    """One podcast, backing one Idea. The Idea stays the private workspace
+    (notes, next actions, repeat schedule); this is the public-facing show
+    metadata layered on top of it."""
+
+    idea = models.OneToOneField(Idea, related_name="podcast_show", on_delete=models.CASCADE)
+    slug = models.SlugField(unique=True, max_length=100)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    host_name = models.CharField(max_length=200, blank=True)
+    # Plain FileField, not ImageField, to match Artifact.file and avoid adding
+    # a Pillow dependency the project doesn't otherwise need.
+    cover_image = models.FileField(upload_to="podcast_covers/%Y/%m/", blank=True)
+    language = models.CharField(max_length=10, default="en")
+    category = models.CharField(
+        max_length=100, blank=True,
+        help_text="Apple Podcasts category, e.g. 'Technology'.",
+    )
+    is_explicit = models.BooleanField(default=False)
+    default_tts_engine = models.CharField(max_length=32, default="fish-s2-pro")
+    target_episode_duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Deliberately distinct from Idea.is_public, which only means "readable by
+    # any signed-in IdeaFlow user." This flag controls whether the show's RSS
+    # feed and episode pages are reachable by anyone, signed in or not — the
+    # actual "available on the homepage to anyone" audience from the plan.
+    # Per "do not display the link to the RSS feed on any page," this only
+    # ever gates the feed/episode *pages* themselves, never a visible link to
+    # them; getting this flag wrong in either direction either leaks audio
+    # that was meant to stay private or silently breaks the public feed.
+    is_publicly_listed = models.BooleanField(
+        default=False,
+        help_text="Anyone (signed in or not) can reach this show's RSS feed and "
+        "episode pages. No link is ever displayed anywhere — see the plan's "
+        "\"do not display the link to the RSS feed\" constraint.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["title"]
+
+    def __str__(self):
+        return self.title
+
+
+class Episode(models.Model):
+    show = models.ForeignKey(PodcastShow, related_name="episodes", on_delete=models.CASCADE)
+    # Stable, permanent identifier for the RSS <guid> — independent of slug,
+    # which may change if the title changes.
+    guid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    slug = models.SlugField(max_length=220)
+    episode_number = models.PositiveIntegerField()
+    season_number = models.PositiveIntegerField(null=True, blank=True)
+    research_entry = models.ForeignKey(
+        ResearchEntry,
+        related_name="podcast_episodes",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="The research this episode's script was drawn from.",
+    )
+    # The full structured script document from "Produce a structured script"
+    # in the plan: {schema_version, title, target_duration_seconds, segments,
+    # citations}. Citations live embedded here, cross-referenced by segment
+    # id, rather than in a separate column.
+    script = models.JSONField(default=dict, blank=True)
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    show_notes = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16, choices=EpisodeStatus.choices, default=EpisodeStatus.DRAFT
+    )
+    # Phase 1: a plain FileField under the droplet's media/, promoted here
+    # only after server-side ffprobe verification (see "Audio storage" in the
+    # plan). Phase 2 (object storage) may repurpose this field to hold an S3
+    # key instead of a Django-managed upload.
+    audio_file = models.FileField(upload_to="podcast_episodes/%Y/%m/", blank=True)
+    audio_checksum_sha256 = models.CharField(max_length=64, blank=True)
+    audio_mime_type = models.CharField(max_length=100, blank=True, default="audio/mpeg")
+    audio_duration_seconds = models.FloatField(null=True, blank=True)
+    audio_size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, related_name="+", null=True, blank=True, on_delete=models.SET_NULL,
+        help_text="Null for scheduler-created episodes.",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        User, related_name="+", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    published_by = models.ForeignKey(
+        User, related_name="+", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-episode_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["show", "episode_number"], name="unique_show_episode_number"
+            ),
+            models.UniqueConstraint(fields=["show", "slug"], name="unique_show_episode_slug"),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_published(self):
+        return self.status == EpisodeStatus.PUBLISHED and bool(self.published_at)
+
+    def unpublish(self):
+        """Reversible: clears published_at and flips status, but keeps the row
+        and audio file intact. See "Episode lifecycle: unpublish vs. delete"."""
+        self.status = EpisodeStatus.UNPUBLISHED
+        self.published_at = None
+        self.save(update_fields=["status", "published_at", "updated_at"])
+
+
+class EpisodeRun(models.Model):
+    """One audio-production attempt for an episode. Phase 1 only — no
+    claim_generation or lease_token_hash yet (see "Phased rollout of machine
+    auth" in the plan; those two fields are Phase 2, added once a second,
+    less-trusted worker or a real reassignment race needs to be guarded
+    against transactionally rather than by the Phase 1 status+lease-expiry
+    check alone)."""
+
+    episode = models.ForeignKey(Episode, related_name="runs", on_delete=models.CASCADE)
+    status = models.CharField(
+        max_length=20, choices=EpisodeRunStatus.choices, default=EpisodeRunStatus.QUEUED
+    )
+    # Phase 1: just a free-text label (e.g. "mac-mini-1"), not a
+    # ServicePrincipal FK — there's only one worker and one static token.
+    worker_id = models.CharField(max_length=100, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    # The manifest.json document from "Segment rendering" in the plan:
+    # {schema_version, episode_id, run_id, engine, model_repo, voice_profiles,
+    # rendering, script}.
+    manifest = models.JSONField(default=dict, blank=True)
+    engine = models.CharField(max_length=32, default="fish-s2-pro")
+    model_repo = models.CharField(max_length=200, blank=True)
+    model_revision = models.CharField(max_length=100, blank=True)
+    # Duplicated from manifest["rendering"] at claim time purely so it can be
+    # queried/filtered without parsing the manifest JSON.
+    rendering_settings = models.JSONField(default=dict, blank=True)
+    progress = models.JSONField(
+        default=dict, blank=True,
+        help_text="e.g. {'segments_completed': N, 'segments_total': M}.",
+    )
+    last_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    error_class = models.CharField(max_length=100, blank=True)
+    error_detail = models.TextField(blank=True)
+    # The render-report.json document from "Segment rendering" in the plan.
+    render_report = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.episode} · run {self.pk} ({self.status})"
+
+    @property
+    def lease_is_expired(self):
+        return bool(self.lease_expires_at) and self.lease_expires_at <= timezone.now()
+
+
+class VoiceProfile(models.Model):
+    """A configured TTS speaker (e.g. "host" or "analyst"). Reference
+    recordings are sensitive assets and must never be publicly accessible —
+    like Artifact.file, reference_audio lives under media/ but is reachable
+    only through an authenticated Django view, never a raw /media/ URL (there
+    isn't one configured; see deploy/nginx.conf). Do not add a public view or
+    serve this field directly from the episode page or RSS feed."""
+
+    name = models.CharField(max_length=100, unique=True, help_text="e.g. 'host-primary'.")
+    speaker_label = models.CharField(max_length=50, help_text="e.g. 'host' or 'analyst'.")
+    reference_audio = models.FileField(upload_to="podcast_voices/%Y/%m/", blank=True)
+    reference_text = models.TextField(
+        blank=True, help_text="The exact transcript of reference_audio."
+    )
+    mlx_model_repo = models.CharField(max_length=200, blank=True)
+    mlx_model_revision = models.CharField(max_length=100, blank=True)
+    generation_defaults = models.JSONField(
+        default=dict, blank=True,
+        help_text="Sampling/emotion/speaking-rate/gain defaults for this voice.",
+    )
+    version = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} (v{self.version})"
 
 
 class Profile(models.Model):

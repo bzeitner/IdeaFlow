@@ -82,6 +82,26 @@ class GraphProjectionTests(TestCase):
         self.assertLessEqual(context["budget"]["estimated_tokens"], 550)
         self.assertEqual(context["task"], "execute")
 
+    def test_repeat_task_prioritizes_related_over_dependencies(self):
+        # A recurring task (e.g. a podcast idea) cares about a "supports"
+        # relation — which lands in "related" — more than structural
+        # dependencies, so under a tight budget "related" should survive
+        # while "dependencies" gets squeezed out.
+        center = make_idea(title="Center")
+        supporter = make_idea(title="Supporter", summary="x" * 500)
+        IdeaRelation.objects.create(
+            source=supporter, target=center, relation_type=RelationType.SUPPORTS
+        )
+        for number in range(10):
+            dependency = make_idea(title=f"Dependency {number}", summary="x" * 500)
+            IdeaRelation.objects.create(
+                source=center, target=dependency, relation_type=RelationType.DEPENDS_ON
+            )
+        context = graph_context(center, max_nodes=30, token_budget=500, task="repeat")
+        self.assertEqual(context["task"], "repeat")
+        self.assertEqual([row["idea_id"] for row in context["related"]], [supporter.pk])
+        self.assertLess(len(context["dependencies"]), 10)
+
 
 class GraphViewTests(TestCase):
     def test_graph_role_can_open_tab(self):

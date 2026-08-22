@@ -185,7 +185,7 @@ def cmd_graph_context(a):
     return _request(
         "GET",
         f"/ideas/{a.id}/graph-context/",
-        params={"depth": a.depth, "max_nodes": a.max_nodes},
+        params={"depth": a.depth, "max_nodes": a.max_nodes, "task": a.task},
     )
 
 
@@ -363,6 +363,13 @@ def build_parser():
     s.add_argument("id", type=int)
     s.add_argument("--depth", type=int, default=1)
     s.add_argument("--max-nodes", type=int, default=30, dest="max_nodes")
+    s.add_argument(
+        "--task",
+        default=None,
+        help="Biases which relation types are prioritized within the token "
+        "budget (e.g. research, review, execute, critique, persona, repeat). "
+        "Omit to use the server default.",
+    )
     s.set_defaults(func=cmd_graph_context)
 
     s = sub.add_parser("graph-search", help="Search ideas exposed by the graph.")

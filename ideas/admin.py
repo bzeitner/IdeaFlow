@@ -13,6 +13,8 @@ from .models import (
     AIModel,
     Artifact,
     Category,
+    Episode,
+    EpisodeRun,
     Feed,
     FeedItem,
     FeedItemAssessment,
@@ -24,6 +26,7 @@ from .models import (
     IdeaRelationSuggestion,
     IdeaSemanticState,
     SemanticGraphSettings,
+    PodcastShow,
     Profile,
     PromptRevision,
     PromptRevisionStatus,
@@ -35,6 +38,7 @@ from .models import (
     RepeatResult,
     ResearchEntry,
     Stage,
+    VoiceProfile,
     WeeklySummary,
 )
 
@@ -208,6 +212,56 @@ class GraphAccessCapabilityAdmin(TooltipAdminMixin, admin.ModelAdmin):
     list_filter = ("scope", "revoked_at")
     search_fields = ("user__email", "user__username", "token_hash")
     readonly_fields = ("token_hash", "user", "scope", "filters", "graph_revision", "request_count", "created_at", "expires_at", "last_accessed_at", "revoked_at")
+
+
+class EpisodeInline(admin.TabularInline):
+    model = Episode
+    extra = 0
+    fields = ("episode_number", "title", "status", "published_at")
+    readonly_fields = ("published_at",)
+    show_change_link = True
+
+
+@admin.register(PodcastShow)
+class PodcastShowAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "idea", "is_publicly_listed", "language", "category")
+    list_filter = ("is_publicly_listed", "is_explicit", "language")
+    search_fields = ("title", "idea__title", "host_name")
+    autocomplete_fields = ("idea",)
+    inlines = [EpisodeInline]
+
+
+class EpisodeRunInline(admin.TabularInline):
+    model = EpisodeRun
+    extra = 0
+    fields = ("status", "worker_id", "attempt_count", "lease_expires_at", "started_at", "completed_at")
+    readonly_fields = ("started_at", "completed_at")
+    show_change_link = True
+
+
+@admin.register(Episode)
+class EpisodeAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "show", "episode_number", "status", "published_at")
+    list_filter = ("status", "show")
+    search_fields = ("title", "show__title", "guid")
+    readonly_fields = ("guid", "audio_checksum_sha256")
+    inlines = [EpisodeRunInline]
+
+
+@admin.register(EpisodeRun)
+class EpisodeRunAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("episode", "status", "worker_id", "attempt_count", "lease_expires_at", "created_at")
+    list_filter = ("status", "engine")
+    search_fields = ("episode__title", "worker_id", "error_class")
+    # Written by the render pipeline, not hand-edited from the admin.
+    readonly_fields = ("manifest", "render_report", "created_at", "started_at", "completed_at")
+
+
+@admin.register(VoiceProfile)
+class VoiceProfileAdmin(TooltipAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "speaker_label", "version", "is_active")
+    list_filter = ("is_active", "speaker_label")
+    search_fields = ("name", "speaker_label")
 
 
 @admin.register(IdeaSemanticState)

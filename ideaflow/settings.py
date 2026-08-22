@@ -232,6 +232,21 @@ SOCIALACCOUNT_PROVIDERS = {
 IDEAFLOW_API_TOKEN = os.getenv('IDEAFLOW_API_TOKEN', '')
 IDEAFLOW_ARTIFACT_MAX_BYTES = env_int('IDEAFLOW_ARTIFACT_MAX_BYTES', 10 * 1024 * 1024)
 
+# Phase 1 podcast worker auth (see podcast_plan.md, "Phased rollout of machine
+# auth"): a single static token for the one Mac-mini render worker, separate
+# from IDEAFLOW_API_TOKEN so the worker never holds the general-purpose
+# agent's broader privileges. Empty disables the /api/audio-jobs/ endpoints
+# entirely, same pattern as IDEAFLOW_API_TOKEN.
+IDEAFLOW_PODCAST_WORKER_TOKEN = os.getenv('IDEAFLOW_PODCAST_WORKER_TOKEN', '')
+# A finished episode MP3 (up to ~60 minutes) comfortably fits under 100 MB;
+# reject anything larger outright rather than staging it.
+IDEAFLOW_EPISODE_AUDIO_MAX_BYTES = env_int('IDEAFLOW_EPISODE_AUDIO_MAX_BYTES', 100 * 1024 * 1024)
+# How long a claimed render job's lease lasts before it's eligible for
+# reclaim. Generous because a real render can run for hours (see the 45-min
+# benchmark: ~144 minutes of Mac-side render time) — the worker is expected to
+# heartbeat well before this elapses.
+IDEAFLOW_PODCAST_LEASE_SECONDS = env_int('IDEAFLOW_PODCAST_LEASE_SECONDS', 4 * 60 * 60)
+
 # Task -> model routing. Cheap, high-volume work (feed/blog summaries) goes to a
 # lighter model; deeper work uses the heavy model. Agents fetch this from
 # /api/config and pass the right --model. Override any entry via env.
