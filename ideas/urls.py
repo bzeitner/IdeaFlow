@@ -6,6 +6,7 @@ app_name = "ideas"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("guide/", views.guide, name="guide"),
     path("current/", views.current, name="current"),
     path("tracking/", views.tracking, name="tracking"),
     path("archive/", views.archive, name="archive"),

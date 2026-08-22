@@ -44,6 +44,30 @@ class HomeViewTests(TestCase):
         response = self.client.get("/")
         self.assertNotContains(response, "Edit")
 
+    def test_roleless_new_user_sees_guide_callout(self):
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:home"))
+
+        self.assertContains(response, "New to IdeaFlow?")
+        self.assertContains(response, reverse("ideas:guide"))
+
+
+class GuideViewTests(TestCase):
+    def test_guide_is_available_before_sign_in(self):
+        response = self.client.get(reverse("ideas:guide"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "ideas/guide.html")
+        self.assertContains(response, "Turn a promising thought into focused work")
+        self.assertContains(response, "Sign in with Google")
+
+    def test_header_links_to_guide(self):
+        response = self.client.get(reverse("ideas:home"))
+
+        self.assertContains(response, 'href="{}">Guide</a>'.format(reverse("ideas:guide")))
+
     def test_ideas_page_summarizes_full_history_with_family_totals(self):
         category = make_category(name="Product")
         model = make_ai_model()

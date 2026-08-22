@@ -3,6 +3,15 @@
 {% block content %}
   <h2>Public projects</h2>
   <p class="lede">Projects shared with everyone signed in. Open one to read it — editing needs the right role.</p>
+  {% if not has_any_role %}
+    <aside class="welcome-callout" aria-labelledby="welcome-title">
+      <div>
+        <h3 id="welcome-title">New to IdeaFlow?</h3>
+        <p>Learn how ideas move through the workspace, what you can do with each role, and where to start.</p>
+      </div>
+      <a class="btn primary" href="{% url 'ideas:guide' %}">Read the user guide</a>
+    </aside>
+  {% endif %}
   <div class="grid">
     {% for idea in ideas %}
       {% include "ideas/_card.html" %}

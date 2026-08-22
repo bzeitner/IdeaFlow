@@ -496,6 +496,14 @@ def home(request):
     )
 
 
+def guide(request):
+    """Public, in-app guide for prospective and newly invited users."""
+    context = {}
+    if request.user.is_authenticated:
+        context["tabs"] = _tabs(request.user.profile)
+    return render(request, "ideas/guide.html", context)
+
+
 def _tab_view(request, status, template):
     owner_filter = request.GET.get("owner", "")
     query = request.GET.get("q", "").strip()

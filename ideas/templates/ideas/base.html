@@ -15,6 +15,7 @@
     <a class="brand" href="{% url 'ideas:home' %}">
       <img class="brand-icon" src="{% static 'ideas/favicon.svg' %}" alt="" width="24" height="24">Idea<span>Flow</span></a>
     <span class="topbar-actions">
+      <a class="btn" href="{% url 'ideas:guide' %}">Guide</a>
       {% if user.is_authenticated %}
         <a class="btn" href="{% url 'ideas:artifacts' %}">Artifacts</a>
         {% if user.profile.role_admin %}

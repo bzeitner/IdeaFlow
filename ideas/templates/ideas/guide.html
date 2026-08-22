@@ -1,0 +1,85 @@
+{% extends "ideas/base.html" %}
+{% block title %}User Guide · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail user-guide">
+    <header class="guide-hero">
+      <p class="eyebrow">User guide</p>
+      <h1>Turn a promising thought into focused work</h1>
+      <p class="lede">IdeaFlow keeps ideas, decisions, research, and results together from the first spark through active work and, eventually, the archive.</p>
+      <nav class="guide-jumps" aria-label="Guide sections">
+        <a href="#start">Get started</a>
+        <a href="#lifecycle">The lifecycle</a>
+        <a href="#workspace">Work an idea</a>
+        <a href="#features">Other tools</a>
+        <a href="#access">Access</a>
+      </nav>
+    </header>
+
+    <section id="start" class="guide-section">
+      <div class="guide-section-heading"><span>1</span><div><h2>Get started</h2><p>Capture just enough to make the next decision clear.</p></div></div>
+      <ol class="guide-steps">
+        <li><strong>Sign in with Google.</strong> IdeaFlow is invitation-only. A new account can read public projects immediately; an administrator grants access to private workspace tabs.</li>
+        <li><strong>Open <span class="nowrap">+ New Idea</span>.</strong> If you have the Add Ideas or Admin role, start with a title, short summary, category, and next action. New ideas begin in Current.</li>
+        <li><strong>Add context when it helps.</strong> Links, parent ideas, stage, interest, rank, notes, repository, visibility, and automation settings are available under “More details and settings.”</li>
+        <li><strong>Save, then keep the next action current.</strong> A useful next action is concrete enough that you—or an agent—can pick up the work without reconstructing the plan.</li>
+      </ol>
+      {% if user.is_authenticated and user.profile.role_admin or user.profile.role_add_ideas %}
+        <a class="btn primary" href="{% url 'ideas:create' %}">Create your first idea</a>
+      {% endif %}
+    </section>
+
+    <section id="lifecycle" class="guide-section">
+      <div class="guide-section-heading"><span>2</span><div><h2>Understand the lifecycle</h2><p>Status determines where an idea lives; stage describes how far it has progressed.</p></div></div>
+      <div class="lifecycle-grid">
+        <div class="lifecycle-card"><strong>Current</strong><p>Work receiving active attention now. Use this as a deliberately short focus list.</p></div>
+        <div class="lifecycle-arrow" aria-hidden="true">→</div>
+        <div class="lifecycle-card"><strong>Tracking</strong><p>Work worth monitoring or developing, with filters, rank, stage, next action, and attention signals at a glance.</p></div>
+        <div class="lifecycle-arrow" aria-hidden="true">→</div>
+        <div class="lifecycle-card"><strong>Archive</strong><p>Finished or shelved work retained with its history, research, resources, and artifacts.</p></div>
+      </div>
+      <p class="guide-note"><strong>Status and stage are different.</strong> Move an idea between Current, Tracking, and Archive to change its workspace. Change its stage—such as Spark, Exploring, Building, Launched, or Stalled—to describe maturity.</p>
+    </section>
+
+    <section id="workspace" class="guide-section">
+      <div class="guide-section-heading"><span>3</span><div><h2>Work from the idea page</h2><p>The detail page is the durable record for an effort.</p></div></div>
+      <div class="guide-feature-grid">
+        <div><h3>Plan the work</h3><p>Set an active next action and queue follow-ups. Reorder the queue or mark the active item complete as work advances.</p></div>
+        <div><h3>Record research</h3><p>Use <strong>Log research</strong> to preserve findings, effort, quality, model, token usage, and open questions. Answer highlighted questions to feed human context into later work.</p></div>
+        <div><h3>Keep useful outputs</h3><p>Add resources for source links and artifacts for reports, files, lists, and other deliverables. Artifacts can also be referenced by other ideas.</p></div>
+        <div><h3>Organize related work</h3><p>Give an idea a parent or create child ideas. Use children when a promising direction deserves its own next actions and history.</p></div>
+      </div>
+      <h3>A simple weekly rhythm</h3>
+      <ol class="guide-steps compact">
+        <li>Review Current and keep only genuinely active work there.</li>
+        <li>Open Tracking, filter for human input, paused work, or missing next actions, and resolve the important signals.</li>
+        <li>Update rank, stage, and next action; move completed or dormant work to Archive.</li>
+        <li>Check weekly summaries and artifacts for portfolio-level outcomes when your role provides access.</li>
+      </ol>
+    </section>
+
+    <section id="features" class="guide-section">
+      <div class="guide-section-heading"><span>4</span><div><h2>Use the wider workspace</h2><p>These tools appear only when your assigned role allows them.</p></div></div>
+      <dl class="guide-directory">
+        <div><dt>Public projects</dt><dd>The home page shows projects shared with every signed-in user. Public access is read-only unless you also hold the idea’s workspace role.</dd></div>
+        <div><dt>Tracking filters</dt><dd>Search by text, category, stage, attention, or owner. Sort for human input, family, rank, interest, or update time; edit key fields directly in the list.</dd></div>
+        <div><dt>Artifacts</dt><dd>Browse reports, summaries, files, and external deliverables across all ideas you are allowed to see.</dd></div>
+        <div><dt>Feeds</dt><dd>Review incoming articles tied to ideas, read summaries, and rate their usefulness and relevance.</dd></div>
+        <div><dt>Knowledge Graph</dt><dd>Explore parents and explicit relationships between ideas. Authorized users can review suggested relationships and open Graph Lab.</dd></div>
+        <div><dt>Persona council and repeat tasks</dt><dd>Optional automation can review stalled ideas or collect recurring results. Configure these on an idea; pause them whenever human direction is needed.</dd></div>
+      </dl>
+    </section>
+
+    <section id="access" class="guide-section">
+      <div class="guide-section-heading"><span>5</span><div><h2>Know your access</h2><p>IdeaFlow shows only the controls and workspaces available to you.</p></div></div>
+      <div class="table-wrap"><table class="guide-table"><thead><tr><th>Role</th><th>What it allows</th></tr></thead><tbody>
+        <tr><td>Current</td><td>View and manage ideas in Current.</td></tr>
+        <tr><td>Tracking</td><td>View and manage ideas in Tracking.</td></tr>
+        <tr><td>Archive</td><td>View and manage archived ideas.</td></tr>
+        <tr><td>Add Ideas</td><td>Create ideas; creation does not automatically grant access to every workspace.</td></tr>
+        <tr><td>Knowledge Graph, Feeds, Weekly Summary</td><td>Open the corresponding specialist workspace.</td></tr>
+        <tr><td>Admin</td><td>Full access, user roles, ownership, and configuration.</td></tr>
+      </tbody></table></div>
+      <p class="guide-note">If a tab or button described here is missing, your account probably does not have that role. Ask an IdeaFlow administrator to review your access. Being able to read a public project does not grant permission to edit it.</p>
+    </section>
+  </article>
+{% endblock %}
