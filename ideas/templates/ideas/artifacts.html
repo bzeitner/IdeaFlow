@@ -21,6 +21,11 @@
             {% if artifact.is_viewable %}<a href="{{ artifact.view_link }}">View</a>{% endif %}
             {% if artifact.file %}<a href="{% url 'ideas:download_artifact' artifact.idea_id artifact.pk %}" download="{{ artifact.download_filename }}">Download</a>{% endif %}
             {% if not artifact.file and artifact.url %}<a href="{{ artifact.url }}" target="_blank" rel="noopener">Open link</a>{% endif %}
+            {% if artifact.can_manage %}
+              <form class="inline-form" method="post" action="{% url 'ideas:delete_artifact' artifact.idea_id artifact.pk %}">
+                {% csrf_token %}<button class="btn small" type="submit">Delete</button>
+              </form>
+            {% endif %}
           </div>
         </li>
       {% endfor %}

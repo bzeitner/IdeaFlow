@@ -277,7 +277,12 @@
               {% if artifact.research_entry %}<a class="pill" href="#research-entry-{{ artifact.research_entry.pk }}">Research #{{ artifact.research_entry.pk }}</a>{% endif %}
               {% if artifact.is_viewable %}<a href="{{ artifact.view_link }}">View</a>{% endif %}
               {% if artifact.file %}<a href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download</a>{% endif %}
-              {% if can_manage %}<a href="{% url 'ideas:edit_artifact' idea.pk artifact.pk %}">Update</a>{% endif %}
+              {% if can_manage %}
+                <a href="{% url 'ideas:edit_artifact' idea.pk artifact.pk %}">Update</a>
+                <form class="inline-form" method="post" action="{% url 'ideas:delete_artifact' idea.pk artifact.pk %}">
+                  {% csrf_token %}<button class="btn small" type="submit">Delete</button>
+                </form>
+              {% endif %}
             </div>
           </li>
         {% endfor %}
