@@ -1369,6 +1369,13 @@ class EpisodeRun(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            # Covers claim_audio_job's two lookups: the fresh-awaiting-audio
+            # query (status, created_at) and the stale-reclaim query
+            # (status, lease_expires_at).
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["status", "lease_expires_at"]),
+        ]
 
     def __str__(self):
         return f"{self.episode} · run {self.pk} ({self.status})"
