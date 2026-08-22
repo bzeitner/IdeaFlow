@@ -216,6 +216,54 @@ class CompleteTests(TestCase):
             self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), checksum)
         episode.audio_file.delete(save=False)
 
+    def test_second_complete_after_a_real_success_is_rejected_and_changes_nothing(self):
+        # The exact retry scenario the plan's acceptance criteria call out:
+        # "a repeated completion request must not create a second episode or
+        # enclosure URL." Not just a generic non-rendering-status guard —
+        # this drives the run through a genuine first success, then retries.
+        run = make_run(status=EpisodeRunStatus.RENDERING)
+        first_audio = _tiny_mp3_bytes()
+        first_checksum = hashlib.sha256(first_audio).hexdigest()
+        first_report = {"final": {"checksum_sha256": first_checksum}}
+        first_response = self.client.post(
+            f"/api/audio-jobs/{run.pk}/complete/",
+            {
+                "audio": SimpleUploadedFile("episode.mp3", first_audio, content_type="audio/mpeg"),
+                "render_report": json.dumps(first_report),
+            },
+            **AUTH,
+        )
+        self.assertEqual(first_response.status_code, 200, first_response.content)
+        run.refresh_from_db()
+        episode = run.episode
+        episode.refresh_from_db()
+        first_promoted_name = episode.audio_file.name
+        self.addCleanup(lambda: episode.audio_file.delete(save=False))
+
+        # A client retry (e.g. after a timeout on a response that actually
+        # succeeded) with different-looking audio must not be accepted.
+        second_audio = _tiny_mp3_bytes()
+        second_checksum = hashlib.sha256(second_audio).hexdigest()
+        second_report = {"final": {"checksum_sha256": second_checksum}}
+        second_response = self.client.post(
+            f"/api/audio-jobs/{run.pk}/complete/",
+            {
+                "audio": SimpleUploadedFile("episode.mp3", second_audio, content_type="audio/mpeg"),
+                "render_report": json.dumps(second_report),
+            },
+            **AUTH,
+        )
+        self.assertEqual(second_response.status_code, 409)
+
+        run.refresh_from_db()
+        episode.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.READY_FOR_REVIEW)
+        self.assertEqual(run.render_report, first_report)
+        self.assertEqual(episode.audio_file.name, first_promoted_name)
+        self.assertEqual(episode.audio_checksum_sha256, first_checksum)
+        with episode.audio_file.open("rb") as fh:
+            self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), first_checksum)
+
     def test_checksum_mismatch_fails_the_run_and_promotes_nothing(self):
         run = make_run(status=EpisodeRunStatus.RENDERING)
         audio = _tiny_mp3_bytes()
