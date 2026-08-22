@@ -1085,6 +1085,28 @@ class ArtifactViewTests(TestCase):
         self.assertEqual(download.status_code, 200)
         self.assertIn("attachment;", download["Content-Disposition"])
 
+    def test_can_delete_artifact(self):
+        artifact = self.idea.artifacts.create(
+            title="Old report", url="https://example.com/old-report"
+        )
+        response = self.client.post(
+            reverse("ideas:delete_artifact", args=[self.idea.pk, artifact.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertFalse(self.idea.artifacts.filter(pk=artifact.pk).exists())
+
+    def test_delete_artifact_requires_manage_role(self):
+        artifact = self.idea.artifacts.create(
+            title="Kept report", url="https://example.com/kept-report"
+        )
+        other = make_user("noroles@example.com")
+        self.client.force_login(other)
+        response = self.client.post(
+            reverse("ideas:delete_artifact", args=[self.idea.pk, artifact.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertTrue(self.idea.artifacts.filter(pk=artifact.pk).exists())
+
     def test_later_research_can_be_recorded_when_updating_artifact(self):
         first = self.idea.research_entries.create(topic="Initial", model=make_ai_model())
         later = self.idea.research_entries.create(topic="Refresh", model=first.model)

@@ -1111,6 +1111,22 @@ def artifact_form(request, pk, artifact_pk=None):
 
 @login_required
 @require_POST
+def delete_artifact(request, pk, artifact_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    artifact = get_object_or_404(Artifact, pk=artifact_pk, idea=idea)
+    title = artifact.title
+    if artifact.file:
+        artifact.file.storage.delete(artifact.file.name)
+    artifact.delete()
+    messages.success(request, f"Deleted artifact “{title}”.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+@require_POST
 def request_summary(request, pk):
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_status_role(request, idea.status)
@@ -1202,6 +1218,8 @@ def artifacts(request):
         .order_by("-generated_at", "-updated_at")
     )
     page = Paginator(items, 25).get_page(request.GET.get("page"))
+    for artifact in page.object_list:
+        artifact.can_manage = profile.can_manage_status(artifact.idea.status)
     return render(
         request,
         "ideas/artifacts.html",
