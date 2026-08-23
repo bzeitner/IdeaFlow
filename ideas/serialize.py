@@ -88,6 +88,27 @@ def feed_to_dict(feed, *, detail=False):
     return data
 
 
+def podcast_show_to_dict(show):
+    """None when the idea has no associated podcast show — the agent-facing
+    signal for "this is an ordinary repeat task, not a podcast" in
+    research_idea.sh's repeat mode."""
+    if show is None:
+        return None
+    from .models import VoiceProfile
+
+    return {
+        "id": show.id,
+        "title": show.title,
+        "slug": show.slug,
+        "default_tts_engine": show.default_tts_engine,
+        "target_episode_duration_seconds": show.target_episode_duration_seconds,
+        "voice_profiles": [
+            {"name": vp.name, "speaker_label": vp.speaker_label}
+            for vp in VoiceProfile.objects.filter(is_active=True).order_by("name")
+        ],
+    }
+
+
 def idea_to_dict(idea, *, detail=True):
     """Serialize an idea. `detail=False` omits the heavy related collections
     (notes, resources, research entries) for list responses."""
@@ -136,6 +157,7 @@ def idea_to_dict(idea, *, detail=True):
              "status": r.status, "found_at": r.found_at.isoformat()}
             for r in idea.repeat_results.all()
         ]
+        data["podcast_show"] = podcast_show_to_dict(getattr(idea, "podcast_show", None))
         data["repo"] = idea.repo
         data["parent"] = (
             {"id": idea.parent_id, "title": idea.parent.title} if idea.parent_id else None

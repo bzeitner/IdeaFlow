@@ -13,23 +13,25 @@ Unset token disables the whole API, so it stays off until you opt in.
 """
 
 import json
+import re
 from collections import defaultdict
 from functools import wraps
 from urllib.parse import urlparse
 
 from django.conf import settings
-from django.db import transaction
+from django.db import models, transaction
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import path
 from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, VoiceProfile, WeeklySummary
 from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -49,6 +51,7 @@ _DETAIL_PREFETCH = (
     "repeat_results",
     "idea_personas__persona",
     "persona_reviews__votes__persona",
+    "podcast_show",
 )
 
 # ?content=1 on /api/feed-items/ pulls full stored bodies; without an
@@ -342,6 +345,173 @@ def idea_repeat_results(request, pk):
     idea.last_repeat_run_at = timezone.now()
     idea.save(update_fields=["last_repeat_run_at", "updated_at"])
     return JsonResponse({"created": created, "received": len(results), "completed_at": idea.last_repeat_run_at.isoformat()}, status=201)
+
+
+_PODCAST_SEGMENT_LABEL_RE = re.compile(r"^[a-z][a-z0-9_-]{0,19}$")
+_PODCAST_ALLOWED_EMOTIONS = {None, "curious", "skeptical", "excited", "calm", "serious", "amused"}
+_PODCAST_MAX_SEGMENTS = 500
+_PODCAST_MAX_TEXT_CHARS = 2000
+_PODCAST_MAX_PAUSE_MS = 5000
+_PODCAST_MAX_TARGET_DURATION_SECONDS = 4 * 3600
+
+
+def _validate_podcast_script(script, active_voice_profile_names):
+    """A first line of defense against an obviously malformed or unsafe
+    script before an Episode/EpisodeRun row is created — the render worker
+    independently re-validates the manifest built from this against its own
+    allowlists (see worker.py, "Safe processing of untrusted jobs"); this is
+    not a substitute for that, just cheaper to reject early."""
+    if not isinstance(script, dict):
+        raise ValueError("script must be an object.")
+    if script.get("schema_version") != 1:
+        raise ValueError("script.schema_version must be 1.")
+    title = script.get("title")
+    if not isinstance(title, str) or not title.strip() or len(title) > 300:
+        raise ValueError("script.title must be a non-empty string of at most 300 characters.")
+    target_duration = script.get("target_duration_seconds")
+    if not isinstance(target_duration, (int, float)) or not (0 < target_duration <= _PODCAST_MAX_TARGET_DURATION_SECONDS):
+        raise ValueError("script.target_duration_seconds is missing or out of range.")
+
+    segments = script.get("segments")
+    if not isinstance(segments, list) or not segments:
+        raise ValueError("script.segments must be a non-empty list.")
+    if len(segments) > _PODCAST_MAX_SEGMENTS:
+        raise ValueError(f"script.segments exceeds the {_PODCAST_MAX_SEGMENTS}-segment limit.")
+
+    used_voice_profiles = set()
+    for i, segment in enumerate(segments):
+        if not isinstance(segment, dict):
+            raise ValueError(f"segments[{i}] must be an object.")
+        speaker = segment.get("speaker")
+        if not isinstance(speaker, str) or not _PODCAST_SEGMENT_LABEL_RE.match(speaker):
+            raise ValueError(f"segments[{i}].speaker has an invalid format.")
+        voice_profile = segment.get("voice_profile")
+        if not isinstance(voice_profile, str) or not _PODCAST_SEGMENT_LABEL_RE.match(voice_profile):
+            raise ValueError(f"segments[{i}].voice_profile has an invalid format.")
+        used_voice_profiles.add(voice_profile)
+        text = segment.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"segments[{i}].text must be non-empty.")
+        if len(text) > _PODCAST_MAX_TEXT_CHARS:
+            raise ValueError(f"segments[{i}].text exceeds {_PODCAST_MAX_TEXT_CHARS} characters.")
+        if segment.get("emotion") not in _PODCAST_ALLOWED_EMOTIONS:
+            raise ValueError(f"segments[{i}].emotion is not allowlisted.")
+        pause_after_ms = segment.get("pause_after_ms", 0)
+        if not isinstance(pause_after_ms, (int, float)) or not (0 <= pause_after_ms <= _PODCAST_MAX_PAUSE_MS):
+            raise ValueError(f"segments[{i}].pause_after_ms is out of range.")
+
+    unknown_profiles = used_voice_profiles - active_voice_profile_names
+    if unknown_profiles:
+        raise ValueError(
+            f"segments reference voice profile(s) not registered/active: {sorted(unknown_profiles)}. "
+            f"Registered: {sorted(active_voice_profile_names)}."
+        )
+
+    citations = script.get("citations", [])
+    if not isinstance(citations, list) or len(citations) > 100:
+        raise ValueError("script.citations must be a list of at most 100 items.")
+    for i, citation in enumerate(citations):
+        if not isinstance(citation, dict):
+            raise ValueError(f"citations[{i}] must be an object.")
+
+
+@require_api_token
+@transaction.atomic
+def idea_podcast_episode(request, pk):
+    """Create one Episode + its EpisodeRun from a research-derived script, and
+    advance the repeat clock directly — the "new internal call" the plan
+    calls for, distinct from idea_repeat_results (which logs RepeatResult
+    rows; a podcast episode is a different kind of outcome entirely, so it
+    gets its own completion path rather than overloading that one)."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    idea = get_object_or_404(Idea, pk=pk, repeat_enabled=True)
+    if idea.is_archived:
+        return JsonResponse({"error": "Idea is archived."}, status=409)
+    if idea.repeat_paused:
+        return JsonResponse({"error": "Repeat task is paused."}, status=409)
+    show = getattr(idea, "podcast_show", None)
+    if show is None:
+        return JsonResponse({"error": "This idea has no associated podcast show."}, status=409)
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
+
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return JsonResponse({"error": "title is required."}, status=400)
+    script = payload.get("script")
+    active_voice_profile_names = set(
+        VoiceProfile.objects.filter(is_active=True).values_list("name", flat=True)
+    )
+    try:
+        _validate_podcast_script(script, active_voice_profile_names)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    research_entry = None
+    research_entry_id = payload.get("research_entry_id")
+    if research_entry_id:
+        research_entry = get_object_or_404(ResearchEntry, pk=research_entry_id, idea=idea)
+
+    next_number = (
+        Episode.objects.filter(show=show).aggregate(models.Max("episode_number"))["episode_number__max"] or 0
+    ) + 1
+    base_slug = slugify(title)[:200] or f"episode-{next_number}"
+    slug = base_slug
+    suffix = 2
+    while Episode.objects.filter(show=show, slug=slug).exists():
+        slug = f"{base_slug}-{suffix}"
+        suffix += 1
+
+    episode = Episode.objects.create(
+        show=show,
+        slug=slug,
+        episode_number=next_number,
+        research_entry=research_entry,
+        script=script,
+        title=title[:300],
+        description=(payload.get("description") or "").strip(),
+        show_notes=(payload.get("show_notes") or "").strip(),
+    )
+    manifest = {
+        "schema_version": 1,
+        "episode_id": episode.pk,
+        "run_id": None,
+        "engine": "fish-s2-pro",
+        "model_repo": "appautomaton/fishaudio-s2-pro-8bit-mlx",
+        "voice_profiles": {
+            vp.name: {"reference_text": vp.reference_text, "version": vp.version}
+            for vp in VoiceProfile.objects.filter(
+                name__in={seg["voice_profile"] for seg in script["segments"]}
+            )
+        },
+        "rendering": {"target_loudness_lufs": -16.0, "true_peak_limit_dbtp": -1.0, "crossfade_ms": 80},
+        "script": script,
+    }
+    run = EpisodeRun.objects.create(
+        episode=episode, status=EpisodeRunStatus.AWAITING_AUDIO, manifest=manifest
+    )
+    manifest["run_id"] = run.pk
+    run.manifest = manifest
+    run.save(update_fields=["manifest"])
+
+    idea.last_repeat_run_at = timezone.now()
+    idea.save(update_fields=["last_repeat_run_at", "updated_at"])
+    return JsonResponse(
+        {
+            "episode_id": episode.pk,
+            "episode_slug": episode.slug,
+            "episode_number": episode.episode_number,
+            "run_id": run.pk,
+            "completed_at": idea.last_repeat_run_at.isoformat(),
+        },
+        status=201,
+    )
 
 
 @require_api_token
@@ -1055,6 +1225,7 @@ urlpatterns = [
     path("ideas/<int:pk>/artifacts/<int:artifact_pk>/", idea_artifact, name="api_idea_artifact_update"),
     path("ideas/<int:pk>/reconcile-pr/", idea_reconcile_pr, name="api_idea_reconcile_pr"),
     path("ideas/<int:pk>/repeat-results/", idea_repeat_results, name="api_idea_repeat_results"),
+    path("ideas/<int:pk>/podcast-episode/", idea_podcast_episode, name="api_idea_podcast_episode"),
     path(
         "ideas/<int:pk>/resources/<int:resource_pk>/",
         idea_resource,
