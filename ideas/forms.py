@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import Artifact, AIModel, Category, Idea, IdeaRelation, ResearchEntry, Resource, Stage, Status
+from .models import Artifact, AIModel, Category, Idea, IdeaRelation, PodcastShow, ResearchEntry, Resource, Stage, Status
 
 
 class ParentIdeaSelect(forms.Select):
@@ -187,6 +187,47 @@ class IdeaRelationForm(forms.ModelForm):
         if cleaned.get("source") == cleaned.get("target"):
             raise forms.ValidationError("An idea cannot relate to itself.")
         return cleaned
+
+
+class PodcastShowForm(forms.ModelForm):
+    class Meta:
+        model = PodcastShow
+        fields = [
+            "title", "slug", "description", "host_name", "cover_image",
+            "language", "category", "is_explicit",
+            "target_episode_duration_seconds", "is_publicly_listed",
+        ]
+        # default_tts_engine isn't exposed — Phase 1 only ever renders with
+        # fish-s2-pro (see idea_podcast_episode in api.py), so a field with
+        # exactly one valid value would just invite confusion.
+
+
+class PodcastSourceForm(forms.Form):
+    """Attaches another idea's research to a podcast idea via a "supports"
+    IdeaRelation — the podcast page's own shortcut for the relationship the
+    Graph tab's general-purpose form can also create.
+
+    The picker is scoped to ideas the requesting user can actually see —
+    the same is_public-or-can_manage test the idea detail page's own read
+    gate uses — never every idea in the instance. Once linked, a podcast's
+    repeat-task agent reads the source idea's real research and can fold
+    it into a publicly published episode, so an unscoped picker would both
+    leak idea titles the user has no business seeing and hand them the one
+    mechanism that gets private research into a public feed."""
+
+    source = forms.ModelChoiceField(queryset=Idea.objects.none(), label="Research idea")
+
+    def __init__(self, *args, user=None, exclude_idea=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = Idea.objects.none()
+        if user is not None:
+            manageable = [status for status in Status if user.profile.can_manage_status(status)]
+            queryset = Idea.objects.filter(
+                Q(status__in=manageable) | Q(is_public=True)
+            ).exclude(status=Status.ARCHIVED).order_by("title")
+        if exclude_idea is not None:
+            queryset = queryset.exclude(pk=exclude_idea.pk)
+        self.fields["source"].queryset = queryset
 
 
 class ResearchEntryForm(forms.ModelForm):

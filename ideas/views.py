@@ -17,7 +17,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
-from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, ResearchEntryForm, ResourceFormSet
+from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ResearchEntryForm, ResourceFormSet
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
@@ -124,6 +124,7 @@ ROLE_COLUMNS = [
     ("role_add_ideas", "Add Ideas"),
     ("role_graph", "Knowledge Graph"),
     ("role_weekly_summary", "Weekly Summary"),
+    ("role_podcast", "Podcast"),
 ]
 ROLE_FIELDS = [field for field, _label in ROLE_COLUMNS]
 
@@ -152,6 +153,27 @@ def _require_status_role(request, status):
         return None
     messages.error(request, "You don't have access to that.")
     return redirect("ideas:home")
+
+
+def _require_podcast_role(request):
+    """Podcast production is gated by its own role, on top of whatever tab
+    role governs the idea it lives on — like role_graph gates the whole
+    Graph tab, role_podcast gates the whole podcast feature (setup, source
+    links, and every episode action) regardless of what else the user can
+    manage."""
+    if request.user.profile.has_role("role_podcast"):
+        return None
+    messages.error(request, "You don't have access to that.")
+    return redirect("ideas:home")
+
+
+def _require_podcast_access(request, status):
+    """The combined gate every mutating podcast view needs: the idea's own
+    tab-management role, and the separate podcast role."""
+    denied = _require_status_role(request, status)
+    if denied:
+        return denied
+    return _require_podcast_role(request)
 
 
 def _tabs(profile):
@@ -692,6 +714,7 @@ def detail(request, pk):
         Idea.objects.select_related("parent", "created_by").prefetch_related(
             "resources", "artifacts__research_entry", "referenced_artifacts__idea", "research_entries", "research_entries__model", "children", "repeat_results",
             "idea_personas__persona", "podcast_show__episodes__runs",
+            "incoming_relations__source",
         ),
         pk=pk,
     )
@@ -713,6 +736,12 @@ def detail(request, pk):
         entry.rendered_context = render_research_context(
             entry.context, research_entry_ids
         )
+    has_podcast_role = request.user.profile.has_role("role_podcast")
+    podcast_show = getattr(idea, "podcast_show", None)
+    podcast_sources = [
+        relation for relation in idea.incoming_relations.all()
+        if relation.relation_type == RelationType.SUPPORTS
+    ] if podcast_show else []
     return render(
         request,
         "ideas/detail.html",
@@ -721,6 +750,7 @@ def detail(request, pk):
             "tabs": _tabs(request.user.profile),
             "active": idea.status,
             "can_manage": can_manage,
+            "has_podcast_role": has_podcast_role,
             "idea_feeds": idea_feeds,
             "articles": recent_articles(idea),
             "repeat_result_statuses": RepeatResultStatus.choices,
@@ -729,6 +759,11 @@ def detail(request, pk):
             "suggested_children": [
                 line for line in idea.suggested_children.splitlines() if line.strip()
             ],
+            "podcast_sources": podcast_sources,
+            "podcast_source_form": (
+                PodcastSourceForm(user=request.user, exclude_idea=idea)
+                if podcast_show and can_manage and has_podcast_role else None
+            ),
         },
     )
 
@@ -1164,6 +1199,77 @@ def delete_artifact(request, pk, artifact_pk):
     return redirect("ideas:detail", pk=pk)
 
 
+@login_required
+def podcast_show_form(request, pk):
+    """Create or edit the PodcastShow attached to this idea — the show's
+    setup used to be admin-only; this is the same form, on the idea's own
+    page, gated the same way as every other idea-editing action."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_podcast_access(request, idea.status)
+    if denied:
+        return denied
+    show = getattr(idea, "podcast_show", None)
+    form = PodcastShowForm(request.POST or None, request.FILES or None, instance=show)
+    if request.method == "POST" and form.is_valid():
+        show = form.save(commit=False)
+        show.idea = idea
+        show.save()
+        messages.success(request, "Podcast settings saved.")
+        return redirect("ideas:detail", pk=pk)
+    return render(
+        request,
+        "ideas/podcast_show_form.html",
+        {
+            "idea": idea,
+            "show": show,
+            "form": form,
+            "tabs": _tabs(request.user.profile),
+            "active": idea.status,
+        },
+    )
+
+
+@login_required
+@require_POST
+def add_podcast_source(request, pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_podcast_access(request, idea.status)
+    if denied:
+        return denied
+    if getattr(idea, "podcast_show", None) is None:
+        messages.error(request, "Set up the podcast before adding a research source.")
+        return redirect("ideas:detail", pk=pk)
+    form = PodcastSourceForm(request.POST, user=request.user, exclude_idea=idea)
+    if not form.is_valid():
+        messages.error(request, "; ".join(e for errs in form.errors.values() for e in errs))
+        return redirect("ideas:detail", pk=pk)
+    source = form.cleaned_data["source"]
+    _, created = IdeaRelation.objects.get_or_create(
+        source=source, target=idea, relation_type=RelationType.SUPPORTS,
+        defaults={"created_by": request.user, "provenance": RelationProvenance.HUMAN},
+    )
+    if created:
+        messages.success(request, f"“{source.title}” now feeds this podcast's research.")
+    else:
+        messages.error(request, "That idea is already connected.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+@require_POST
+def remove_podcast_source(request, pk, relation_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_podcast_access(request, idea.status)
+    if denied:
+        return denied
+    relation = get_object_or_404(
+        IdeaRelation, pk=relation_pk, target=idea, relation_type=RelationType.SUPPORTS
+    )
+    relation.delete()
+    messages.success(request, "Research source removed.")
+    return redirect("ideas:detail", pk=pk)
+
+
 def _get_episode(idea, episode_pk):
     return get_object_or_404(
         Episode.objects.select_related("show").prefetch_related("runs"),
@@ -1181,6 +1287,9 @@ def episode_audio_preview(request, pk, episode_pk):
     if not (idea.is_public or can_manage):
         messages.error(request, "You don't have access to that.")
         return redirect("ideas:home")
+    denied = _require_podcast_role(request)
+    if denied:
+        return denied
     episode = _get_episode(idea, episode_pk)
     if not episode.audio_file:
         raise Http404
@@ -1196,6 +1305,9 @@ def episode_review(request, pk, episode_pk):
     if not (idea.is_public or can_manage):
         messages.error(request, "You don't have access to that.")
         return redirect("ideas:home")
+    denied = _require_podcast_role(request)
+    if denied:
+        return denied
     episode = _get_episode(idea, episode_pk)
     latest_run = episode.runs.order_by("-created_at").first()
     return render(
@@ -1216,7 +1328,7 @@ def episode_review(request, pk, episode_pk):
 @require_POST
 def update_episode(request, pk, episode_pk):
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1232,7 +1344,7 @@ def update_episode(request, pk, episode_pk):
 @require_POST
 def approve_and_publish_episode(request, pk, episode_pk):
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1261,7 +1373,7 @@ def reject_episode(request, pk, episode_pk):
     draft (never publishable in its current state) without deleting
     anything, so its script/render-report stay available to inspect."""
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1286,7 +1398,7 @@ def cancel_episode_run(request, pk, episode_pk):
     too (alongside the terminal statuses) rather than letting either
     action silently do the other's job on the same run."""
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1316,7 +1428,7 @@ def regenerate_episode(request, pk, episode_pk):
     rather than run so a resumed render can selectively reuse segments —
     deferred, not silently different from what the plan describes."""
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1351,7 +1463,7 @@ def regenerate_episode(request, pk, episode_pk):
 @require_POST
 def unpublish_episode(request, pk, episode_pk):
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
@@ -1364,7 +1476,7 @@ def unpublish_episode(request, pk, episode_pk):
 @require_POST
 def delete_episode(request, pk, episode_pk):
     idea = get_object_or_404(Idea, pk=pk)
-    denied = _require_status_role(request, idea.status)
+    denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)

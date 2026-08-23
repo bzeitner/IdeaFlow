@@ -1,0 +1,18 @@
+{% extends "ideas/base.html" %}
+{% block title %}{% if show %}Podcast settings{% else %}Set up podcast{% endif %} · {{ idea.title }} · IdeaFlow{% endblock %}
+{% block content %}
+  <form method="post" enctype="multipart/form-data" class="idea-form">
+    {% csrf_token %}
+    <div class="form-topbar">
+      <div><h2>{% if show %}Podcast settings{% else %}Set up podcast{% endif %}</h2><span class="dim">{{ idea.title }}</span></div>
+      <div class="form-topbar-actions"><a class="btn" href="{{ idea.get_absolute_url }}">Cancel</a><button class="btn primary" type="submit">Save</button></div>
+    </div>
+    {{ form.non_field_errors }}
+    {% for field in form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+        {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
+      </div>
+    {% endfor %}
+  </form>
+{% endblock %}

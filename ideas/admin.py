@@ -464,6 +464,7 @@ class ProfileAdmin(TooltipAdminMixin, admin.ModelAdmin):
         "role_add_ideas",
         "role_graph",
         "role_weekly_summary",
+        "role_podcast",
     )
     list_editable = (
         "role_admin",
@@ -473,7 +474,8 @@ class ProfileAdmin(TooltipAdminMixin, admin.ModelAdmin):
         "role_add_ideas",
         "role_graph",
         "role_weekly_summary",
+        "role_podcast",
     )
-    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas", "role_graph", "role_weekly_summary")
+    list_filter = ("role_admin", "role_current", "role_tracking", "role_archive", "role_add_ideas", "role_graph", "role_weekly_summary", "role_podcast")
     search_fields = ("user__email", "user__username")
     list_select_related = ("user",)

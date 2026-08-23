@@ -7,7 +7,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, PersonaReview, Profile, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -1258,7 +1258,7 @@ class ArtifactViewTests(TestCase):
 class EpisodeViewTests(TestCase):
     def setUp(self):
         self.idea = make_idea(status=Status.CURRENT)
-        self.user = make_user(roles=["role_current"])
+        self.user = make_user(roles=["role_current", "role_podcast"])
         self.client.force_login(self.user, backend=MODEL_BACKEND)
         self.show = make_podcast_show(idea=self.idea)
         self.episode = make_episode(show=self.show, title="Ep One")
@@ -1433,6 +1433,230 @@ class EpisodeViewTests(TestCase):
             reverse("ideas:episode_audio_preview", args=[self.idea.pk, self.episode.pk])
         )
         self.assertEqual(response.status_code, 404)
+
+
+class PodcastShowFormTests(TestCase):
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT)
+        self.user = make_user(roles=["role_current", "role_podcast"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_idea_without_a_podcast_show_offers_setup_link(self):
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertContains(response, "Set up podcast")
+        self.assertNotContains(response, "Edit podcast settings")
+
+    def test_can_create_a_podcast_show(self):
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {
+                "title": "The Weekly Signal", "slug": "the-weekly-signal",
+                "description": "A show.", "host_name": "Host", "language": "en",
+                "category": "Technology", "is_publicly_listed": "on",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.idea.refresh_from_db()
+        self.assertEqual(self.idea.podcast_show.title, "The Weekly Signal")
+        self.assertTrue(self.idea.podcast_show.is_publicly_listed)
+
+    def test_can_edit_an_existing_podcast_show(self):
+        show = make_podcast_show(idea=self.idea, title="Old Title")
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {
+                "title": "New Title", "slug": show.slug, "description": "",
+                "host_name": "", "language": "en", "category": "",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        show.refresh_from_db()
+        self.assertEqual(show.title, "New Title")
+        self.assertEqual(PodcastShow.objects.count(), 1)
+
+    def test_setup_requires_manage_role(self):
+        other = make_user("noroles@example.com")
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {"title": "X", "slug": "x", "language": "en"},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(PodcastShow.objects.filter(idea=self.idea).exists())
+
+
+class PodcastSourceLinkTests(TestCase):
+    def setUp(self):
+        self.research_idea = make_idea(title="Research Idea", status=Status.CURRENT)
+        self.podcast_idea = make_idea(title="Podcast Idea", status=Status.CURRENT)
+        make_podcast_show(idea=self.podcast_idea)
+        self.user = make_user(roles=["role_current", "role_podcast"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_can_link_a_research_idea_as_a_source(self):
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertTrue(
+            IdeaRelation.objects.filter(
+                source=self.research_idea, target=self.podcast_idea,
+                relation_type=RelationType.SUPPORTS,
+            ).exists()
+        )
+
+    def test_linked_source_appears_on_the_podcast_idea_page(self):
+        IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertContains(response, "Research Idea")
+
+    def test_duplicate_link_is_rejected_without_erroring(self):
+        IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertEqual(
+            IdeaRelation.objects.filter(
+                source=self.research_idea, target=self.podcast_idea,
+                relation_type=RelationType.SUPPORTS,
+            ).count(),
+            1,
+        )
+
+    def test_cannot_link_an_idea_to_itself(self):
+        form_response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertNotContains(
+            form_response,
+            f'<option value="{self.podcast_idea.pk}">{self.podcast_idea.title}</option>',
+        )
+
+    def test_cannot_add_a_source_without_a_podcast_show(self):
+        idea = make_idea(status=Status.CURRENT)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        self.assertFalse(IdeaRelation.objects.filter(target=idea).exists())
+
+    def test_can_remove_a_linked_source(self):
+        relation = IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.post(
+            reverse("ideas:remove_podcast_source", args=[self.podcast_idea.pk, relation.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertFalse(IdeaRelation.objects.filter(pk=relation.pk).exists())
+
+    def test_add_source_requires_manage_role(self):
+        other = make_user("noroles@example.com")
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(IdeaRelation.objects.filter(target=self.podcast_idea).exists())
+
+    def test_source_picker_excludes_ideas_the_user_cannot_see(self):
+        # Regression test: the picker used to list every idea in the
+        # instance regardless of the requester's own tab roles — leaking
+        # private idea titles, and letting their content be linked into a
+        # public podcast.
+        private_idea = make_idea(title="Private Tracking Idea", status=Status.TRACKING)
+        response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertContains(response, "Research Idea")  # the user can manage Current
+        self.assertNotContains(response, "Private Tracking Idea")
+
+    def test_cannot_add_a_source_the_user_cannot_see(self):
+        private_idea = make_idea(title="Private Tracking Idea", status=Status.TRACKING)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": private_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertFalse(
+            IdeaRelation.objects.filter(source=private_idea, target=self.podcast_idea).exists()
+        )
+
+    def test_can_add_a_public_idea_the_user_does_not_manage(self):
+        public_idea = make_idea(title="Public Tracking Idea", status=Status.TRACKING, is_public=True)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": public_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertTrue(
+            IdeaRelation.objects.filter(source=public_idea, target=self.podcast_idea).exists()
+        )
+
+
+class PodcastRoleGateTests(TestCase):
+    """role_podcast is a separate, additional gate on top of the idea's own
+    tab-management role — like role_graph gates the whole Graph tab."""
+
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT, is_public=True)
+        self.show = make_podcast_show(idea=self.idea)
+        self.episode = make_episode(show=self.show)
+
+    def test_manage_role_alone_is_not_enough_to_set_up_a_podcast(self):
+        user = make_user(roles=["role_current"])  # no role_podcast
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        idea = make_idea(status=Status.CURRENT)
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[idea.pk]),
+            {"title": "X", "slug": "x", "language": "en"},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(PodcastShow.objects.filter(idea=idea).exists())
+
+    def test_podcast_role_alone_is_not_enough_without_the_tab_role(self):
+        user = make_user(roles=["role_podcast"])  # no role_current
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertTrue(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_admin_bypasses_role_podcast(self):
+        user = make_user(roles=["role_admin"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertFalse(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_episode_review_page_requires_role_podcast_even_on_a_public_idea(self):
+        # is_public grants read access to the idea itself, but not to its
+        # podcast production details.
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(
+            reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_podcast_section_is_hidden_from_the_detail_page_without_role_podcast(self):
+        user = make_user(roles=["role_current"])  # can manage the idea, but no role_podcast
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertNotContains(response, "Set up podcast")
+        self.assertNotContains(response, "Edit podcast settings")
+        self.assertNotContains(response, self.episode.title)
 
 
 class PublicDetailAccessTests(TestCase):
