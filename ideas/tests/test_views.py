@@ -1258,7 +1258,7 @@ class ArtifactViewTests(TestCase):
 class EpisodeViewTests(TestCase):
     def setUp(self):
         self.idea = make_idea(status=Status.CURRENT)
-        self.user = make_user(roles=["role_current"])
+        self.user = make_user(roles=["role_current", "role_podcast"])
         self.client.force_login(self.user, backend=MODEL_BACKEND)
         self.show = make_podcast_show(idea=self.idea)
         self.episode = make_episode(show=self.show, title="Ep One")
@@ -1438,7 +1438,7 @@ class EpisodeViewTests(TestCase):
 class PodcastShowFormTests(TestCase):
     def setUp(self):
         self.idea = make_idea(status=Status.CURRENT)
-        self.user = make_user(roles=["role_current"])
+        self.user = make_user(roles=["role_current", "role_podcast"])
         self.client.force_login(self.user, backend=MODEL_BACKEND)
 
     def test_idea_without_a_podcast_show_offers_setup_link(self):
@@ -1490,7 +1490,7 @@ class PodcastSourceLinkTests(TestCase):
         self.research_idea = make_idea(title="Research Idea", status=Status.CURRENT)
         self.podcast_idea = make_idea(title="Podcast Idea", status=Status.CURRENT)
         make_podcast_show(idea=self.podcast_idea)
-        self.user = make_user(roles=["role_current"])
+        self.user = make_user(roles=["role_current", "role_podcast"])
         self.client.force_login(self.user, backend=MODEL_BACKEND)
 
     def test_can_link_a_research_idea_as_a_source(self):
@@ -1568,6 +1568,63 @@ class PodcastSourceLinkTests(TestCase):
         )
         self.assertNotEqual(response.status_code, 200)
         self.assertFalse(IdeaRelation.objects.filter(target=self.podcast_idea).exists())
+
+
+class PodcastRoleGateTests(TestCase):
+    """role_podcast is a separate, additional gate on top of the idea's own
+    tab-management role — like role_graph gates the whole Graph tab."""
+
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT, is_public=True)
+        self.show = make_podcast_show(idea=self.idea)
+        self.episode = make_episode(show=self.show)
+
+    def test_manage_role_alone_is_not_enough_to_set_up_a_podcast(self):
+        user = make_user(roles=["role_current"])  # no role_podcast
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        idea = make_idea(status=Status.CURRENT)
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[idea.pk]),
+            {"title": "X", "slug": "x", "language": "en"},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(PodcastShow.objects.filter(idea=idea).exists())
+
+    def test_podcast_role_alone_is_not_enough_without_the_tab_role(self):
+        user = make_user(roles=["role_podcast"])  # no role_current
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertTrue(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_admin_bypasses_role_podcast(self):
+        user = make_user(roles=["role_admin"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertFalse(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_episode_review_page_requires_role_podcast_even_on_a_public_idea(self):
+        # is_public grants read access to the idea itself, but not to its
+        # podcast production details.
+        user = make_user(roles=[])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(
+            reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_podcast_section_is_hidden_from_the_detail_page_without_role_podcast(self):
+        user = make_user(roles=["role_current"])  # can manage the idea, but no role_podcast
+        self.client.force_login(user, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertNotContains(response, "Set up podcast")
+        self.assertNotContains(response, "Edit podcast settings")
+        self.assertNotContains(response, self.episode.title)
 
 
 class PublicDetailAccessTests(TestCase):

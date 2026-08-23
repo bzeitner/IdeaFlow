@@ -275,7 +275,7 @@
       </ul>
     {% endif %}
 
-    {% if idea.podcast_show %}
+    {% if has_podcast_role and idea.podcast_show %}
       <div class="card-head research-heading">
         <h4>Podcast</h4>
         {% if can_manage %}<a class="btn small" href="{% url 'ideas:podcast_show_form' idea.pk %}">Edit podcast settings</a>{% endif %}
@@ -341,7 +341,7 @@
       {% else %}
         <p class="dim">No episodes yet.</p>
       {% endif %}
-    {% elif can_manage %}
+    {% elif has_podcast_role and can_manage %}
       <div class="card-head research-heading">
         <h4>Podcast</h4>
         <a class="btn small" href="{% url 'ideas:podcast_show_form' idea.pk %}">+ Set up podcast</a>

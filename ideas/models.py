@@ -1443,6 +1443,10 @@ class Profile(models.Model):
     role_weekly_summary = models.BooleanField(
         default=False, help_text="View weekly portfolio executive summaries."
     )
+    role_podcast = models.BooleanField(
+        default=False,
+        help_text="Set up podcast shows, link research sources, and review/publish episodes.",
+    )
     last_seen_at = models.DateTimeField(
         null=True, blank=True,
         help_text="Last authenticated request, updated by TrackLastSeenMiddleware. "
