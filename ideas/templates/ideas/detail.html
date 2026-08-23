@@ -283,6 +283,13 @@
       <div class="meta">
         <strong>{{ idea.podcast_show.title }}</strong>
         <span class="pill">{% if idea.podcast_show.is_publicly_listed %}Public{% else %}Not listed{% endif %}</span>
+        {% if idea.podcast_show.is_publicly_listed %}
+          {# Deliberately shown only here, on this authenticated management
+             page — never on a public page. See podcast_views.py's module
+             docstring: no public page links feed.xml, so directories only
+             get it via one-time manual submission. #}
+          <a href="{% url 'ideas:podcast_feed' idea.podcast_show.slug %}">RSS feed</a>
+        {% endif %}
       </div>
 
       <p class="dim">Research sources</p>

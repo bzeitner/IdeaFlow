@@ -1583,11 +1583,21 @@ def artifacts(request):
     page = Paginator(items, 25).get_page(request.GET.get("page"))
     for artifact in page.object_list:
         artifact.can_manage = profile.can_manage_status(artifact.idea.status)
+    # Published episodes are their own kind of artifact, but live on Episode/
+    # PodcastShow rather than the Artifact model, so they're queried and
+    # listed separately here. Only publicly-listed shows' published episodes
+    # qualify — same visibility rule the public podcast pages themselves use.
+    episodes = (
+        Episode.objects.filter(status=EpisodeStatus.PUBLISHED, show__is_publicly_listed=True)
+        .select_related("show")
+        .order_by("-published_at")
+    )
     return render(
         request,
         "ideas/artifacts.html",
         {
             "page": page,
+            "episodes": episodes,
             "tabs": _tabs(profile),
         },
     )
