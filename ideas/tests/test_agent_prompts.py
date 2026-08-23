@@ -108,7 +108,10 @@ class AgentPromptTests(SimpleTestCase):
         # The podcast path must draw from a connected research idea's actual
         # research, not invent content from web search alone.
         self.assertIn("supporting idea's actual", text)
-        self.assertIn("say so as a blocker", text)
+        self.assertIn("say so plainly", text)
+        # A human not having rated/starred the source research must not read
+        # as a reason to withhold it -- absence of a rating isn't a signal.
+        self.assertIn("reason to hold back", text)
         self.assertIn("create-podcast-episode 123", text)
         self.assertIn("do not also call", text)
         self.assertIn("log-repeat-results for a podcast idea", text)

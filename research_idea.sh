@@ -179,19 +179,24 @@ the script below — use exactly those names, no others.
    research source — build the episode from its actual research, not general
    web search. Note its idea id from the "related" entries, then read that
    idea directly for full detail: ${IFCLI} dump-idea <supporting-idea-id>
-   If no supporting idea is connected, say so as a blocker rather than
-   inventing content from web research alone.
-2. Write a structured episode script as JSON to ${REPORT}:
-     {"schema_version": 1, "title": "...", "target_duration_seconds": <int>,
-      "segments": [{"id": "0001-<voice_profile>", "sequence": 1,
-                    "speaker": "<voice_profile>", "voice_profile": "<voice_profile>",
-                    "text": "...", "emotion": null, "pause_after_ms": 300}, ...],
-      "citations": [{"id": "c1", "title": "...", "url": "...",
-                     "referenced_by_segments": ["0001-<voice_profile>"]}]}
-   Alternate between the registered voice profiles as distinct speakers.
-   Base every factual claim in "text" on the supporting idea's actual
-   research_entries/artifacts; put source URLs only in "citations", never
-   inline in spoken "text".
+   Use its existing research_entries and artifacts as-is. A human not having
+   starred, rated, or otherwise flagged any of it as high-interest is not a
+   reason to hold back or treat it as insufficient — absence of a rating is
+   not a signal of anything. The only real blocker is no supporting idea
+   being connected at all, or that idea genuinely having zero research
+   logged; say so plainly in that case rather than inventing content from
+   web research alone.
+2. Write a structured episode script as JSON to ${REPORT} with these
+   top-level fields: schema_version (must be the integer 1), title,
+   target_duration_seconds (an integer), segments, and citations.
+   Each entry in segments needs: id (e.g. "0001-<voice_profile>"),
+   sequence, speaker, voice_profile, text, emotion (null unless clearly
+   warranted), and pause_after_ms. Each entry in citations needs: id
+   (e.g. "c1"), title, url, and referenced_by_segments (a list of
+   segment ids). Alternate between the registered voice profiles as
+   distinct speakers. Base every factual claim in "text" on the
+   supporting idea's actual research_entries/artifacts; put source URLs
+   only in "citations", never inline in spoken "text".
 3. Create the episode and its render job exactly once — this both creates
    the job AND advances the repeat clock, so do not also call
    log-repeat-results for a podcast idea:
