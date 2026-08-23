@@ -89,6 +89,13 @@ urlpatterns = [
     path("<int:pk>/episodes/<int:episode_pk>/regenerate/", views.regenerate_episode, name="regenerate_episode"),
     path("<int:pk>/episodes/<int:episode_pk>/unpublish/", views.unpublish_episode, name="unpublish_episode"),
     path("<int:pk>/episodes/<int:episode_pk>/delete/", views.delete_episode, name="delete_episode"),
+    path("<int:pk>/podcast/", views.podcast_show_form, name="podcast_show_form"),
+    path("<int:pk>/podcast/sources/", views.add_podcast_source, name="add_podcast_source"),
+    path(
+        "<int:pk>/podcast/sources/<int:relation_pk>/remove/",
+        views.remove_podcast_source,
+        name="remove_podcast_source",
+    ),
     path(
         "<int:pk>/research/<int:entry_pk>/answers/",
         views.answer_research_questions,

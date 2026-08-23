@@ -277,6 +277,40 @@
 
     {% if idea.podcast_show %}
       <div class="card-head research-heading">
+        <h4>Podcast</h4>
+        {% if can_manage %}<a class="btn small" href="{% url 'ideas:podcast_show_form' idea.pk %}">Edit podcast settings</a>{% endif %}
+      </div>
+      <div class="meta">
+        <strong>{{ idea.podcast_show.title }}</strong>
+        <span class="pill">{% if idea.podcast_show.is_publicly_listed %}Public{% else %}Not listed{% endif %}</span>
+      </div>
+
+      <p class="dim">Research sources</p>
+      {% if podcast_sources %}
+        <ul class="artifact-links">
+          {% for relation in podcast_sources %}
+            <li>
+              <a href="{{ relation.source.get_absolute_url }}">{{ relation.source.title }}</a>
+              {% if can_manage %}
+                <form class="inline-form" method="post" action="{% url 'ideas:remove_podcast_source' idea.pk relation.pk %}">
+                  {% csrf_token %}<button class="btn small" type="submit">Remove</button>
+                </form>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="dim">No research source connected yet — this podcast has nothing to draw episodes from.</p>
+      {% endif %}
+      {% if podcast_source_form %}
+        <form class="inline-form" method="post" action="{% url 'ideas:add_podcast_source' idea.pk %}">
+          {% csrf_token %}
+          {{ podcast_source_form.source }}
+          <button class="btn small" type="submit">Add research source</button>
+        </form>
+      {% endif %}
+
+      <div class="card-head research-heading">
         <h4>Episodes</h4>
       </div>
       {% if idea.podcast_show.episodes.all %}
@@ -307,6 +341,11 @@
       {% else %}
         <p class="dim">No episodes yet.</p>
       {% endif %}
+    {% elif can_manage %}
+      <div class="card-head research-heading">
+        <h4>Podcast</h4>
+        <a class="btn small" href="{% url 'ideas:podcast_show_form' idea.pk %}">+ Set up podcast</a>
+      </div>
     {% endif %}
 
     <div class="card-head research-heading">

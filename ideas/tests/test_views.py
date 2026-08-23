@@ -7,7 +7,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, PersonaReview, Profile, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -1433,6 +1433,141 @@ class EpisodeViewTests(TestCase):
             reverse("ideas:episode_audio_preview", args=[self.idea.pk, self.episode.pk])
         )
         self.assertEqual(response.status_code, 404)
+
+
+class PodcastShowFormTests(TestCase):
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT)
+        self.user = make_user(roles=["role_current"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_idea_without_a_podcast_show_offers_setup_link(self):
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertContains(response, "Set up podcast")
+        self.assertNotContains(response, "Edit podcast settings")
+
+    def test_can_create_a_podcast_show(self):
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {
+                "title": "The Weekly Signal", "slug": "the-weekly-signal",
+                "description": "A show.", "host_name": "Host", "language": "en",
+                "category": "Technology", "is_publicly_listed": "on",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.idea.refresh_from_db()
+        self.assertEqual(self.idea.podcast_show.title, "The Weekly Signal")
+        self.assertTrue(self.idea.podcast_show.is_publicly_listed)
+
+    def test_can_edit_an_existing_podcast_show(self):
+        show = make_podcast_show(idea=self.idea, title="Old Title")
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {
+                "title": "New Title", "slug": show.slug, "description": "",
+                "host_name": "", "language": "en", "category": "",
+            },
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        show.refresh_from_db()
+        self.assertEqual(show.title, "New Title")
+        self.assertEqual(PodcastShow.objects.count(), 1)
+
+    def test_setup_requires_manage_role(self):
+        other = make_user("noroles@example.com")
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {"title": "X", "slug": "x", "language": "en"},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(PodcastShow.objects.filter(idea=self.idea).exists())
+
+
+class PodcastSourceLinkTests(TestCase):
+    def setUp(self):
+        self.research_idea = make_idea(title="Research Idea", status=Status.CURRENT)
+        self.podcast_idea = make_idea(title="Podcast Idea", status=Status.CURRENT)
+        make_podcast_show(idea=self.podcast_idea)
+        self.user = make_user(roles=["role_current"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def test_can_link_a_research_idea_as_a_source(self):
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertTrue(
+            IdeaRelation.objects.filter(
+                source=self.research_idea, target=self.podcast_idea,
+                relation_type=RelationType.SUPPORTS,
+            ).exists()
+        )
+
+    def test_linked_source_appears_on_the_podcast_idea_page(self):
+        IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertContains(response, "Research Idea")
+
+    def test_duplicate_link_is_rejected_without_erroring(self):
+        IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertEqual(
+            IdeaRelation.objects.filter(
+                source=self.research_idea, target=self.podcast_idea,
+                relation_type=RelationType.SUPPORTS,
+            ).count(),
+            1,
+        )
+
+    def test_cannot_link_an_idea_to_itself(self):
+        form_response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertNotContains(
+            form_response,
+            f'<option value="{self.podcast_idea.pk}">{self.podcast_idea.title}</option>',
+        )
+
+    def test_cannot_add_a_source_without_a_podcast_show(self):
+        idea = make_idea(status=Status.CURRENT)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        self.assertFalse(IdeaRelation.objects.filter(target=idea).exists())
+
+    def test_can_remove_a_linked_source(self):
+        relation = IdeaRelation.objects.create(
+            source=self.research_idea, target=self.podcast_idea,
+            relation_type=RelationType.SUPPORTS,
+        )
+        response = self.client.post(
+            reverse("ideas:remove_podcast_source", args=[self.podcast_idea.pk, relation.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertFalse(IdeaRelation.objects.filter(pk=relation.pk).exists())
+
+    def test_add_source_requires_manage_role(self):
+        other = make_user("noroles@example.com")
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": self.research_idea.pk},
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(IdeaRelation.objects.filter(target=self.podcast_idea).exists())
 
 
 class PublicDetailAccessTests(TestCase):
