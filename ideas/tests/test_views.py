@@ -1569,6 +1569,38 @@ class PodcastSourceLinkTests(TestCase):
         self.assertNotEqual(response.status_code, 200)
         self.assertFalse(IdeaRelation.objects.filter(target=self.podcast_idea).exists())
 
+    def test_source_picker_excludes_ideas_the_user_cannot_see(self):
+        # Regression test: the picker used to list every idea in the
+        # instance regardless of the requester's own tab roles — leaking
+        # private idea titles, and letting their content be linked into a
+        # public podcast.
+        private_idea = make_idea(title="Private Tracking Idea", status=Status.TRACKING)
+        response = self.client.get(reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertContains(response, "Research Idea")  # the user can manage Current
+        self.assertNotContains(response, "Private Tracking Idea")
+
+    def test_cannot_add_a_source_the_user_cannot_see(self):
+        private_idea = make_idea(title="Private Tracking Idea", status=Status.TRACKING)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": private_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertFalse(
+            IdeaRelation.objects.filter(source=private_idea, target=self.podcast_idea).exists()
+        )
+
+    def test_can_add_a_public_idea_the_user_does_not_manage(self):
+        public_idea = make_idea(title="Public Tracking Idea", status=Status.TRACKING, is_public=True)
+        response = self.client.post(
+            reverse("ideas:add_podcast_source", args=[self.podcast_idea.pk]),
+            {"source": public_idea.pk},
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.podcast_idea.pk]))
+        self.assertTrue(
+            IdeaRelation.objects.filter(source=public_idea, target=self.podcast_idea).exists()
+        )
+
 
 class PodcastRoleGateTests(TestCase):
     """role_podcast is a separate, additional gate on top of the idea's own

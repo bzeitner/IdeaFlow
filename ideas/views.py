@@ -761,7 +761,7 @@ def detail(request, pk):
             ],
             "podcast_sources": podcast_sources,
             "podcast_source_form": (
-                PodcastSourceForm(exclude_idea=idea)
+                PodcastSourceForm(user=request.user, exclude_idea=idea)
                 if podcast_show and can_manage and has_podcast_role else None
             ),
         },
@@ -1239,7 +1239,7 @@ def add_podcast_source(request, pk):
     if getattr(idea, "podcast_show", None) is None:
         messages.error(request, "Set up the podcast before adding a research source.")
         return redirect("ideas:detail", pk=pk)
-    form = PodcastSourceForm(request.POST, exclude_idea=idea)
+    form = PodcastSourceForm(request.POST, user=request.user, exclude_idea=idea)
     if not form.is_valid():
         messages.error(request, "; ".join(e for errs in form.errors.values() for e in errs))
         return redirect("ideas:detail", pk=pk)
