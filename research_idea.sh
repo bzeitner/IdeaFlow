@@ -179,8 +179,13 @@ the script below — use exactly those names, no others.
    research source — build the episode from its actual research, not general
    web search. Note its idea id from the "related" entries, then read that
    idea directly for full detail: ${IFCLI} dump-idea <supporting-idea-id>
-   If no supporting idea is connected, say so as a blocker rather than
-   inventing content from web research alone.
+   Use its existing research_entries and artifacts as-is. A human not having
+   starred, rated, or otherwise flagged any of it as high-interest is not a
+   reason to hold back or treat it as insufficient — absence of a rating is
+   not a signal of anything. The only real blocker is no supporting idea
+   being connected at all, or that idea genuinely having zero research
+   logged; say so plainly in that case rather than inventing content from
+   web research alone.
 2. Write a structured episode script as JSON to ${REPORT}:
      {"schema_version": 1, "title": "...", "target_duration_seconds": <int>,
       "segments": [{"id": "0001-<voice_profile>", "sequence": 1,
