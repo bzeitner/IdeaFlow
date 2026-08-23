@@ -519,6 +519,16 @@ class FeedPageTests(TestCase):
         self.assertContains(response, "Hello World")
         self.assertContains(response, "A summary.")
 
+    def test_feed_item_shows_when_it_was_downloaded(self):
+        self._login()
+        make_feed_item()
+        response = self.client.get(reverse("ideas:feeds"))
+        # Exact rendering depends on template-side timezone conversion
+        # (TIME_ZONE=America/Los_Angeles) — just confirm the label and a
+        # plausible year show up, not an independently-computed date string.
+        self.assertContains(response, "Downloaded")
+        self.assertContains(response, str(timezone.now().year))
+
     def test_rate_sets_interest(self):
         self._login()
         item = make_feed_item()
