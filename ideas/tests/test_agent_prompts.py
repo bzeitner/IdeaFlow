@@ -99,6 +99,20 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("log-repeat-results 123", text)
         self.assertIn("not log a normal effort", text)
 
+    def test_repeat_prompt_branches_on_podcast_show(self):
+        text = prompt("repeat")
+
+        self.assertIn('"podcast_show" field', text)
+        self.assertIn("Path A: podcast_show is null", text)
+        self.assertIn("Path B: podcast_show is present", text)
+        # The podcast path must draw from a connected research idea's actual
+        # research, not invent content from web search alone.
+        self.assertIn("supporting idea's actual", text)
+        self.assertIn("say so as a blocker", text)
+        self.assertIn("create-podcast-episode 123", text)
+        self.assertIn("do not also call", text)
+        self.assertIn("log-repeat-results for a podcast idea", text)
+
     def test_research_prompt_requires_a_decision_and_current_summary(self):
         text = prompt("research")
 

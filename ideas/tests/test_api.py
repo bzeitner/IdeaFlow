@@ -4,9 +4,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from ideas.models import Artifact, AIModel, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status
+from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status, VoiceProfile
 
-from .helpers import make_idea, make_stage, make_user
+from .helpers import make_idea, make_podcast_show, make_stage, make_user
 
 TOKEN = "test-token-123"
 AUTH = {"HTTP_AUTHORIZATION": f"Bearer {TOKEN}"}
@@ -642,6 +642,122 @@ class ApiRepeatResultTests(TestCase):
         idea = make_idea()
         response = self.client.get(f"/api/ideas/{idea.pk}/effort/", **AUTH)
         self.assertEqual(response.status_code, 405)
+
+
+def _make_podcast_script(**overrides):
+    script = {
+        "schema_version": 1,
+        "title": "Why Small Models Are Getting Better",
+        "target_duration_seconds": 60,
+        "segments": [
+            {
+                "id": "0001-host", "sequence": 1, "speaker": "host",
+                "voice_profile": "host-primary", "text": "Welcome back.",
+                "emotion": None, "pause_after_ms": 300,
+            },
+            {
+                "id": "0002-analyst", "sequence": 2, "speaker": "analyst",
+                "voice_profile": "analyst-primary", "text": "Glad to be here.",
+                "emotion": None, "pause_after_ms": 0,
+            },
+        ],
+        "citations": [],
+    }
+    script.update(overrides)
+    return script
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiPodcastEpisodeTests(TestCase):
+    def setUp(self):
+        VoiceProfile.objects.create(name="host-primary", speaker_label="host")
+        VoiceProfile.objects.create(name="analyst-primary", speaker_label="analyst")
+
+    def _post(self, idea, payload):
+        return self.client.post(
+            f"/api/ideas/{idea.pk}/podcast-episode/",
+            data=json.dumps(payload), content_type="application/json", **AUTH,
+        )
+
+    def test_creates_episode_and_run_and_advances_repeat_clock(self):
+        idea = make_idea(repeat_enabled=True, repeat_goal="Cover this week's research")
+        show = make_podcast_show(idea=idea)
+        response = self._post(idea, {"title": "Episode One", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+
+        episode = Episode.objects.get(pk=body["episode_id"])
+        self.assertEqual(episode.show, show)
+        self.assertEqual(episode.episode_number, 1)
+        self.assertEqual(episode.title, "Episode One")
+        self.assertEqual(episode.script["segments"][0]["text"], "Welcome back.")
+
+        run = EpisodeRun.objects.get(pk=body["run_id"])
+        self.assertEqual(run.episode, episode)
+        self.assertEqual(run.status, EpisodeRunStatus.AWAITING_AUDIO)
+        self.assertEqual(run.manifest["run_id"], run.pk)
+        self.assertEqual(run.manifest["episode_id"], episode.pk)
+        self.assertIn("host-primary", run.manifest["voice_profiles"])
+        self.assertIn("analyst-primary", run.manifest["voice_profiles"])
+
+        idea.refresh_from_db()
+        self.assertIsNotNone(idea.last_repeat_run_at)
+        self.assertFalse(idea.repeat_is_due)
+
+    def test_episode_numbers_increment_per_show(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        first = self._post(idea, {"title": "Ep 1", "script": _make_podcast_script()}).json()
+        second = self._post(idea, {"title": "Ep 2", "script": _make_podcast_script()}).json()
+        self.assertEqual(Episode.objects.get(pk=first["episode_id"]).episode_number, 1)
+        self.assertEqual(Episode.objects.get(pk=second["episode_id"]).episode_number, 2)
+
+    def test_idea_without_a_podcast_show_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 409)
+
+    def test_archived_idea_is_rejected(self):
+        idea = make_idea(repeat_enabled=True, status=Status.ARCHIVED)
+        make_podcast_show(idea=idea)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 409)
+
+    def test_paused_repeat_task_is_rejected(self):
+        idea = make_idea(repeat_enabled=True, repeat_paused=True)
+        make_podcast_show(idea=idea)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 409)
+
+    def test_unregistered_voice_profile_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        script = _make_podcast_script()
+        script["segments"][0]["voice_profile"] = "not-a-real-voice"
+        response = self._post(idea, {"title": "Ep", "script": script})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Episode.objects.count(), 0)
+
+    def test_inactive_voice_profile_is_rejected(self):
+        VoiceProfile.objects.filter(name="analyst-primary").update(is_active=False)
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_title_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        response = self._post(idea, {"script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 400)
+
+    def test_oversized_segment_text_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        script = _make_podcast_script()
+        script["segments"][0]["text"] = "x" * 3000
+        response = self._post(idea, {"title": "Ep", "script": script})
+        self.assertEqual(response.status_code, 400)
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)

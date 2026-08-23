@@ -238,6 +238,19 @@ def cmd_log_repeat_results(a):
     return _request("POST", f"/ideas/{a.id}/repeat-results/", body={"results": results})
 
 
+def cmd_create_podcast_episode(a):
+    with open(a.script_file, encoding="utf-8") as fh:
+        script = json.load(fh)
+    body = {"title": a.title, "script": script}
+    if a.description:
+        body["description"] = a.description
+    if a.show_notes:
+        body["show_notes"] = a.show_notes
+    if a.research_entry_id:
+        body["research_entry_id"] = a.research_entry_id
+    return _request("POST", f"/ideas/{a.id}/podcast-episode/", body=body)
+
+
 def cmd_submit_persona_review(a):
     with open(a.review_file, encoding="utf-8") as fh:
         body = json.load(fh)
@@ -426,6 +439,20 @@ def build_parser():
     s.add_argument("id", type=int)
     s.add_argument("--results-file", required=True, help="JSON array of result objects.")
     s.set_defaults(func=cmd_log_repeat_results)
+
+    s = sub.add_parser(
+        "create-podcast-episode",
+        help="Create a podcast episode + render job from a structured script, "
+        "and advance the idea's repeat clock. Use instead of log-repeat-results "
+        "for a podcast idea's repeat run.",
+    )
+    s.add_argument("id", type=int)
+    s.add_argument("--title", required=True)
+    s.add_argument("--script-file", required=True, help="JSON script document.")
+    s.add_argument("--description", default=None)
+    s.add_argument("--show-notes", default=None)
+    s.add_argument("--research-entry-id", type=int, default=None)
+    s.set_defaults(func=cmd_create_podcast_episode)
 
     s = sub.add_parser("submit-persona-review", help="Submit a persona council proposal and votes.")
     s.add_argument("id", type=int)
