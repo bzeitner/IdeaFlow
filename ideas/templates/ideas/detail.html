@@ -275,6 +275,40 @@
       </ul>
     {% endif %}
 
+    {% if idea.podcast_show %}
+      <div class="card-head research-heading">
+        <h4>Episodes</h4>
+      </div>
+      {% if idea.podcast_show.episodes.all %}
+        <ul class="research-list artifact-list">
+          {% for episode in idea.podcast_show.episodes.all %}
+            <li>
+              <div class="card-head">
+                <strong><a href="{% url 'ideas:episode_review' idea.pk episode.pk %}">Ep {{ episode.episode_number }}: {{ episode.title }}</a></strong>
+                <span class="pill">{{ episode.get_status_display }}</span>
+              </div>
+              {% if episode.description %}<p class="summary">{{ episode.description }}</p>{% endif %}
+              <div class="meta">
+                {% if episode.published_at %}<span class="dim">Published {{ episode.published_at|date:"M j, Y" }}</span>{% endif %}
+                {% if can_manage %}
+                  {% if episode.is_published %}
+                    <form class="inline-form" method="post" action="{% url 'ideas:unpublish_episode' idea.pk episode.pk %}">
+                      {% csrf_token %}<button class="btn small" type="submit">Unpublish</button>
+                    </form>
+                  {% endif %}
+                  <form class="inline-form" method="post" action="{% url 'ideas:delete_episode' idea.pk episode.pk %}">
+                    {% csrf_token %}<button class="btn small" type="submit">Delete</button>
+                  </form>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="dim">No episodes yet.</p>
+      {% endif %}
+    {% endif %}
+
     <div class="card-head research-heading">
       <h4>Artifacts</h4>
       {% if can_manage %}<a class="btn small" href="{% url 'ideas:add_artifact' idea.pk %}">+ Add artifact</a>{% endif %}

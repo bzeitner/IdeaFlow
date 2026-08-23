@@ -1,0 +1,29 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ show.title }}{% endblock %}
+{% block content %}
+  <article class="detail">
+    <div class="card-head">
+      <h2>{{ show.title }}</h2>
+    </div>
+    {% if show.cover_image %}
+      <img src="{{ show.cover_image.url }}" alt="" style="max-width:200px;border-radius:8px">
+    {% endif %}
+    {% if show.description %}<p class="summary">{{ show.description }}</p>{% endif %}
+    {% if show.host_name %}<p class="dim">Hosted by {{ show.host_name }}</p>{% endif %}
+
+    <div class="card-head research-heading"><h4>Episodes</h4></div>
+    <ul class="research-list artifact-list">
+      {% for episode in episodes %}
+        <li>
+          <div class="card-head">
+            <strong><a href="{% url 'ideas:podcast_episode' show.slug episode.slug %}">Ep {{ episode.episode_number }}: {{ episode.title }}</a></strong>
+            <span class="dim">{{ episode.published_at|date:"M j, Y" }}</span>
+          </div>
+          {% if episode.description %}<p class="summary">{{ episode.description }}</p>{% endif %}
+        </li>
+      {% empty %}
+        <li class="dim">No episodes published yet.</li>
+      {% endfor %}
+    </ul>
+  </article>
+{% endblock %}

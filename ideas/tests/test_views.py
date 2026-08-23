@@ -7,14 +7,16 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import Idea, PersonaReview, Profile, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, PersonaReview, Profile, Status
 
 from .helpers import (
     MODEL_BACKEND,
     make_ai_model,
     make_category,
+    make_episode,
     make_feed_item,
     make_idea,
+    make_podcast_show,
     make_user,
 )
 
@@ -1251,6 +1253,186 @@ class ArtifactViewTests(TestCase):
         self.assertIsNotNone(idea.summary_requested_at)
         detail = self.client.get(reverse("ideas:detail", args=[idea.pk]))
         self.assertContains(detail, "Summary scheduled")
+
+
+class EpisodeViewTests(TestCase):
+    def setUp(self):
+        self.idea = make_idea(status=Status.CURRENT)
+        self.user = make_user(roles=["role_current"])
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+        self.show = make_podcast_show(idea=self.idea)
+        self.episode = make_episode(show=self.show, title="Ep One")
+
+    def test_episode_appears_on_idea_detail_page(self):
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertContains(response, "Episodes")
+        self.assertContains(response, "Ep One")
+
+    def test_can_delete_episode(self):
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertFalse(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_delete_episode_requires_manage_role(self):
+        other = make_user("noroles@example.com")
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.post(
+            reverse("ideas:delete_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+        self.assertTrue(self.show.episodes.filter(pk=self.episode.pk).exists())
+
+    def test_unpublish_clears_published_at_and_status_but_keeps_the_row(self):
+        self.episode.status = EpisodeStatus.PUBLISHED
+        self.episode.published_at = timezone.now()
+        self.episode.save()
+
+        response = self.client.post(
+            reverse("ideas:unpublish_episode", args=[self.idea.pk, self.episode.pk])
+        )
+
+        self.assertRedirects(response, reverse("ideas:detail", args=[self.idea.pk]))
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.status, EpisodeStatus.UNPUBLISHED)
+        self.assertIsNone(self.episode.published_at)
+
+    def test_review_page_shows_script_and_render_report(self):
+        run = EpisodeRun.objects.create(
+            episode=self.episode,
+            status=EpisodeRunStatus.READY_FOR_REVIEW,
+            render_report={"segment_count": 2, "failures": 0, "overall_rtf": 3.0, "final": {}},
+        )
+        self.episode.script = {
+            "segments": [{"speaker": "host", "voice_profile": "host-primary", "text": "Hello there."}]
+        }
+        self.episode.save(update_fields=["script"])
+
+        response = self.client.get(reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk]))
+
+        self.assertContains(response, "Hello there.")
+        self.assertContains(response, run.engine)
+
+    def test_approve_and_publish_requires_audio(self):
+        response = self.client.post(
+            reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.episode.refresh_from_db()
+        self.assertNotEqual(self.episode.status, EpisodeStatus.PUBLISHED)
+
+    def test_approve_and_publish_with_audio_publishes(self):
+        self.episode.audio_file.save("episode.mp3", SimpleUploadedFile("episode.mp3", b"fake-audio"), save=True)
+
+        response = self.client.post(
+            reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk])
+        )
+
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.status, EpisodeStatus.PUBLISHED)
+        self.assertIsNotNone(self.episode.published_at)
+        self.assertEqual(self.episode.published_by, self.user)
+        self.episode.audio_file.delete(save=False)
+
+    def test_reject_marks_ready_run_failed(self):
+        run = EpisodeRun.objects.create(episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW)
+        response = self.client.post(
+            reverse("ideas:reject_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.FAILED)
+        self.assertEqual(run.error_class, "rejected_by_reviewer")
+
+    def test_reject_with_no_ready_run_reports_nothing_to_reject(self):
+        # Regression test: this used to show "Episode rejected" even when
+        # nothing was actually rejected.
+        response = self.client.post(
+            reverse("ideas:reject_episode", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to reject")
+
+    def test_cancel_stops_a_pending_run(self):
+        run = EpisodeRun.objects.create(episode=self.episode, status=EpisodeRunStatus.AWAITING_AUDIO)
+        response = self.client.post(
+            reverse("ideas:cancel_episode_run", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.CANCELLED)
+
+    def test_cancel_with_no_pending_run_reports_nothing_to_cancel(self):
+        response = self.client.post(
+            reverse("ideas:cancel_episode_run", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to cancel")
+
+    def test_cancel_does_not_touch_a_ready_for_review_run(self):
+        # Cancel is for in-flight jobs; a completed, reviewable render is
+        # Reject's job, not Cancel's — the two must not overlap.
+        run = EpisodeRun.objects.create(episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW)
+        response = self.client.post(
+            reverse("ideas:cancel_episode_run", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to cancel")
+        run.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.READY_FOR_REVIEW)
+
+    def test_regenerate_creates_a_new_run_from_the_previous_manifest(self):
+        previous = EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.FAILED,
+            manifest={"schema_version": 1, "episode_id": self.episode.pk, "run_id": 999999},
+        )
+        response = self.client.post(
+            reverse("ideas:regenerate_episode", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertEqual(self.episode.runs.count(), 2)
+        newest = self.episode.runs.order_by("-created_at").first()
+        self.assertNotEqual(newest.pk, previous.pk)
+        self.assertEqual(newest.status, EpisodeRunStatus.AWAITING_AUDIO)
+        self.assertEqual(newest.manifest["schema_version"], 1)
+        # Regression test: a regenerated run's manifest must name *itself*,
+        # not the run it was copied from.
+        self.assertEqual(newest.manifest["run_id"], newest.pk)
+        self.assertEqual(newest.manifest["episode_id"], self.episode.pk)
+
+    def test_update_episode_saves_title_and_show_notes(self):
+        response = self.client.post(
+            reverse("ideas:update_episode", args=[self.idea.pk, self.episode.pk]),
+            {"title": "New Title", "description": "New desc", "show_notes": "Notes here"},
+        )
+        self.assertRedirects(
+            response, reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk])
+        )
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.title, "New Title")
+        self.assertEqual(self.episode.show_notes, "Notes here")
+
+    def test_audio_preview_requires_login(self):
+        self.client.logout()
+        response = self.client.get(
+            reverse("ideas:episode_audio_preview", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_audio_preview_404s_without_audio(self):
+        response = self.client.get(
+            reverse("ideas:episode_audio_preview", args=[self.idea.pk, self.episode.pk])
+        )
+        self.assertEqual(response.status_code, 404)
 
 
 class PublicDetailAccessTests(TestCase):

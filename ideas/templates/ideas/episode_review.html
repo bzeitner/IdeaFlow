@@ -1,0 +1,109 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ episode.title }} · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail">
+    <div class="card-head">
+      <h2><a href="{% url 'ideas:detail' idea.pk %}">{{ idea.title }}</a> — Ep {{ episode.episode_number }}: {{ episode.title }}</h2>
+      <span class="pill">{{ episode.get_status_display }}</span>
+    </div>
+    <div class="meta">
+      {% if latest_run %}<span class="pill">{{ latest_run.get_status_display }}</span>{% endif %}
+      {% if episode.published_at %}<span class="dim">Published {{ episode.published_at|date:"M j, Y g:i A T" }}</span>{% endif %}
+      {% if episode.audio_duration_seconds %}<span class="dim">{{ episode.audio_duration_seconds|floatformat:0 }}s · {{ episode.audio_size_bytes|filesizeformat }}</span>{% endif %}
+    </div>
+
+    {% if episode.audio_file %}
+      <audio controls preload="none" style="width:100%">
+        <source src="{% url 'ideas:episode_audio_preview' idea.pk episode.pk %}" type="{{ episode.audio_mime_type }}">
+      </audio>
+    {% else %}
+      <p class="dim">No rendered audio yet.</p>
+    {% endif %}
+
+    {% if can_manage %}
+      <div class="card-head research-heading"><h4>Edit</h4></div>
+      <form method="post" action="{% url 'ideas:update_episode' idea.pk episode.pk %}">
+        {% csrf_token %}
+        <label>Title <input type="text" name="title" value="{{ episode.title }}" maxlength="300"></label>
+        <label>Description <textarea name="description" rows="2">{{ episode.description }}</textarea></label>
+        <label>Show notes <textarea name="show_notes" rows="6">{{ episode.show_notes }}</textarea></label>
+        <button class="btn small" type="submit">Save</button>
+      </form>
+
+      <div class="card-head research-heading"><h4>Actions</h4></div>
+      <div class="meta">
+        <form class="inline-form" method="post" action="{% url 'ideas:approve_and_publish_episode' idea.pk episode.pk %}">
+          {% csrf_token %}<button class="btn small primary" type="submit" {% if not episode.audio_file %}disabled{% endif %}>Approve and publish</button>
+        </form>
+        <form class="inline-form" method="post" action="{% url 'ideas:reject_episode' idea.pk episode.pk %}">
+          {% csrf_token %}<button class="btn small" type="submit">Reject</button>
+        </form>
+        <form class="inline-form" method="post" action="{% url 'ideas:cancel_episode_run' idea.pk episode.pk %}">
+          {% csrf_token %}<button class="btn small" type="submit">Cancel run</button>
+        </form>
+        <form class="inline-form" method="post" action="{% url 'ideas:regenerate_episode' idea.pk episode.pk %}">
+          {% csrf_token %}<button class="btn small" type="submit">Regenerate (full re-render)</button>
+        </form>
+        {% if episode.is_published %}
+          <form class="inline-form" method="post" action="{% url 'ideas:unpublish_episode' idea.pk episode.pk %}">
+            {% csrf_token %}<button class="btn small" type="submit">Unpublish</button>
+          </form>
+        {% endif %}
+        <form class="inline-form" method="post" action="{% url 'ideas:delete_episode' idea.pk episode.pk %}">
+          {% csrf_token %}<button class="btn small" type="submit">Delete</button>
+        </form>
+      </div>
+    {% endif %}
+
+    {% if latest_run %}
+      <div class="card-head research-heading"><h4>Render</h4></div>
+      <div class="meta">
+        <span class="pill">{{ latest_run.engine }}</span>
+        <span class="dim">{{ latest_run.model_repo }}</span>
+        <span class="dim">worker {{ latest_run.worker_id|default:"—" }}</span>
+        <span class="dim">attempt {{ latest_run.attempt_count }}</span>
+      </div>
+      {% if latest_run.error_detail %}
+        <p class="summary">Error ({{ latest_run.error_class }}): {{ latest_run.error_detail }}</p>
+      {% endif %}
+      {% if latest_run.render_report %}
+        <div class="meta">
+          <span class="dim">{{ latest_run.render_report.segment_count|default:"—" }} segments</span>
+          <span class="dim">{{ latest_run.render_report.failures|default:0 }} failures</span>
+          <span class="dim">RTF {{ latest_run.render_report.overall_rtf|default:"—" }}</span>
+          {% with final=latest_run.render_report.final %}
+            {% if final %}
+              <span class="dim">{{ final.duration_seconds|floatformat:0 }}s</span>
+              <span class="dim">{{ final.loudness_lufs|default:"—" }} LUFS</span>
+              <span class="dim">{{ final.true_peak_dbtp|default:"—" }} dBTP</span>
+            {% endif %}
+          {% endwith %}
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <div class="card-head research-heading"><h4>Script</h4></div>
+    <ul class="research-list">
+      {% for segment in episode.script.segments %}
+        <li>
+          <div class="card-head">
+            <strong>{{ segment.speaker }}</strong>
+            <span class="dim">{{ segment.voice_profile }}{% if segment.emotion %} · {{ segment.emotion }}{% endif %}</span>
+          </div>
+          <p class="summary">{{ segment.text }}</p>
+        </li>
+      {% empty %}
+        <li class="dim">No script yet.</li>
+      {% endfor %}
+    </ul>
+
+    {% if episode.script.citations %}
+      <div class="card-head research-heading"><h4>Citations</h4></div>
+      <ol>
+        {% for citation in episode.script.citations %}
+          <li><a href="{{ citation.url }}" target="_blank" rel="noopener">{{ citation.title }}</a></li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+  </article>
+{% endblock %}

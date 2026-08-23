@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, CharField, Count, F, IntegerField, OuterRef, Q, Subquery, When
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -21,7 +21,8 @@ from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, ResearchEntryForm, 
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
 
@@ -473,12 +474,21 @@ def graph_suggestion_review(request, pk, decision):
     return redirect("ideas:graph")
 
 
+def _public_podcast_shows():
+    # Only shows with something to actually listen to — an empty-looking
+    # card for a show with zero published episodes isn't worth surfacing.
+    return PodcastShow.objects.filter(
+        is_publicly_listed=True, episodes__status=EpisodeStatus.PUBLISHED
+    ).distinct()
+
+
 def home(request):
     """Public marketing page for anonymous visitors; for anyone signed in, the
     home page lists the public projects (viewable by all, editable by none from
     here). Tab links in the top bar take role-holders to their workspace."""
+    podcast_shows = _public_podcast_shows()
     if not request.user.is_authenticated:
-        return render(request, "ideas/landing.html")
+        return render(request, "ideas/landing.html", {"podcast_shows": podcast_shows})
     profile = request.user.profile
     public = list(Idea.objects.filter(is_public=True).select_related("created_by", "category", "parent").prefetch_related("resources"))
     return render(
@@ -492,6 +502,7 @@ def home(request):
             "has_any_role": profile.has_role(
                 "role_current", "role_tracking", "role_archive", "role_add_ideas"
             ),
+            "podcast_shows": podcast_shows,
         },
     )
 
@@ -680,7 +691,7 @@ def detail(request, pk):
     idea = get_object_or_404(
         Idea.objects.select_related("parent", "created_by").prefetch_related(
             "resources", "artifacts__research_entry", "referenced_artifacts__idea", "research_entries", "research_entries__model", "children", "repeat_results",
-            "idea_personas__persona",
+            "idea_personas__persona", "podcast_show__episodes__runs",
         ),
         pk=pk,
     )
@@ -1150,6 +1161,218 @@ def delete_artifact(request, pk, artifact_pk):
         artifact.file.storage.delete(artifact.file.name)
     artifact.delete()
     messages.success(request, f"Deleted artifact “{title}”.")
+    return redirect("ideas:detail", pk=pk)
+
+
+def _get_episode(idea, episode_pk):
+    return get_object_or_404(
+        Episode.objects.select_related("show").prefetch_related("runs"),
+        pk=episode_pk, show__idea=idea,
+    )
+
+
+@login_required
+def episode_audio_preview(request, pk, episode_pk):
+    """Authenticated preview for reviewing a not-yet-published episode — the
+    public audio endpoint (ideas/podcast_views.py) only ever serves published
+    episodes, so a reviewer needs a separate, login-gated way to listen."""
+    idea = get_object_or_404(Idea, pk=pk)
+    can_manage = request.user.profile.can_manage_status(idea.status)
+    if not (idea.is_public or can_manage):
+        messages.error(request, "You don't have access to that.")
+        return redirect("ideas:home")
+    episode = _get_episode(idea, episode_pk)
+    if not episode.audio_file:
+        raise Http404
+    return serve_range_aware_file(
+        request, episode.audio_file, episode.audio_mime_type or "audio/mpeg"
+    )
+
+
+@login_required
+def episode_review(request, pk, episode_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    can_manage = request.user.profile.can_manage_status(idea.status)
+    if not (idea.is_public or can_manage):
+        messages.error(request, "You don't have access to that.")
+        return redirect("ideas:home")
+    episode = _get_episode(idea, episode_pk)
+    latest_run = episode.runs.order_by("-created_at").first()
+    return render(
+        request,
+        "ideas/episode_review.html",
+        {
+            "idea": idea,
+            "episode": episode,
+            "latest_run": latest_run,
+            "can_manage": can_manage,
+            "tabs": _tabs(request.user.profile),
+            "active": idea.status,
+        },
+    )
+
+
+@login_required
+@require_POST
+def update_episode(request, pk, episode_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    episode.title = (request.POST.get("title") or episode.title).strip()[:300]
+    episode.description = (request.POST.get("description") or "").strip()
+    episode.show_notes = (request.POST.get("show_notes") or "").strip()
+    episode.save(update_fields=["title", "description", "show_notes", "updated_at"])
+    messages.success(request, "Episode updated.")
+    return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+
+
+@login_required
+@require_POST
+def approve_and_publish_episode(request, pk, episode_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    if not episode.audio_file:
+        messages.error(request, "This episode has no rendered audio yet.")
+        return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+    now = timezone.now()
+    episode.status = EpisodeStatus.PUBLISHED
+    episode.approved_at = now
+    episode.approved_by = request.user
+    episode.published_at = now
+    episode.published_by = request.user
+    episode.save(
+        update_fields=[
+            "status", "approved_at", "approved_by", "published_at", "published_by", "updated_at",
+        ]
+    )
+    messages.success(request, f"Published “{episode.title}”.")
+    return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+
+
+@login_required
+@require_POST
+def reject_episode(request, pk, episode_pk):
+    """A reviewer declines the most recent render — keeps the episode in
+    draft (never publishable in its current state) without deleting
+    anything, so its script/render-report stay available to inspect."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    run = episode.runs.filter(status=EpisodeRunStatus.READY_FOR_REVIEW).order_by("-created_at").first()
+    if run:
+        run.status = EpisodeRunStatus.FAILED
+        run.error_class = "rejected_by_reviewer"
+        run.error_detail = f"Rejected by {request.user.email} during review."
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "error_class", "error_detail", "completed_at"])
+        messages.success(request, "Episode rejected.")
+    else:
+        messages.error(request, "Nothing to reject — no run is currently ready for review.")
+    return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+
+
+@login_required
+@require_POST
+def cancel_episode_run(request, pk, episode_pk):
+    """Only for a run still actually in flight — a run that's already
+    ready_for_review is Reject's job, not Cancel's, so it's excluded here
+    too (alongside the terminal statuses) rather than letting either
+    action silently do the other's job on the same run."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    run = episode.runs.exclude(
+        status__in=[
+            EpisodeRunStatus.READY_FOR_REVIEW, EpisodeRunStatus.PUBLISHED,
+            EpisodeRunStatus.FAILED, EpisodeRunStatus.CANCELLED,
+        ]
+    ).order_by("-created_at").first()
+    if run:
+        run.status = EpisodeRunStatus.CANCELLED
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "completed_at"])
+        messages.success(request, "Run cancelled.")
+    else:
+        messages.error(request, "Nothing to cancel — no run is currently in progress.")
+    return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+
+
+@login_required
+@require_POST
+def regenerate_episode(request, pk, episode_pk):
+    """Full re-render, not per-segment regeneration: a new EpisodeRun with a
+    fresh job directory (keyed by the new run's own id) so the worker starts
+    clean rather than reusing anything from a rejected attempt. Per-segment
+    regeneration would need the worker to key job directories by episode
+    rather than run so a resumed render can selectively reuse segments —
+    deferred, not silently different from what the plan describes."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    previous = episode.runs.order_by("-created_at").first()
+    if previous is None:
+        messages.error(request, "This episode has no prior render to regenerate from.")
+        return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+    new_run = EpisodeRun.objects.create(
+        episode=episode,
+        status=EpisodeRunStatus.AWAITING_AUDIO,
+        manifest=previous.manifest,
+        engine=previous.engine,
+        model_repo=previous.model_repo,
+        model_revision=previous.model_revision,
+        rendering_settings=previous.rendering_settings,
+    )
+    # The copied manifest still names the *previous* run — worker.py never
+    # actually reads manifest["run_id"]/["episode_id"] (it keys off the
+    # claim response's own id), so this has no functional effect today, but
+    # a manifest that names the wrong run is a real data-hygiene bug
+    # waiting to confuse whoever next reads it. Same two-step pattern
+    # idea_podcast_episode (ideas/api.py) already uses.
+    if isinstance(new_run.manifest, dict) and new_run.manifest:
+        new_run.manifest["run_id"] = new_run.pk
+        new_run.manifest["episode_id"] = episode.pk
+        new_run.save(update_fields=["manifest"])
+    messages.success(request, "Queued for regeneration.")
+    return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+
+
+@login_required
+@require_POST
+def unpublish_episode(request, pk, episode_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    episode.unpublish()
+    messages.success(request, f"Unpublished “{episode.title}”.")
+    return redirect("ideas:detail", pk=pk)
+
+
+@login_required
+@require_POST
+def delete_episode(request, pk, episode_pk):
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    episode = _get_episode(idea, episode_pk)
+    title = episode.title
+    if episode.audio_file:
+        episode.audio_file.storage.delete(episode.audio_file.name)
+    episode.delete()
+    messages.success(request, f"Deleted episode “{title}”.")
     return redirect("ideas:detail", pk=pk)
 
 
