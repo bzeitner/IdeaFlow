@@ -1352,6 +1352,14 @@ class EpisodeViewTests(TestCase):
         self.assertEqual(run.status, EpisodeRunStatus.FAILED)
         self.assertEqual(run.error_class, "rejected_by_reviewer")
 
+    def test_reject_with_no_ready_run_reports_nothing_to_reject(self):
+        # Regression test: this used to show "Episode rejected" even when
+        # nothing was actually rejected.
+        response = self.client.post(
+            reverse("ideas:reject_episode", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to reject")
+
     def test_cancel_stops_a_pending_run(self):
         run = EpisodeRun.objects.create(episode=self.episode, status=EpisodeRunStatus.AWAITING_AUDIO)
         response = self.client.post(
@@ -1363,9 +1371,27 @@ class EpisodeViewTests(TestCase):
         run.refresh_from_db()
         self.assertEqual(run.status, EpisodeRunStatus.CANCELLED)
 
+    def test_cancel_with_no_pending_run_reports_nothing_to_cancel(self):
+        response = self.client.post(
+            reverse("ideas:cancel_episode_run", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to cancel")
+
+    def test_cancel_does_not_touch_a_ready_for_review_run(self):
+        # Cancel is for in-flight jobs; a completed, reviewable render is
+        # Reject's job, not Cancel's — the two must not overlap.
+        run = EpisodeRun.objects.create(episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW)
+        response = self.client.post(
+            reverse("ideas:cancel_episode_run", args=[self.idea.pk, self.episode.pk]), follow=True
+        )
+        self.assertContains(response, "Nothing to cancel")
+        run.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.READY_FOR_REVIEW)
+
     def test_regenerate_creates_a_new_run_from_the_previous_manifest(self):
-        EpisodeRun.objects.create(
-            episode=self.episode, status=EpisodeRunStatus.FAILED, manifest={"schema_version": 1}
+        previous = EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.FAILED,
+            manifest={"schema_version": 1, "episode_id": self.episode.pk, "run_id": 999999},
         )
         response = self.client.post(
             reverse("ideas:regenerate_episode", args=[self.idea.pk, self.episode.pk])
@@ -1375,8 +1401,13 @@ class EpisodeViewTests(TestCase):
         )
         self.assertEqual(self.episode.runs.count(), 2)
         newest = self.episode.runs.order_by("-created_at").first()
+        self.assertNotEqual(newest.pk, previous.pk)
         self.assertEqual(newest.status, EpisodeRunStatus.AWAITING_AUDIO)
-        self.assertEqual(newest.manifest, {"schema_version": 1})
+        self.assertEqual(newest.manifest["schema_version"], 1)
+        # Regression test: a regenerated run's manifest must name *itself*,
+        # not the run it was copied from.
+        self.assertEqual(newest.manifest["run_id"], newest.pk)
+        self.assertEqual(newest.manifest["episode_id"], self.episode.pk)
 
     def test_update_episode_saves_title_and_show_notes(self):
         response = self.client.post(

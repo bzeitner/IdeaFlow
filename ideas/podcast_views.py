@@ -128,6 +128,16 @@ class ITunesFeedGenerator(Rss201rev2Feed):
 
 
 class PodcastFeed(Feed):
+    """Note on `self._request`: the urlconf instantiates one PodcastFeed()
+    at import time and reuses it for every request to this URL, so stashing
+    the request as instance state here is only safe because gunicorn runs
+    sync workers (deploy/ideaflow.service: `--workers 3`, no --threads) —
+    one request fully completes per worker process before the next starts,
+    so there's no window for two requests' `self._request` to collide.
+    This would need revisiting (e.g. passing request through explicitly
+    instead of via self) before ever moving to a threaded/async worker
+    class."""
+
     feed_type = ITunesFeedGenerator
 
     def get_object(self, request, show_slug):

@@ -1272,26 +1272,37 @@ def reject_episode(request, pk, episode_pk):
         run.error_detail = f"Rejected by {request.user.email} during review."
         run.completed_at = timezone.now()
         run.save(update_fields=["status", "error_class", "error_detail", "completed_at"])
-    messages.success(request, "Episode rejected.")
+        messages.success(request, "Episode rejected.")
+    else:
+        messages.error(request, "Nothing to reject — no run is currently ready for review.")
     return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
 
 
 @login_required
 @require_POST
 def cancel_episode_run(request, pk, episode_pk):
+    """Only for a run still actually in flight — a run that's already
+    ready_for_review is Reject's job, not Cancel's, so it's excluded here
+    too (alongside the terminal statuses) rather than letting either
+    action silently do the other's job on the same run."""
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_status_role(request, idea.status)
     if denied:
         return denied
     episode = _get_episode(idea, episode_pk)
     run = episode.runs.exclude(
-        status__in=[EpisodeRunStatus.PUBLISHED, EpisodeRunStatus.FAILED, EpisodeRunStatus.CANCELLED]
+        status__in=[
+            EpisodeRunStatus.READY_FOR_REVIEW, EpisodeRunStatus.PUBLISHED,
+            EpisodeRunStatus.FAILED, EpisodeRunStatus.CANCELLED,
+        ]
     ).order_by("-created_at").first()
     if run:
         run.status = EpisodeRunStatus.CANCELLED
         run.completed_at = timezone.now()
         run.save(update_fields=["status", "completed_at"])
         messages.success(request, "Run cancelled.")
+    else:
+        messages.error(request, "Nothing to cancel — no run is currently in progress.")
     return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
 
 
@@ -1313,7 +1324,7 @@ def regenerate_episode(request, pk, episode_pk):
     if previous is None:
         messages.error(request, "This episode has no prior render to regenerate from.")
         return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
-    EpisodeRun.objects.create(
+    new_run = EpisodeRun.objects.create(
         episode=episode,
         status=EpisodeRunStatus.AWAITING_AUDIO,
         manifest=previous.manifest,
@@ -1322,6 +1333,16 @@ def regenerate_episode(request, pk, episode_pk):
         model_revision=previous.model_revision,
         rendering_settings=previous.rendering_settings,
     )
+    # The copied manifest still names the *previous* run — worker.py never
+    # actually reads manifest["run_id"]/["episode_id"] (it keys off the
+    # claim response's own id), so this has no functional effect today, but
+    # a manifest that names the wrong run is a real data-hygiene bug
+    # waiting to confuse whoever next reads it. Same two-step pattern
+    # idea_podcast_episode (ideas/api.py) already uses.
+    if isinstance(new_run.manifest, dict) and new_run.manifest:
+        new_run.manifest["run_id"] = new_run.pk
+        new_run.manifest["episode_id"] = episode.pk
+        new_run.save(update_fields=["manifest"])
     messages.success(request, "Queued for regeneration.")
     return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
 
