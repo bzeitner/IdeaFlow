@@ -18,7 +18,8 @@
         </h3>
         <p class="feed-meta dim">
           {{ item.feed.title|default:item.feed.url }}
-          {% if item.published_at %} · {{ item.published_at|date:"M j, Y" }}{% endif %}
+          {% if item.published_at %} · Published {{ item.published_at|date:"M j, Y" }}{% endif %}
+          · Downloaded {{ item.created_at|date:"M j, Y g:i A T" }}
         </p>
 
         {% if item.summary %}<p class="feed-summary">{{ item.summary }}</p>
