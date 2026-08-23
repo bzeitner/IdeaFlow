@@ -6,6 +6,28 @@
   </div>
   <p class="dim">Every report, list, and summary artifact across all ideas you can see.</p>
 
+  {% if episodes %}
+    <h3>Published podcasts</h3>
+    <ul class="research-list artifact-list">
+      {% for episode in episodes %}
+        <li>
+          <div class="card-head">
+            <strong>
+              <a href="{% url 'ideas:podcast_episode' episode.show.slug episode.slug %}">{{ episode.show.title }}</a>
+              — {{ episode.title }}
+            </strong>
+            <span class="dim">{{ episode.published_at|date:"M j, Y" }}</span>
+          </div>
+          {% if episode.description %}<p class="summary">{{ episode.description|truncatewords:30 }}</p>{% endif %}
+          <div class="meta">
+            <span class="pill">Ep {{ episode.episode_number }}</span>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if episodes %}<h3>Artifacts</h3>{% endif %}
   {% if page.object_list %}
     <ul class="research-list artifact-list">
       {% for artifact in page.object_list %}
