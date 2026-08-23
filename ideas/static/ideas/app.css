@@ -293,9 +293,19 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .queue-actions form { margin: 0; }
 .queue-next-action-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .table-wrap { overflow-x: auto; }
+.repeat-results-panel { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.repeat-results-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.repeat-results-controls label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.repeat-results-controls input, .repeat-results-controls select { min-height: 36px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: inherit; font-weight: 400; }
+.repeat-results-search { flex: 1 1 220px; }
+.repeat-results-search input { width: 100%; }
+.repeat-results-count { margin-left: auto; padding-bottom: 9px; white-space: nowrap; }
+.repeat-results-scroll { max-height: 460px; overflow: auto; }
 .repeat-results { width: 100%; border-collapse: collapse; }
 .repeat-results th, .repeat-results td { padding: 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.repeat-results th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: 0 1px 0 var(--line); }
 .repeat-results select { min-width: 130px; }
+.repeat-results-empty { padding: 22px; text-align: center; }
 .research-index { margin: 10px 0 16px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; }
 .research-index h5 { margin: 0 0 6px; }
 .research-index ol { margin: 0; padding-left: 24px; }

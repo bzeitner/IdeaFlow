@@ -61,8 +61,54 @@
       } finally {
         select.disabled = false;
         actionStarted = false;
+        form.dispatchEvent(new CustomEvent("repeat-results-refresh", { bubbles: true }));
       }
     });
+  });
+
+  document.querySelectorAll("[data-repeat-results-panel]").forEach((panel) => {
+    const search = panel.querySelector("[data-repeat-results-search]");
+    const status = panel.querySelector("[data-repeat-results-status]");
+    const sort = panel.querySelector("[data-repeat-results-sort]");
+    const body = panel.querySelector("[data-repeat-results-body]");
+    const count = panel.querySelector("[data-repeat-results-count]");
+    const empty = panel.querySelector("[data-repeat-results-empty]");
+    const rows = Array.from(body.querySelectorAll("[data-repeat-result-row]"));
+
+    const rowStatus = (row) => {
+      const select = row.querySelector("select[name='status']");
+      return select ? select.value : row.querySelector("[data-repeat-result-status]").dataset.repeatResultStatus;
+    };
+    const compareRows = (left, right) => {
+      const [field, direction] = sort.value.split("-");
+      let comparison;
+      if (field === "found") comparison = Number(left.dataset.found) - Number(right.dataset.found);
+      else if (field === "title") comparison = left.dataset.title.localeCompare(right.dataset.title);
+      else comparison = rowStatus(left).localeCompare(rowStatus(right));
+      return direction === "desc" ? -comparison : comparison;
+    };
+    const updateResults = () => {
+      const query = search.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      rows.sort(compareRows).forEach((row) => {
+        const matchesSearch = !query || row.textContent.toLocaleLowerCase().includes(query);
+        const matchesStatus = !status.value || rowStatus(row) === status.value;
+        row.hidden = !(matchesSearch && matchesStatus);
+        if (!row.hidden) visible += 1;
+        body.appendChild(row);
+      });
+      count.textContent = `${visible} of ${rows.length} result${rows.length === 1 ? "" : "s"}`;
+      empty.hidden = visible !== 0;
+    };
+
+    search.addEventListener("input", updateResults);
+    status.addEventListener("change", updateResults);
+    sort.addEventListener("change", updateResults);
+    body.addEventListener("change", (event) => {
+      if (event.target.matches("select[name='status']")) updateResults();
+    });
+    panel.addEventListener("repeat-results-refresh", updateResults);
+    updateResults();
   });
 
   document.querySelectorAll("[data-question-answer-form]").forEach((form) => {

@@ -842,6 +842,11 @@ class RepeatTaskViewTests(TestCase):
         self.assertContains(response, "Repeat task results")
         self.assertContains(response, "Local Python role")
         self.assertNotContains(response, "Latest effort summary")
+        self.assertContains(response, "data-repeat-results-panel")
+        self.assertContains(response, "data-repeat-results-search")
+        self.assertContains(response, "data-repeat-results-status")
+        self.assertContains(response, "data-repeat-results-sort")
+        self.assertContains(response, 'data-title="local python role"')
 
         self.client.post(
             reverse("ideas:update_repeat_result", args=[idea.pk, result.pk]),

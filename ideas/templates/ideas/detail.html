@@ -106,9 +106,35 @@
         <p class="dim">Target {{ idea.repeat_target_count }} result{{ idea.repeat_target_count|pluralize }} every {{ idea.repeat_interval_days }} day{{ idea.repeat_interval_days|pluralize }} · Last run {% if idea.last_repeat_run_at %}{{ idea.last_repeat_run_at|date:"M j, Y g:i A T" }}{% else %}never{% endif %} · {% if idea.repeat_paused %}<strong>Paused</strong>{% else %}Active{% endif %}</p>
         {% if can_manage %}<form method="post" action="{% url 'ideas:toggle_repeat_pause' idea.pk %}">{% csrf_token %}<button class="btn small" type="submit">{% if idea.repeat_paused %}Resume repeat task{% else %}Pause repeat task{% endif %}</button></form>{% endif %}
         {% if idea.repeat_results.all %}
-          <div class="table-wrap"><table class="repeat-results"><thead><tr><th>Found</th><th>Result</th><th>Details</th><th>Status</th></tr></thead><tbody>
-          {% for result in idea.repeat_results.all %}<tr><td>{{ result.found_at|date:"M j, Y" }}</td><td>{% if result.url %}<a href="{{ result.url }}" target="_blank" rel="noopener">{{ result.title }}</a>{% else %}{{ result.title }}{% endif %}</td><td>{{ result.details|urlize|linebreaksbr }}</td><td>{% if can_manage %}<form method="post" action="{% url 'ideas:update_repeat_result' idea.pk result.pk %}" data-repeat-result-form>{% csrf_token %}<select name="status">{% for value, label in repeat_result_statuses %}<option value="{{ value }}"{% if result.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><span class="dim" data-save-status aria-live="polite"></span></form>{% else %}{{ result.get_status_display }}{% endif %}</td></tr>{% endfor %}
-          </tbody></table></div>
+          <div class="repeat-results-panel" data-repeat-results-panel>
+            <div class="repeat-results-controls">
+              <label class="repeat-results-search">Search
+                <input type="search" placeholder="Title or details" data-repeat-results-search>
+              </label>
+              <label>Status
+                <select data-repeat-results-status>
+                  <option value="">All statuses</option>
+                  {% for value, label in repeat_result_statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Sort by
+                <select data-repeat-results-sort>
+                  <option value="found-desc">Newest first</option>
+                  <option value="found-asc">Oldest first</option>
+                  <option value="title-asc">Title A–Z</option>
+                  <option value="title-desc">Title Z–A</option>
+                  <option value="status-asc">Status A–Z</option>
+                </select>
+              </label>
+              <span class="dim repeat-results-count" data-repeat-results-count aria-live="polite"></span>
+            </div>
+            <div class="repeat-results-scroll" tabindex="0" aria-label="Repeat task results">
+              <table class="repeat-results"><thead><tr><th>Found</th><th>Result</th><th>Details</th><th>Status</th></tr></thead><tbody data-repeat-results-body>
+              {% for result in idea.repeat_results.all %}<tr data-repeat-result-row data-found="{{ result.found_at|date:'U' }}" data-title="{{ result.title|lower }}"><td>{{ result.found_at|date:"M j, Y" }}</td><td>{% if result.url %}<a href="{{ result.url }}" target="_blank" rel="noopener">{{ result.title }}</a>{% else %}{{ result.title }}{% endif %}</td><td>{{ result.details|urlize|linebreaksbr }}</td><td>{% if can_manage %}<form method="post" action="{% url 'ideas:update_repeat_result' idea.pk result.pk %}" data-repeat-result-form>{% csrf_token %}<select name="status">{% for value, label in repeat_result_statuses %}<option value="{{ value }}"{% if result.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><span class="dim" data-save-status aria-live="polite"></span></form>{% else %}<span data-repeat-result-status="{{ result.status }}">{{ result.get_status_display }}</span>{% endif %}</td></tr>{% endfor %}
+              </tbody></table>
+              <p class="dim repeat-results-empty" data-repeat-results-empty hidden>No results match these filters.</p>
+            </div>
+          </div>
         {% else %}<p class="dim">No results have been collected yet.</p>{% endif %}
       </section>
     {% endif %}
