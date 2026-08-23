@@ -1,11 +1,27 @@
 from django.urls import path
 
 from . import views
+from . import podcast_views
 
 app_name = "ideas"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    # Public podcast pages — no login required. Kept together and clearly
+    # marked: nothing anywhere else in the app links to feed.xml (see
+    # podcast_views.py's module docstring).
+    path("podcast/<slug:show_slug>/feed.xml", podcast_views.PodcastFeed(), name="podcast_feed"),
+    path("podcast/<slug:show_slug>/", podcast_views.podcast_show_page, name="podcast_show"),
+    path(
+        "podcast/<slug:show_slug>/<slug:episode_slug>/",
+        podcast_views.podcast_episode_page,
+        name="podcast_episode",
+    ),
+    path(
+        "podcast/<slug:show_slug>/<slug:episode_slug>/audio.mp3",
+        podcast_views.podcast_episode_audio,
+        name="podcast_episode_audio",
+    ),
     path("guide/", views.guide, name="guide"),
     path("current/", views.current, name="current"),
     path("tracking/", views.tracking, name="tracking"),
@@ -56,6 +72,23 @@ urlpatterns = [
     path("<int:pk>/artifacts/<int:artifact_pk>/download/", views.download_artifact, name="download_artifact"),
     path("<int:pk>/artifacts/<int:artifact_pk>/view/", views.view_artifact, name="view_artifact"),
     path("<int:pk>/artifacts/<int:artifact_pk>/delete/", views.delete_artifact, name="delete_artifact"),
+    path("<int:pk>/episodes/<int:episode_pk>/", views.episode_review, name="episode_review"),
+    path(
+        "<int:pk>/episodes/<int:episode_pk>/audio-preview/",
+        views.episode_audio_preview,
+        name="episode_audio_preview",
+    ),
+    path("<int:pk>/episodes/<int:episode_pk>/edit/", views.update_episode, name="update_episode"),
+    path(
+        "<int:pk>/episodes/<int:episode_pk>/approve-publish/",
+        views.approve_and_publish_episode,
+        name="approve_and_publish_episode",
+    ),
+    path("<int:pk>/episodes/<int:episode_pk>/reject/", views.reject_episode, name="reject_episode"),
+    path("<int:pk>/episodes/<int:episode_pk>/cancel/", views.cancel_episode_run, name="cancel_episode_run"),
+    path("<int:pk>/episodes/<int:episode_pk>/regenerate/", views.regenerate_episode, name="regenerate_episode"),
+    path("<int:pk>/episodes/<int:episode_pk>/unpublish/", views.unpublish_episode, name="unpublish_episode"),
+    path("<int:pk>/episodes/<int:episode_pk>/delete/", views.delete_episode, name="delete_episode"),
     path(
         "<int:pk>/research/<int:entry_pk>/answers/",
         views.answer_research_questions,

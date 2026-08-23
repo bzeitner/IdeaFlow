@@ -1,0 +1,32 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ episode.title }} · {{ show.title }}{% endblock %}
+{% block content %}
+  <article class="detail">
+    <div class="card-head">
+      <h2><a href="{% url 'ideas:podcast_show' show.slug %}">{{ show.title }}</a> — Ep {{ episode.episode_number }}: {{ episode.title }}</h2>
+    </div>
+    <p class="dim">{{ episode.published_at|date:"M j, Y" }}</p>
+
+    {% if episode.audio_file %}
+      <audio controls preload="none" style="width:100%">
+        <source src="{% url 'ideas:podcast_episode_audio' show.slug episode.slug %}" type="{{ episode.audio_mime_type }}">
+      </audio>
+    {% endif %}
+
+    {% if episode.description %}<p class="summary">{{ episode.description }}</p>{% endif %}
+
+    {% if episode.show_notes %}
+      <div class="card-head research-heading"><h4>Show notes</h4></div>
+      <p class="summary">{{ episode.show_notes|linebreaks }}</p>
+    {% endif %}
+
+    {% if episode.script.citations %}
+      <div class="card-head research-heading"><h4>Sources</h4></div>
+      <ol>
+        {% for citation in episode.script.citations %}
+          <li><a href="{{ citation.url }}" target="_blank" rel="noopener">{{ citation.title }}</a></li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+  </article>
+{% endblock %}

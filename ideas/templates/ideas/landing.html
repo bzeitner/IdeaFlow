@@ -43,5 +43,17 @@
       Sign in with Google to request access. An administrator assigns which tabs
       you can see and manage, and whether you can add new ideas.
     </p>
+
+    {% if podcast_shows %}
+      <h4>Podcasts</h4>
+      <div class="grid">
+        {% for show in podcast_shows %}
+          <article class="card">
+            <div class="card-head"><h3><a href="{% url 'ideas:podcast_show' show.slug %}">{{ show.title }}</a></h3></div>
+            {% if show.description %}<p class="summary">{{ show.description|truncatewords:30 }}</p>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% endif %}
   </article>
 {% endblock %}
