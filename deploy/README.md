@@ -509,7 +509,56 @@ to export the token.
 
 ---
 
-## 15. Troubleshooting
+## 15. Podcast production (optional)
+
+Turns a repeat task into a podcast, drawing episode scripts from another
+idea's research. This is a separate, optional subsystem — skip this section
+if you don't want it.
+
+**On the droplet:**
+
+```bash
+# as root — the /api/audio-jobs/complete/ endpoint's ffprobe verification
+# fails closed until this is installed
+apt -y install ffmpeg
+```
+
+Set a dedicated worker token in `.env`, distinct from `IDEAFLOW_API_TOKEN` —
+the render worker never gets the general-purpose agent's broader access:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+# IDEAFLOW_PODCAST_WORKER_TOKEN=<paste it> in ~/IdeaFlow/.env
+```
+
+`deploy/nginx.conf` already sets `client_max_body_size 100m` (a real episode
+MP3 runs tens of MB) — re-run step 9's install if you set up nginx before this
+was added. Then `~/IdeaFlow/deploy/update.sh` as usual to pick up the
+migrations.
+
+**In the app:** grant the **Podcast** role to whoever will run this (`/users/`
+or Django admin — see the user guide's Access section). On the idea meant to
+become a podcast: open its detail page, **+ Set up podcast**, then connect a
+research idea as its source (add a **Supports** relationship pointing at the
+podcast idea — right there on the page, or from the Graph tab). Each due
+repeat run then drafts an episode from that research for review, editing, and
+publication on the same page.
+
+**The render worker itself lives outside this repo**, on a separate Apple
+Silicon machine (`mlx-speech` + Fish S2 Pro need real GPU/unified memory the
+droplet doesn't have) — typically `~/Workspace/podcast-worker/` on that
+machine, with its own Keychain-stored token and a `launchd` job polling every
+few minutes. It claims jobs, renders, and uploads over the same HTTPS API
+everything else here uses; nothing about it runs on the droplet.
+
+**The public feed is never linked anywhere in the app**, by design — no
+"Subscribe" button, no printed URL, on the homepage or the show page. To
+submit a show to a podcast directory, construct the URL yourself:
+`https://ideaflow.bitesoftheweek.com/podcast/<show-slug>/feed.xml`.
+
+---
+
+## 16. Troubleshooting
 
 | Symptom | Check |
 |---|---|
