@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -699,16 +699,21 @@ class FeedPageTests(TestCase):
             published_at=timezone.now() - timedelta(days=1),
         )
         make_feed_item(feed=feed, title="Undated item", published_at=None)
+        make_feed_item(
+            feed=feed,
+            title="Boundary item",
+            published_at=datetime(1, 1, 1, tzinfo=dt_timezone.utc),
+        )
 
         response = self.client.get(
             reverse("ideas:feeds"),
             {"idea": idea.pk, "sort": "published_asc"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [row["item"].title for row in response.context["rows"]],
-            ["Dated item", "Undated item"],
-        )
+        titles = [row["item"].title for row in response.context["rows"]]
+        self.assertEqual(titles[0], "Dated item")
+        self.assertCountEqual(titles[1:], ["Undated item", "Boundary item"])
+        self.assertNotContains(response, "Jan 1, 1")
 
     def test_rating_and_pagination_preserve_filter_state(self):
         self._login()

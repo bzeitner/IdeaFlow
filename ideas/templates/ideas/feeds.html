@@ -76,7 +76,7 @@
         </h3>
         <p class="feed-meta dim">
           {{ item.feed.title|default:item.feed.url }}
-          {% if item.published_at %} · Published {{ item.published_at|date:"M j, Y" }}{% endif %}
+          {% if item.safe_published_at %} · Published {{ item.safe_published_at|date:"M j, Y" }}{% endif %}
           · Downloaded {{ item.created_at|date:"M j, Y g:i A T" }}
         </p>
         <p class="feed-associations">

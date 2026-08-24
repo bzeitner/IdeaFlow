@@ -1125,6 +1125,22 @@ class FeedItem(models.Model):
 
         return self.link if urlsplit(self.link or "").scheme in ("http", "https") else ""
 
+    @property
+    def safe_published_at(self):
+        """A timestamp Django can convert to the configured display timezone.
+
+        Some legacy feeds supplied year 1 as an unknown-date sentinel. Converting
+        midnight UTC in year 1 to a negative UTC offset underflows Python's
+        datetime range, so treat that malformed boundary value as undated.
+        """
+        if self.published_at is None:
+            return None
+        try:
+            timezone.localtime(self.published_at)
+        except (OverflowError, ValueError):
+            return None
+        return self.published_at
+
 
 class FeedItemAssessment(models.Model):
     """An agent's idea-specific judgment of one globally summarized item."""

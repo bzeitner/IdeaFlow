@@ -1,5 +1,5 @@
 from functools import wraps
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 import re
 
 from django.contrib import messages
@@ -1659,7 +1659,11 @@ def feeds(request):
         # DISTINCT queryset produced by Idea/topic filtering.
         items = items.annotate(
             published_missing=Case(
-                When(published_at__isnull=True, then=1),
+                When(
+                    Q(published_at__isnull=True)
+                    | Q(published_at__lt=datetime(2, 1, 1, tzinfo=dt_timezone.utc)),
+                    then=1,
+                ),
                 default=0,
                 output_field=IntegerField(),
             )
