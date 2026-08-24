@@ -1,4 +1,5 @@
 from datetime import timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.utils import timezone
 
@@ -18,12 +19,21 @@ class TrackLastSeenMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        response = self.get_response(request)
         user = getattr(request, "user", None)
-        if user is not None and user.is_authenticated:
-            profile = getattr(user, "profile", None)
+        profile = getattr(user, "profile", None) if user is not None and user.is_authenticated else None
+        if profile is not None:
+            try:
+                timezone.activate(ZoneInfo(profile.timezone_name))
+            except ZoneInfoNotFoundError:
+                timezone.deactivate()
+        else:
+            timezone.deactivate()
+        try:
+            response = self.get_response(request)
             if profile is not None:
                 now = timezone.now()
                 if not profile.last_seen_at or now - profile.last_seen_at > LAST_SEEN_THROTTLE:
                     Profile.objects.filter(pk=profile.pk).update(last_seen_at=now)
-        return response
+            return response
+        finally:
+            timezone.deactivate()

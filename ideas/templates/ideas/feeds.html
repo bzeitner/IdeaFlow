@@ -38,8 +38,9 @@
       </select>
     </label>
     <label class="feeds-unrated"><input type="checkbox" name="unrated" value="1"{% if unrated %} checked{% endif %}> Unrated only</label>
-    <button type="submit" class="btn small">Apply</button>
+    <button type="submit" class="btn small" data-filter-apply>Apply</button>
     <a class="btn small" href="{% url 'ideas:feeds' %}" data-clear-persisted-query>Clear</a>
+    <span class="filter-status dim" data-filter-status aria-live="polite"></span>
   </form>
 
   {% if selected_idea %}

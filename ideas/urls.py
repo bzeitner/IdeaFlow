@@ -7,6 +7,7 @@ app_name = "ideas"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("start/", views.start, name="start"),
     # Public podcast pages — no login required. Kept together and clearly
     # marked: nothing anywhere else in the app links to feed.xml (see
     # podcast_views.py's module docstring).
@@ -23,6 +24,7 @@ urlpatterns = [
         name="podcast_episode_audio",
     ),
     path("guide/", views.guide, name="guide"),
+    path("preferences/", views.preferences, name="preferences"),
     path("current/", views.current, name="current"),
     path("tracking/", views.tracking, name="tracking"),
     path("archive/", views.archive, name="archive"),

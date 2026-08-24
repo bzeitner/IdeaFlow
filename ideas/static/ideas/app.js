@@ -24,6 +24,41 @@
   const pageUrl = `${window.location.pathname}${window.location.search}`;
   let actionStarted = false;
 
+  document.querySelectorAll("[data-auto-submit-filters]").forEach((form) => {
+    let timer;
+    let applying = false;
+    const applyButton = form.querySelector("[data-filter-apply]") || form.querySelector("button[type='submit']");
+    if (applyButton) applyButton.classList.add("js-filter-fallback");
+    const resultStatus = form.querySelector("[data-filter-status]");
+    const apply = () => {
+      if (applying) return;
+      applying = true;
+      clearTimeout(timer);
+      form.classList.add("is-applying");
+      form.setAttribute("aria-busy", "true");
+      if (resultStatus) resultStatus.textContent = "Updating results…";
+      const page = form.querySelector("input[name='page']");
+      if (page) page.value = "1";
+      form.requestSubmit();
+    };
+    form.querySelectorAll("select, input[type='checkbox'], input[type='radio']").forEach((control) => {
+      control.addEventListener("change", apply);
+    });
+    form.querySelectorAll("input[type='search']").forEach((search) => {
+      search.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(apply, 400);
+      });
+      search.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && search.value) {
+          search.value = "";
+          apply();
+        }
+      });
+    });
+    form.addEventListener("submit", () => clearTimeout(timer));
+  });
+
   try {
     const saved = JSON.parse(sessionStorage.getItem(scrollKey) || "null");
     sessionStorage.removeItem(scrollKey);
@@ -68,17 +103,6 @@
           else localStorage.removeItem(key);
         } catch (_error) {
           // Filtering still works if local storage is unavailable.
-        }
-      } else {
-        try {
-          const saved = localStorage.getItem(key);
-          if (saved) {
-            const restored = restoredParams(window.location.search, saved);
-            window.location.replace(`${window.location.pathname}?${restored}`);
-            return;
-          }
-        } catch (_error) {
-          // Render the page defaults if local storage is unavailable.
         }
       }
       if (config.matches("form")) {
@@ -215,6 +239,87 @@
     });
     panel.addEventListener("repeat-results-refresh", updateResults);
     updateResults();
+  });
+
+  document.querySelectorAll("[data-artifact-table]").forEach((table) => {
+    const input = document.querySelector("[data-artifact-table-search]");
+    const count = document.querySelector("[data-artifact-table-count]");
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    const update = () => {
+      const query = (input?.value || "").trim().toLocaleLowerCase();
+      let visible = 0;
+      rows.forEach((row) => {
+        row.hidden = Boolean(query) && !row.textContent.toLocaleLowerCase().includes(query);
+        if (!row.hidden) visible += 1;
+      });
+      if (count) count.textContent = `${visible} of ${rows.length} rows`;
+    };
+    if (input) input.addEventListener("input", update);
+    update();
+  });
+
+  document.querySelectorAll("[data-wrap-artifact]").forEach((toggle) => {
+    const raw = document.querySelector("[data-artifact-raw]");
+    toggle.addEventListener("change", () => raw?.classList.toggle("wrap", toggle.checked));
+  });
+
+  document.querySelectorAll("[data-auto-save]").forEach((form) => {
+    const control = form.querySelector("input[name='value'], select[name='value']");
+    const status = form.querySelector("[data-save-status]");
+    const button = form.querySelector("button[type='submit']");
+    let savedValue = control.value;
+    let saving = false;
+    button?.classList.add("js-save-fallback");
+
+    const save = async () => {
+      if (saving || control.value === savedValue) return;
+      saving = true;
+      const requestedValue = control.value;
+      const formData = new FormData(form);
+      control.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: formData,
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not save");
+        savedValue = requestedValue;
+        status.textContent = "Saved";
+        window.setTimeout(() => { if (status.textContent === "Saved") status.textContent = ""; }, 1800);
+      } catch (error) {
+        control.value = savedValue;
+        status.textContent = error.message;
+      } finally {
+        control.disabled = false;
+        saving = false;
+        actionStarted = false;
+      }
+    };
+    form.addEventListener("submit", (event) => { event.preventDefault(); save(); });
+    if (control.matches("select")) control.addEventListener("change", save);
+    else {
+      control.addEventListener("blur", save);
+      control.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") { event.preventDefault(); control.blur(); }
+        if (event.key === "Escape") { control.value = savedValue; control.blur(); status.textContent = "Reverted"; }
+      });
+    }
+  });
+
+  document.querySelectorAll("form.idea-form").forEach((form) => {
+    let dirty = false;
+    form.addEventListener("input", () => { dirty = true; });
+    form.addEventListener("change", () => { dirty = true; });
+    form.addEventListener("submit", () => { dirty = false; });
+    window.addEventListener("beforeunload", (event) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
   });
 
   document.querySelectorAll("[data-question-answer-form]").forEach((form) => {

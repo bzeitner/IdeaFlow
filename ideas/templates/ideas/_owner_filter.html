@@ -1,10 +1,11 @@
-<form method="get" class="owner-filter" data-persist-query-params="q,owner">
+<form method="get" class="owner-filter" data-auto-submit-filters data-persist-query-params="q,owner">
   <label><span class="sr-only">Search ideas</span><input type="search" name="q" value="{{ q }}" placeholder="Search ideas…"></label>
   <label><span class="sr-only">Filter by owner</span><select name="owner">
     <option value="">All owners</option>
     <option value="mine"{% if owner_filter == 'mine' %} selected{% endif %}>My ideas</option>
     {% for owner in owners %}{% with owner_id=owner.pk|stringformat:"s" %}<option value="{{ owner.pk }}"{% if owner_filter == owner_id %} selected{% endif %}>{{ owner.email|default:owner.username }}</option>{% endwith %}{% endfor %}
   </select></label>
-  <button class="btn small" type="submit">Apply</button>
+  <button class="btn small" type="submit" data-filter-apply>Apply</button>
   {% if owner_filter or q %}<a class="btn small" href="{{ request.path }}" data-clear-persisted-query>Clear</a>{% endif %}
+  <span class="filter-status dim" data-filter-status aria-live="polite"></span>
 </form>

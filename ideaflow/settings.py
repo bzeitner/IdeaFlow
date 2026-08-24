@@ -196,7 +196,7 @@ AUTHENTICATION_BACKENDS = [
 # The landing page doubles as the login prompt — anonymous visitors hitting a
 # @login_required view land there with a "Sign in with Google" button.
 LOGIN_URL = '/'
-LOGIN_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/start/'
 LOGOUT_REDIRECT_URL = '/'
 
 ACCOUNT_ADAPTER = 'ideas.adapters.AccountAdapter'

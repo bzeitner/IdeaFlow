@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import Artifact, AIModel, Category, Idea, IdeaRelation, PodcastShow, ResearchEntry, Resource, Stage, Status
+from .models import Artifact, AIModel, Category, Idea, IdeaRelation, PodcastShow, Profile, ResearchEntry, Resource, Stage, Status
 
 
 class ParentIdeaSelect(forms.Select):
@@ -313,9 +313,70 @@ class ArtifactForm(forms.ModelForm):
     class Meta:
         model = Artifact
         fields = [
-            "title", "kind", "description", "file", "url", "generated_at", "research_entry"
+            "title", "kind", "description", "file", "url", "presentation_mode",
+            "source_format", "generated_at", "research_entry"
         ]
         widgets = {"description": forms.Textarea(attrs={"rows": 3})}
+
+
+class ProfilePreferencesForm(forms.ModelForm):
+    """Explicit, cross-device working defaults owned by the user."""
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        profile = self.instance
+        landing_choices = [(Profile.LandingPage.PUBLIC, "Public projects")]
+        if profile.has_role("role_current"):
+            landing_choices.append((Profile.LandingPage.CURRENT, "Current"))
+        if profile.has_role("role_tracking"):
+            landing_choices.append((Profile.LandingPage.TRACKING, "Tracking"))
+        if profile.can_read_feeds:
+            landing_choices.append((Profile.LandingPage.FEEDS, "Feeds"))
+        self.fields["default_landing_page"].choices = landing_choices
+
+        status_choices = [(Status.CURRENT, "Current")]
+        for value, label in Status.choices:
+            if value != Status.CURRENT and profile.can_manage_status(value):
+                status_choices.append((value, label))
+        self.fields["default_new_idea_status"].choices = status_choices
+
+    class Meta:
+        model = Profile
+        fields = [
+            "default_landing_page",
+            "default_owner_scope",
+            "default_tracking_sort",
+            "default_feed_sort",
+            "list_density",
+            "default_new_idea_status",
+            "default_new_idea_public",
+            "timezone_name",
+        ]
+        labels = {
+            "default_landing_page": "After sign-in, open",
+            "default_owner_scope": "Default idea ownership",
+            "default_tracking_sort": "Default Tracking order",
+            "default_feed_sort": "Default Feeds order",
+            "list_density": "List spacing",
+            "default_new_idea_status": "Create new ideas in",
+            "default_new_idea_public": "Make new ideas public by default",
+            "timezone_name": "Time zone",
+        }
+        help_texts = {
+            "default_owner_scope": "You can still switch between your ideas and all owners on any list.",
+            "list_density": "Comfortable includes more context; Compact fits more work on screen.",
+            "timezone_name": "Use an IANA name such as America/Los_Angeles or Europe/London.",
+        }
+
+    def clean_timezone_name(self):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        value = self.cleaned_data["timezone_name"].strip()
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise forms.ValidationError("Enter a valid time zone, such as America/Los_Angeles.") from exc
+        return value
 
 
 ResearchEntryFormSet = inlineformset_factory(

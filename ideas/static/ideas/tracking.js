@@ -1,26 +1,4 @@
 (() => {
-  const filterForm = document.querySelector("[data-auto-submit-filters]");
-  if (filterForm) {
-    let searchTimer;
-    const applyButton = filterForm.querySelector("[data-filter-apply]");
-    if (applyButton) applyButton.hidden = true;
-    const applyFilters = () => {
-      clearTimeout(searchTimer);
-      filterForm.submit();
-    };
-    filterForm.querySelectorAll("select").forEach((select) => {
-      select.addEventListener("change", applyFilters);
-    });
-    const search = filterForm.querySelector("input[type='search']");
-    if (search) {
-      search.addEventListener("input", () => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(applyFilters, 400);
-      });
-    }
-    filterForm.addEventListener("submit", () => clearTimeout(searchTimer));
-  }
-
   const storageKey = "ideaflow.collapsedTrackingFamilies";
   let collapsed = new Set();
   try {

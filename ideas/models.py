@@ -860,6 +860,14 @@ class Artifact(models.Model):
         LIST = "list", "List"
         SUMMARY = "summary", "Summary"
 
+    class PresentationMode(models.TextChoices):
+        AUTO = "auto", "Choose automatically"
+        REPORT = "report", "Formatted report"
+        TABLE = "table", "Table"
+        STRUCTURED = "structured", "Structured data"
+        RAW = "raw", "Raw text"
+        EMBEDDED = "embedded", "Embedded document"
+
     # Extensions plain-text/markup enough to render safely inline on the idea page.
     TEXT_VIEW_EXTENSIONS = {
         ".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".json",
@@ -888,6 +896,18 @@ class Artifact(models.Model):
     )
     title = models.CharField(max_length=200)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.REPORT)
+    presentation_mode = models.CharField(
+        max_length=16,
+        choices=PresentationMode.choices,
+        default=PresentationMode.AUTO,
+        blank=True,
+        help_text="Choose Auto unless this artifact needs a specific primary view.",
+    )
+    source_format = models.CharField(
+        max_length=24,
+        blank=True,
+        help_text="Optional format hint such as markdown, csv, json, html, or plain.",
+    )
     description = models.TextField(blank=True)
     file = models.FileField(upload_to="artifacts/%Y/%m/", blank=True)
     url = models.URLField(blank=True, help_text="Use for an artifact hosted elsewhere.")
@@ -1467,6 +1487,57 @@ class Profile(models.Model):
         default=False,
         help_text="Set up podcast shows, link research sources, and review/publish episodes.",
     )
+
+    class LandingPage(models.TextChoices):
+        PUBLIC = "home", "Public projects"
+        CURRENT = "current", "Current"
+        TRACKING = "tracking", "Tracking"
+        FEEDS = "feeds", "Feeds"
+
+    class Density(models.TextChoices):
+        COMFORTABLE = "comfortable", "Comfortable"
+        COMPACT = "compact", "Compact"
+
+    default_landing_page = models.CharField(
+        max_length=16, choices=LandingPage.choices, default=LandingPage.CURRENT
+    )
+    default_owner_scope = models.CharField(
+        max_length=12,
+        choices=(("all", "All owners"), ("mine", "My ideas")),
+        default="all",
+    )
+    default_tracking_sort = models.CharField(
+        max_length=16,
+        choices=(
+            ("questions", "Human input needed"),
+            ("family", "Parent and children"),
+            ("rank", "Rank"),
+            ("interest", "Interest"),
+            ("updated", "Last update"),
+            ("oldest", "Needs review"),
+        ),
+        default="questions",
+    )
+    default_feed_sort = models.CharField(
+        max_length=24,
+        choices=(
+            ("published_desc", "Newest published"),
+            ("published_asc", "Oldest published"),
+            ("downloaded_desc", "Newest downloaded"),
+            ("feed", "Feed title"),
+            ("idea", "Idea title"),
+            ("category", "Topic"),
+        ),
+        default="published_desc",
+    )
+    list_density = models.CharField(
+        max_length=16, choices=Density.choices, default=Density.COMFORTABLE
+    )
+    default_new_idea_status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CURRENT
+    )
+    default_new_idea_public = models.BooleanField(default=False)
+    timezone_name = models.CharField(max_length=64, default="America/Los_Angeles")
     last_seen_at = models.DateTimeField(
         null=True, blank=True,
         help_text="Last authenticated request, updated by TrackLastSeenMiddleware. "

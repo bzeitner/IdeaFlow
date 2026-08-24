@@ -3,17 +3,18 @@
 {% block content %}
   <h2>Current Focus</h2>
   <p class="lede">The efforts you're actively putting time into right now.</p>
+  {% if using_default_view %}<p class="view-state"><span>Using your default: My ideas</span><a href="{% url 'ideas:preferences' %}">Change default</a></p>{% endif %}
   {% include "ideas/_owner_filter.html" %}
-  <div class="grid">
+  <div class="grid density-{{ list_density }}">
     {% for idea in ideas %}
       {% include "ideas/_card.html" %}
     {% empty %}
-      <p class="empty">
+      <div class="empty-state"><h3>{% if q or owner_filter %}No ideas match this view{% else %}Ready for your first focus{% endif %}</h3><p>
         Nothing in focus yet.
         {% if user.profile.role_admin or user.profile.role_add_ideas %}
           <a href="{% url 'ideas:create' %}">Add an idea →</a>
         {% endif %}
-      </p>
+      </p>{% if q or owner_filter %}<a class="btn" href="{% url 'ideas:current' %}" data-clear-persisted-query>Reset filters</a>{% endif %}<a class="help-link" href="{% url 'ideas:guide' %}#current-tracking-archive">How Current works</a></div>
     {% endfor %}
   </div>
   {% include "ideas/_history_metrics.html" %}

@@ -1,20 +1,34 @@
 {% extends "ideas/base.html" %}
 {% block title %}{{ artifact.title }} · {{ idea.title }} · IdeaFlow{% endblock %}
 {% block content %}
-  <article class="detail">
+  <article class="detail artifact-view">
     <div class="card-head">
       <h2>{{ artifact.title }}</h2>
       <a class="btn" href="{{ idea.get_absolute_url }}">Back to idea</a>
     </div>
-    <p class="dim">Artifact on <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a></p>
+    <p class="dim">{{ artifact.get_kind_display }} on <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a> · Generated {{ artifact.generated_at|date:"M j, Y g:i A" }}</p>
     {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
-    <div class="card-actions">
-      <a class="btn primary" href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download {{ artifact.download_filename }}</a>
+    <div class="artifact-view-actions" aria-label="Artifact views">
+      {% if presentation.view != 'raw' %}<a class="btn" href="?view=raw">Raw</a>{% else %}<a class="btn primary" href="{{ artifact.view_link }}">Formatted</a>{% endif %}
+      {% if presentation.format == 'json' and presentation.view == 'table' %}<a class="btn" href="?view=structured">Structured</a>{% endif %}
+      <a class="btn" href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download original</a>
+      <a class="help-link" href="{% url 'ideas:guide' %}#artifact-views">How artifact views work</a>
     </div>
-    {% if artifact.is_html %}
-      <iframe class="artifact-frame" sandbox srcdoc="{{ content }}"></iframe>
+    {% if presentation.truncated %}<p class="status-callout warning" role="status">This artifact is large, so the preview is shortened. Download the original for the complete content.</p>{% endif %}
+    {% if presentation.malformed %}<p class="status-callout warning" role="status">IdeaFlow could not confidently format this file, so its source is shown instead.</p>{% endif %}
+    {% if presentation.view == 'html' %}
+      <iframe class="artifact-frame" title="Formatted {{ artifact.title }}" sandbox referrerpolicy="no-referrer" srcdoc="{{ presentation.content }}"></iframe>
+    {% elif presentation.view == 'report' %}
+      <div class="artifact-report">{{ presentation.html }}</div>
+    {% elif presentation.view == 'table' %}
+      <div class="artifact-table-tools"><label><span class="sr-only">Search this table</span><input type="search" placeholder="Search this table…" data-artifact-table-search></label><span class="dim" data-artifact-table-count aria-live="polite"></span></div>
+      <div class="artifact-table-wrap"><table class="artifact-table" data-artifact-table><caption>{{ artifact.title }}</caption><thead><tr>{% for header in presentation.table.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in presentation.table.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+      {% if presentation.table.truncated %}<p class="dim">Only the first 1,000 rows are shown. Download the original for the complete table.</p>{% endif %}
+    {% elif presentation.view == 'structured' %}
+      <pre class="artifact-text artifact-structured"><code>{{ presentation.content }}</code></pre>
     {% else %}
-      <pre class="artifact-text">{{ content }}</pre>
+      <div class="artifact-raw-head"><strong>Raw {{ presentation.format|upper }} source</strong><label><input type="checkbox" data-wrap-artifact checked> Wrap long lines</label></div>
+      <pre class="artifact-text wrap" data-artifact-raw><code>{{ presentation.content }}</code></pre>
     {% endif %}
   </article>
 {% endblock %}

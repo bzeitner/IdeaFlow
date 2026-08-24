@@ -43,10 +43,13 @@
     </select>
     <button class="btn primary" type="submit" data-filter-apply>Apply</button>
     {% if filters.q or filters.category or filters.stage or filters.attention or filters.owner or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}" data-clear-persisted-query>Clear</a>{% endif %}
+    <span class="filter-status dim" data-filter-status aria-live="polite"></span>
   </form>
 
+  {% if using_default_view %}<p class="view-state"><span>Using your personal Tracking defaults</span><a href="{% url 'ideas:preferences' %}">Change defaults</a></p>{% endif %}
+
   {% if ideas %}
-    <div class="tracking-list">
+    <div class="tracking-list density-{{ list_density }}">
       {% for idea in ideas %}
         <article class="tracking-item{% if idea.parent_id %} child-item{% endif %}{% if idea.is_paused or idea.open_question_count %} needs-attention{% endif %}{% if idea.needs_persona_intervention %} council-intervention{% endif %}" data-idea-id="{{ idea.pk }}"{% if idea.parent_id %} data-parent-id="{{ idea.parent_id }}"{% endif %}>
           <div class="tracking-item-main">
@@ -68,20 +71,20 @@
             {% if idea.summary %}<p class="summary compact">{{ idea.summary }}</p>{% endif %}
           </div>
           <div class="quick-fields">
-            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form">
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form" data-auto-save>
               {% csrf_token %}<input type="hidden" name="field" value="next_action"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
               <label>Next action<input name="value" value="{{ idea.next_action }}" placeholder="Set the next step…"></label>
-              <button class="btn small" type="submit">Save</button>
+              <button class="btn small" type="submit">Save</button><span class="quick-save-status dim" data-save-status aria-live="polite"></span>
             </form>
-            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form compact-form">
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form compact-form" data-auto-save>
               {% csrf_token %}<input type="hidden" name="field" value="rank"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
               <label>Rank<input type="number" min="0" name="value" value="{{ idea.rank }}"></label>
-              <button class="btn small" type="submit">Save</button>
+              <button class="btn small" type="submit">Save</button><span class="quick-save-status dim" data-save-status aria-live="polite"></span>
             </form>
-            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form">
+            <form method="post" action="{% url 'ideas:quick_update' idea.pk %}" class="quick-form" data-auto-save>
               {% csrf_token %}<input type="hidden" name="field" value="stage"><input type="hidden" name="next" value="?{{ request.GET.urlencode }}">
               <label>Stage<select name="value"><option value="">No stage</option>{% for stage in stages %}<option value="{{ stage.pk }}"{% if idea.stage_id == stage.pk %} selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></label>
-              <button class="btn small" type="submit">Save</button>
+              <button class="btn small" type="submit">Save</button><span class="quick-save-status dim" data-save-status aria-live="polite"></span>
             </form>
           </div>
           <div class="row-actions">

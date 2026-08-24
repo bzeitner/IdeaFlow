@@ -17,7 +17,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
-from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ResearchEntryForm, ResourceFormSet
+from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
+from .artifact_presentation import MAX_RENDER_CHARS, present_artifact
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
@@ -529,6 +530,19 @@ def home(request):
     )
 
 
+@login_required
+def start(request):
+    """Send a signed-in user to their explicit cross-device landing choice."""
+    profile = request.user.profile
+    if profile.default_landing_page == Profile.LandingPage.CURRENT and profile.has_role("role_current"):
+        return redirect("ideas:current")
+    if profile.default_landing_page == Profile.LandingPage.TRACKING and profile.has_role("role_tracking"):
+        return redirect("ideas:tracking")
+    if profile.default_landing_page == Profile.LandingPage.FEEDS and profile.can_read_feeds:
+        return redirect("ideas:feeds")
+    return redirect(f"{reverse('ideas:home')}?public=1")
+
+
 def guide(request):
     """Public, in-app guide for prospective and newly invited users."""
     context = {}
@@ -537,8 +551,27 @@ def guide(request):
     return render(request, "ideas/guide.html", context)
 
 
+@login_required
+def preferences(request):
+    profile = request.user.profile
+    if request.method == "POST":
+        form = ProfilePreferencesForm(request.POST, instance=profile, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Your preferences were saved and will follow you across devices.")
+            return redirect("ideas:preferences")
+    else:
+        form = ProfilePreferencesForm(instance=profile, user=request.user)
+    return render(
+        request,
+        "ideas/preferences.html",
+        {"form": form, "tabs": _tabs(profile), "active": "preferences"},
+    )
+
+
 def _tab_view(request, status, template):
-    owner_filter = request.GET.get("owner", "")
+    owner_default = "mine" if request.user.profile.default_owner_scope == "mine" else ""
+    owner_filter = request.GET.get("owner", owner_default)
     query = request.GET.get("q", "").strip()
     ideas = Idea.objects.filter(status=status).select_related("created_by", "category", "parent").prefetch_related("resources")
     if query:
@@ -567,6 +600,8 @@ def _tab_view(request, status, template):
             "owners": get_user_model().objects.filter(
                 ideas_created__isnull=False
             ).distinct().order_by("email", "username"),
+            "using_default_view": "owner" not in request.GET and bool(owner_default),
+            "list_density": request.user.profile.list_density,
         },
     )
 
@@ -585,7 +620,8 @@ def tracking(request):
     category = request.GET.get("category", "")
     stage = request.GET.get("stage", "")
     attention = request.GET.get("attention", "")
-    owner_filter = request.GET.get("owner", "")
+    owner_default = "mine" if request.user.profile.default_owner_scope == "mine" else ""
+    owner_filter = request.GET.get("owner", owner_default)
     ideas = ideas.annotate(
         latest_persona_review_status=Subquery(
             PersonaReview.objects.filter(idea_id=OuterRef("pk"))
@@ -629,7 +665,7 @@ def tracking(request):
         )
     )
 
-    sort = request.GET.get("sort", "questions")
+    sort = request.GET.get("sort", request.user.profile.default_tracking_sort)
     orderings = {
         "questions": (
             "family_rank",
@@ -699,6 +735,8 @@ def tracking(request):
                 "owner": owner_filter,
                 "sort": sort,
             },
+            "using_default_view": not any(name in request.GET for name in ("owner", "sort")),
+            "list_density": request.user.profile.list_density,
         },
     )
 
@@ -791,7 +829,8 @@ def idea_form(request, pk=None):
                 # force new ideas into Current regardless of what "status" was
                 # submitted, so a role_add_ideas-only user can't write directly
                 # into a tab (e.g. archived) they have no role to manage.
-                form.instance.status = Status.CURRENT
+                requested_status = form.cleaned_data.get("status", profile.default_new_idea_status)
+                form.instance.status = requested_status if profile.can_manage_status(requested_status) else Status.CURRENT
                 form.instance.created_by = request.user
             saved = form.save()
             formset.instance = saved
@@ -804,6 +843,9 @@ def idea_form(request, pk=None):
         initial = {}
         resource_initial = None
         if idea is None:
+            preferred_status = profile.default_new_idea_status
+            initial["status"] = preferred_status if profile.can_manage_status(preferred_status) else Status.CURRENT
+            initial["is_public"] = profile.default_new_idea_public
             shared_title = request.GET.get("title") or request.GET.get("name")
             shared_text = request.GET.get("text")
             shared_url = request.GET.get("url")
@@ -1093,14 +1135,17 @@ def quick_update(request, pk):
     if request.method == "POST":
         field = request.POST.get("field")
         value = request.POST.get("value", "").strip()
+        updated = False
         if field == "rank" and value.isdigit():
             idea.rank = int(value)
             idea.save(update_fields=["rank", "updated_at"])
+            updated = True
         elif field == "stage":
             stage = Stage.objects.filter(pk=value, is_active=True).first() if value else None
             if value == "" or stage:
                 idea.stage = stage
                 idea.save(update_fields=["stage", "updated_at"])
+                updated = True
         elif field == "next_action":
             idea.replace_active_next_action(value)
             idea.agent_runs_since_feedback = 0
@@ -1112,7 +1157,15 @@ def quick_update(request, pk):
                     "updated_at",
                 ]
             )
-        messages.success(request, f"Updated “{idea.title}”.")
+            updated = True
+        if request.headers.get("Accept") == "application/json":
+            if updated:
+                return JsonResponse({"ok": True, "field": field, "value": value})
+            return JsonResponse({"ok": False, "error": "Choose a valid value."}, status=400)
+        if updated:
+            messages.success(request, f"Updated “{idea.title}”.")
+        else:
+            messages.error(request, "That quick update could not be saved.")
     back = request.POST.get("next", "")
     return redirect(f"{reverse('ideas:tracking')}{back}")
 
@@ -1540,9 +1593,17 @@ def view_artifact(request, pk, artifact_pk):
     if not artifact.is_viewable:
         return redirect(artifact.link)
     idea = artifact.idea
+    preview_byte_limit = MAX_RENDER_CHARS * 4
     with artifact.file.open("rb") as f:
-        raw = f.read()
-    content = raw.decode("utf-8", errors="replace")
+        raw = f.read(preview_byte_limit + 1)
+    source_truncated = len(raw) > preview_byte_limit
+    content = raw[:preview_byte_limit].decode("utf-8", errors="replace")
+    presentation = present_artifact(
+        artifact,
+        content,
+        request.GET.get("view", ""),
+        source_truncated=source_truncated,
+    )
     return render(
         request,
         "ideas/artifact_view.html",
@@ -1550,6 +1611,7 @@ def view_artifact(request, pk, artifact_pk):
             "idea": idea,
             "artifact": artifact,
             "content": content,
+            "presentation": presentation,
             "tabs": _tabs(request.user.profile),
         },
     )
@@ -1580,6 +1642,24 @@ def artifacts(request):
         .filter(Q(idea__is_public=True) | Q(idea__status__in=accessible_statuses))
         .order_by("-generated_at", "-updated_at")
     )
+    query = request.GET.get("q", "").strip()
+    kind = request.GET.get("kind", "")
+    source = request.GET.get("format", "")
+    if query:
+        items = items.filter(Q(title__icontains=query) | Q(description__icontains=query) | Q(idea__title__icontains=query))
+    if kind in Artifact.Kind.values:
+        items = items.filter(kind=kind)
+    if source:
+        extensions = {
+            "markdown": (".md", ".markdown"),
+            "html": (".html", ".htm"),
+            "plain": (".txt", ".rst"),
+            "yaml": (".yaml", ".yml"),
+        }.get(source, (f".{source}",))
+        extension_query = Q()
+        for extension in extensions:
+            extension_query |= Q(file__iendswith=extension)
+        items = items.filter(Q(source_format=source) | extension_query)
     page = Paginator(items, 25).get_page(request.GET.get("page"))
     for artifact in page.object_list:
         artifact.can_manage = profile.can_manage_status(artifact.idea.status)
@@ -1591,7 +1671,7 @@ def artifacts(request):
         Episode.objects.filter(status=EpisodeStatus.PUBLISHED, show__is_publicly_listed=True)
         .select_related("show")
         .order_by("-published_at")
-    )
+    ) if not (query or kind or source) else Episode.objects.none()
     return render(
         request,
         "ideas/artifacts.html",
@@ -1599,6 +1679,10 @@ def artifacts(request):
             "page": page,
             "episodes": episodes,
             "tabs": _tabs(profile),
+            "active": "artifacts",
+            "filters": {"q": query, "kind": kind, "format": source},
+            "artifact_kinds": Artifact.Kind.choices,
+            "artifact_formats": ("markdown", "html", "csv", "tsv", "json", "plain", "log"),
         },
     )
 
@@ -1643,7 +1727,7 @@ def feeds(request):
         # title, and the summarized rows are otherwise buried thousands deep.
         items = items.filter(interest__isnull=True, summarized_at__isnull=False)
 
-    sort = request.GET.get("sort", "published_desc")
+    sort = request.GET.get("sort", request.user.profile.default_feed_sort)
     orderings = {
         "published_desc": (F("published_at").desc(nulls_last=True), "-created_at", "-id"),
         "published_asc": ("published_missing", "published_at", "created_at", "id"),
@@ -1745,6 +1829,7 @@ def feeds(request):
             "querystring": querystring,
             "pagination_suffix": pagination_suffix,
             "tabs": _tabs(request.user.profile),
+            "active": "feeds",
         },
     )
 

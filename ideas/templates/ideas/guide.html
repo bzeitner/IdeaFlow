@@ -9,9 +9,11 @@
       <nav class="guide-jumps" aria-label="Guide sections">
         <a href="#welcome">Your account</a>
         <a href="#first-session">First session</a>
-        <a href="#lifecycle">Lifecycle</a>
+        <a href="#current-tracking-archive">Lifecycle</a>
         <a href="#work-loop">Work loop</a>
         <a href="#review">Review</a>
+        <a href="#saved-views">Filters &amp; defaults</a>
+        <a href="#artifact-views">Reports &amp; artifacts</a>
         <a href="#advanced">Advanced tools</a>
         <a href="#access">Roles</a>
       </nav>
@@ -44,7 +46,7 @@
       {% endif %}
     </section>
 
-    <section id="lifecycle" class="guide-section">
+    <section id="current-tracking-archive" class="guide-section">
       <div class="guide-section-heading"><span>3</span><div><h2>Use status and stage correctly</h2><p>Status controls where work lives. Stage describes its maturity.</p></div></div>
       <div class="lifecycle-grid">
         <div class="lifecycle-card"><strong>Current</strong><p>The deliberately short list receiving active attention now.</p></div>
@@ -83,13 +85,37 @@
       <div class="guide-feature-grid">
         <div><h3>Feeds</h3><p>Feeds are shared RSS/Atom sources associated with Ideas. Filter and sort incoming items by Idea or topic, read summaries, and rate interest and information value. Selecting an Idea also lets an authorized user pause or resume its future feed ingestion.</p></div>
         <div><h3>Feed history</h3><p>Pausing or archiving does not remove existing articles. A shared feed continues refreshing while another active, unpaused Idea still needs it.</p></div>
-        <div><h3>Tracking view</h3><p>Search by text, category, stage, attention, or owner. Sort by human-input priority, family, rank, interest, or update time and make quick updates in place.</p></div>
+        <div><h3>Tracking view</h3><p>Search by text, category, stage, attention, or owner. Filters apply as soon as you change them, and search updates after a short pause. Sort by human-input priority, family, rank, interest, or update time and make quick updates in place.</p></div>
         <div><h3>Ownership</h3><p>Each Idea has an owner responsible for direction. Administrators can review and reassign ownership across the portfolio.</p></div>
       </div>
     </section>
 
+    <section id="saved-views" class="guide-section">
+      <div class="guide-section-heading"><span>6</span><div><h2>Make each view feel like yours</h2><p>Temporary filters answer today's question; preferences establish the way you usually work.</p></div></div>
+      <div class="guide-feature-grid">
+        <div><h3>Filters apply automatically</h3><p>Changing a dropdown, checkbox, or toggle updates the list immediately. Search waits briefly while you type. The web address records the current view, so Back, Forward, refresh, and shared links remain predictable.</p></div>
+        <div><h3>Your defaults follow you</h3><p>Use <a href="{% if user.is_authenticated %}{% url 'ideas:preferences' %}{% else %}#welcome{% endif %}">Preferences</a> to choose your landing page, owner scope, sorting, spacing, creation defaults, and time zone. These choices are stored with your account.</p></div>
+        <div><h3>Know which state you are seeing</h3><p>A page identifies when it is using your personal default. Changing a filter creates a temporary view; it does not silently overwrite your preference.</p></div>
+        <div><h3>When something seems missing</h3><p>Look at the active search, owner, category, stage, or attention controls and use <strong>Clear</strong> or <strong>Reset filters</strong>. A role can also hide a workspace you do not have permission to manage.</p></div>
+      </div>
+      <p class="guide-note"><strong>Preference order:</strong> a filter in the current URL wins for that view; otherwise IdeaFlow uses your profile preference, then the product default.</p>
+    </section>
+
+    <section id="artifact-views" class="guide-section">
+      <div class="guide-section-heading"><span>7</span><div><h2>Read outputs in the clearest format</h2><p>IdeaFlow keeps the original file while presenting a human-friendly primary view whenever it can do so safely.</p></div></div>
+      <dl class="guide-directory">
+        <div><dt>Formatted</dt><dd>The default for reports and summaries. Markdown becomes readable headings, paragraphs, lists, links, callouts, and tables. Uploaded HTML remains isolated in a sandbox.</dd></div>
+        <div><dt>Table</dt><dd>The default for CSV, TSV, and flat structured lists. Search within the preview and scroll wide tables without losing the original file.</dd></div>
+        <div><dt>Structured</dt><dd>A readable indented view for nested JSON or data that would be misleading as a flat table.</dd></div>
+        <div><dt>Raw</dt><dd>The decoded source exactly as supplied, useful for logs, source material, troubleshooting, or checking a formatted interpretation.</dd></div>
+        <div><dt>Download original</dt><dd>The unchanged uploaded bytes. Formatting never rewrites or replaces the source artifact.</dd></div>
+        <div><dt>Summary reports</dt><dd>Summaries always open in a human-readable report view. Raw remains available when you need to inspect the source.</dd></div>
+      </dl>
+      <p class="guide-note">If a file is malformed, too large for a full preview, or cannot be classified confidently, IdeaFlow says so and falls back to a safe raw view. Download the original for the complete content.</p>
+    </section>
+
     <section id="advanced" class="guide-section">
-      <div class="guide-section-heading"><span>6</span><div><h2>Add advanced tools deliberately</h2><p>Start with the basic work loop; enable automation only when its goal and review point are clear.</p></div></div>
+      <div class="guide-section-heading"><span>8</span><div><h2>Add advanced tools deliberately</h2><p>Start with the basic work loop; enable automation only when its goal and review point are clear.</p></div></div>
       <dl class="guide-directory">
         <div><dt>Repeat tasks</dt><dd>Run a measurable search or collection task on an interval, retain structured results, and review each result’s status. Repeat work can be paused independently.</dd></div>
         <div><dt>Persona council</dt><dd>Assign decision perspectives and schedule a review after an Idea stalls. Required personas must unanimously approve a direction; disagreement returns the decision to a human.</dd></div>
@@ -101,7 +127,7 @@
     </section>
 
     <section id="access" class="guide-section">
-      <div class="guide-section-heading"><span>7</span><div><h2>Understand roles</h2><p>Roles grant capabilities; ownership identifies responsibility.</p></div></div>
+      <div class="guide-section-heading"><span>9</span><div><h2>Understand roles</h2><p>Roles grant capabilities; ownership identifies responsibility.</p></div></div>
       <div class="table-wrap"><table class="guide-table"><thead><tr><th>Role</th><th>What it allows</th></tr></thead><tbody>
         <tr><td>Current</td><td>View and manage Ideas in Current. Any Current, Tracking, or Archive role also grants access to the shared Feeds page.</td></tr>
         <tr><td>Tracking</td><td>View and manage Ideas in Tracking, including filters and quick updates.</td></tr>
@@ -114,5 +140,6 @@
       </tbody></table></div>
       <p class="guide-note">If you can read a public Idea but cannot edit it, that is expected. Ask an administrator for the corresponding Current, Tracking, or Archive role when you need to manage it.</p>
     </section>
+    <footer class="guide-section guide-updated"><p class="dim">Guide updated August 23, 2026 · Covers filters, preferences, human-friendly artifact views, and the current workspace lifecycle.</p></footer>
   </article>
 {% endblock %}

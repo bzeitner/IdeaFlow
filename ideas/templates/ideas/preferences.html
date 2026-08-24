@@ -1,0 +1,44 @@
+{% extends "ideas/base.html" %}
+{% block title %}Preferences · IdeaFlow{% endblock %}
+{% block content %}
+  <div class="page-head preferences-head">
+    <div>
+      <p class="eyebrow">Your workspace</p>
+      <h1>Preferences</h1>
+      <p class="lede">Make IdeaFlow open the way you work. These choices follow you across devices.</p>
+    </div>
+    <a class="btn" href="{% url 'ideas:guide' %}#saved-views">How defaults work</a>
+  </div>
+  <form method="post" class="idea-form preferences-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-error-summary" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <section class="settings-group">
+      <div class="section-heading"><div><h2>Starting point</h2><p>Choose what you see first and whose work appears by default.</p></div></div>
+      <div class="settings-grid">
+        {% for field in form %}{% if field.name == 'default_landing_page' or field.name == 'default_owner_scope' %}
+          <div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+    <section class="settings-group">
+      <div class="section-heading"><div><h2>Lists and sorting</h2><p>Set a calm, useful baseline. You can always change a view temporarily.</p></div></div>
+      <div class="settings-grid">
+        {% for field in form %}{% if field.name == 'default_tracking_sort' or field.name == 'default_feed_sort' or field.name == 'list_density' %}
+          <div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+    <section class="settings-group">
+      <div class="section-heading"><div><h2>New ideas</h2><p>Use safe defaults while keeping every choice editable before saving.</p></div></div>
+      <div class="settings-grid">
+        <div class="field"><label for="{{ form.default_new_idea_status.id_for_label }}">{{ form.default_new_idea_status.label }}</label>{{ form.default_new_idea_status }}{{ form.default_new_idea_status.errors }}</div>
+        <label class="checkbox-field">{{ form.default_new_idea_public }} <span>{{ form.default_new_idea_public.label }}</span></label>{{ form.default_new_idea_public.errors }}
+      </div>
+    </section>
+    <section class="settings-group">
+      <div class="section-heading"><div><h2>Locale</h2><p>Dates and generated reports should feel local to you.</p></div></div>
+      <div class="field"><label for="{{ form.timezone_name.id_for_label }}">{{ form.timezone_name.label }}</label>{{ form.timezone_name }}{% if form.timezone_name.help_text %}<small class="dim">{{ form.timezone_name.help_text }}</small>{% endif %}{{ form.timezone_name.errors }}</div>
+    </section>
+    <div class="form-actions-sticky"><span class="dim">Changes take effect after saving.</span><button class="btn primary" type="submit">Save preferences</button></div>
+  </form>
+{% endblock %}

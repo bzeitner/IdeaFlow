@@ -4,7 +4,15 @@
   <div class="page-head">
     <h2>Artifacts</h2>
   </div>
-  <p class="dim">Every report, list, and summary artifact across all ideas you can see.</p>
+  <p class="lede">Every report, list, and summary across the ideas you can see—presented in the clearest available format.</p>
+  <form method="get" class="artifact-filters" data-auto-submit-filters data-persist-query-params="q,kind,format">
+    <label><span class="sr-only">Search artifacts</span><input type="search" name="q" value="{{ filters.q }}" placeholder="Search artifacts…"></label>
+    <label><span class="sr-only">Filter by kind</span><select name="kind"><option value="">All types</option>{% for value, label in artifact_kinds %}<option value="{{ value }}"{% if filters.kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label><span class="sr-only">Filter by format</span><select name="format"><option value="">All formats</option>{% for format in artifact_formats %}<option value="{{ format }}"{% if filters.format == format %} selected{% endif %}>{{ format|upper }}</option>{% endfor %}</select></label>
+    <button class="btn small" type="submit" data-filter-apply>Apply</button>
+    {% if filters.q or filters.kind or filters.format %}<a class="btn small" href="{% url 'ideas:artifacts' %}" data-clear-persisted-query>Reset</a>{% endif %}
+    <span class="filter-status dim" data-filter-status aria-live="polite"></span>
+  </form>
 
   {% if episodes %}
     <h3>Published podcasts</h3>
@@ -40,6 +48,7 @@
           {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
           <div class="meta">
             <span class="pill">{{ artifact.get_kind_display }}</span>
+            {% if artifact.source_format %}<span class="pill">{{ artifact.source_format|upper }}</span>{% elif artifact.file_extension %}<span class="pill">{{ artifact.file_extension|slice:"1:"|upper }}</span>{% endif %}
             {% if artifact.is_viewable %}<a href="{{ artifact.view_link }}">View</a>{% endif %}
             {% if artifact.file %}<a href="{% url 'ideas:download_artifact' artifact.idea_id artifact.pk %}" download="{{ artifact.download_filename }}">Download</a>{% endif %}
             {% if not artifact.file and artifact.url %}<a href="{{ artifact.url }}" target="_blank" rel="noopener">Open link</a>{% endif %}
@@ -53,7 +62,7 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="dim">No artifacts yet.</p>
+    <div class="empty-state"><h3>{% if filters.q or filters.kind or filters.format %}No artifacts match this view{% else %}No artifacts yet{% endif %}</h3><p>Reports, summaries, lists, and other outputs will collect here as work progresses.</p>{% if filters.q or filters.kind or filters.format %}<a class="btn" href="{% url 'ideas:artifacts' %}" data-clear-persisted-query>Reset filters</a>{% endif %}<a class="help-link" href="{% url 'ideas:guide' %}#artifact-views">Learn about artifact views</a></div>
   {% endif %}
 
   {% if page.has_other_pages %}

@@ -11,39 +11,55 @@
   <link rel="stylesheet" href="{% static 'ideas/app.css' %}">
 </head>
 <body{% if user.is_authenticated %} data-persistence-user="{{ user.pk }}"{% endif %}>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
-    <a class="brand" href="{% url 'ideas:home' %}">
+    <a class="brand" href="{% if user.is_authenticated %}{% url 'ideas:start' %}{% else %}{% url 'ideas:home' %}{% endif %}">
       <img class="brand-icon" src="{% static 'ideas/favicon.svg' %}" alt="" width="24" height="24">Idea<span>Flow</span></a>
-    <span class="topbar-actions">
-      <a class="btn" href="{% url 'ideas:guide' %}">Guide</a>
+    <div class="topbar-actions">
       {% if user.is_authenticated %}
-        <a class="btn" href="{% url 'ideas:artifacts' %}">Artifacts</a>
-        {% if user.profile.role_admin %}
-          <a class="btn" href="{% url 'ideas:user_management' %}">Users</a>
-          <a class="btn" href="{% url 'ideas:idea_ownership' %}">Owners</a>
-          <a class="btn" href="{% url 'admin:index' %}">Manage</a>
-        {% endif %}
         {% if user.profile.can_read_feeds %}
-          <a class="btn" href="{% url 'ideas:feeds' %}">Feeds</a>
+          <a class="nav-link" href="{% url 'ideas:feeds' %}"{% if active == 'feeds' %} aria-current="page"{% endif %}>Feeds</a>
         {% endif %}
+        <details class="nav-menu">
+          <summary>Workspace</summary>
+          <div class="nav-menu-panel">
+            <a href="{% url 'ideas:artifacts' %}">Artifacts</a>
+            {% if user.profile.role_graph %}<a href="{% url 'ideas:graph' %}">Knowledge Graph</a>{% endif %}
+            {% if user.profile.role_weekly_summary %}<a href="{% url 'ideas:weekly_summaries' %}">Weekly summaries</a>{% endif %}
+            <a href="{% url 'ideas:guide' %}">Guide</a>
+          </div>
+        </details>
+        {% if user.profile.role_admin %}<details class="nav-menu">
+          <summary>Admin</summary>
+          <div class="nav-menu-panel">
+            <a href="{% url 'ideas:user_management' %}">Users</a>
+            <a href="{% url 'ideas:idea_ownership' %}">Ownership</a>
+            <a href="{% url 'admin:index' %}">Configuration</a>
+          </div>
+        </details>{% endif %}
         {% if user.profile.role_admin or user.profile.role_add_ideas %}
           <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
         {% endif %}
-        <span class="dim">{{ user.email }}</span>
-        <form method="post" action="{% url 'account_logout' %}" class="logout-form">
-          {% csrf_token %}
-          <button class="btn small" type="submit">Log out</button>
-        </form>
+        <details class="nav-menu profile-menu">
+          <summary aria-label="Open account menu">{{ user.email|default:user.username }}</summary>
+          <div class="nav-menu-panel nav-menu-panel-right">
+            <span class="nav-menu-identity">Signed in as<br><strong>{{ user.email|default:user.username }}</strong></span>
+            <a href="{% url 'ideas:preferences' %}">Preferences</a>
+            <a href="{% url 'ideas:guide' %}#access">My roles and access</a>
+            <form method="post" action="{% url 'account_logout' %}" class="logout-form">{% csrf_token %}<button type="submit">Sign out</button></form>
+          </div>
+        </details>
       {% else %}
+        <a class="nav-link" href="{% url 'ideas:guide' %}">Guide</a>
         {% include "ideas/_google_signin.html" %}
       {% endif %}
-    </span>
+    </div>
   </header>
 
   {% if user.is_authenticated and tabs %}
     <nav class="tabs">
       {% for tab in tabs %}
-        <a href="{% url tab.route %}" class="tab {% if active == tab.value %}active{% endif %}">
+        <a href="{% url tab.route %}" class="tab {% if active == tab.value %}active{% endif %}"{% if active == tab.value %} aria-current="page"{% endif %}>
           {{ tab.label }} <span class="count">{{ tab.count }}</span>
         </a>
       {% endfor %}
@@ -56,7 +72,7 @@
     </ul>
   {% endif %}
 
-  <main>
+  <main id="main-content" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
   <script src="{% static 'ideas/app.js' %}"></script>
