@@ -258,6 +258,9 @@ class ResearchEntryForm(forms.ModelForm):
         # Blank the initial for unsaved rows so an empty one stays genuinely empty.
         if self.instance.pk is None:
             self.initial["occurred_at"] = None
+        self.fields["context"].help_text = (
+            "Supports Markdown for headings, lists, tables, links, emphasis, and code."
+        )
 
     def clean(self):
         cleaned = super().clean()

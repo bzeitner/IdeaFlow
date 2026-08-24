@@ -7,7 +7,7 @@ from django.utils import timezone
 from ideas.artifact_presentation import MAX_RENDER_CHARS, EMBEDDED_HTML_CSP, present_artifact, render_markdown
 from ideas.middleware import TrackLastSeenMiddleware
 from ideas.models import Artifact, EpisodeStatus, Profile, Status
-from ideas.tests.helpers import MODEL_BACKEND, make_episode, make_idea, make_podcast_show, make_user
+from ideas.tests.helpers import MODEL_BACKEND, make_ai_model, make_episode, make_idea, make_podcast_show, make_user
 
 
 class PreferenceTests(TestCase):
@@ -197,6 +197,96 @@ class ArtifactPresentationTests(TestCase):
         make_episode(show=show, status=EpisodeStatus.PUBLISHED, published_at=timezone.now())
         response = self.client.get(reverse("ideas:artifacts"), {"format": "json"})
         self.assertNotContains(response, "Published podcasts")
+
+
+class ResearchPresentationTests(TestCase):
+    def setUp(self):
+        self.user = make_user("research-reader@example.com", roles=["role_current"])
+        self.idea = make_idea(status=Status.CURRENT, created_by=self.user)
+        self.model = make_ai_model()
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+
+    def _entry(self, **kwargs):
+        defaults = {
+            "topic": "Market review",
+            "context": "# Findings\n\n- One\n- Two",
+            "model": self.model,
+        }
+        defaults.update(kwargs)
+        return self.idea.research_entries.create(**defaults)
+
+    def test_research_effort_opens_as_formatted_markdown_with_raw_option(self):
+        entry = self._entry()
+        url = reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+
+        formatted = self.client.get(url)
+        self.assertContains(formatted, "<h2>Findings</h2>", html=True)
+        self.assertContains(formatted, "Research effort views")
+        self.assertNotContains(formatted, "Download original")
+
+        raw = self.client.get(url, {"view": "raw"})
+        self.assertContains(raw, "Raw MARKDOWN source")
+        self.assertContains(raw, "# Findings")
+
+    def test_research_formats_a_bounded_preview_but_raw_remains_complete(self):
+        entry = self._entry(context="A" * (MAX_RENDER_CHARS + 10) + "COMPLETE-TAIL")
+        url = reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+
+        formatted = self.client.get(url)
+        self.assertContains(formatted, "preview is shortened")
+        self.assertNotContains(formatted, "COMPLETE-TAIL")
+
+        raw = self.client.get(
+            url,
+            {"view": "raw"},
+        )
+        self.assertContains(raw, "COMPLETE-TAIL")
+        self.assertNotContains(raw, "preview is shortened")
+
+    def test_references_link_only_known_entries_and_not_code(self):
+        target = self._entry(topic="Earlier")
+        entry = self._entry(
+            topic="Follow-up",
+            context=f"Research effort #{target.pk} confirms it. `effort #{target.pk}` and effort #999 do not link.",
+        )
+        response = self.client.get(
+            reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+        )
+        expected = f'{reverse("ideas:detail", args=[self.idea.pk])}#research-entry-{target.pk}'
+        self.assertContains(response, f'href="{expected}"')
+        self.assertContains(response, f"<code>effort #{target.pk}</code>", html=True)
+        self.assertNotContains(response, 'href="#research-entry-999"')
+
+    def test_research_view_enforces_idea_access_and_parent_constraint(self):
+        entry = self._entry()
+        other = make_idea(status=Status.CURRENT)
+        mismatched = self.client.get(
+            reverse("ideas:view_research_entry", args=[other.pk, entry.pk])
+        )
+        self.assertEqual(mismatched.status_code, 404)
+
+        unauthorized = make_user("tracking-only@example.com", roles=["role_tracking"])
+        self.client.force_login(unauthorized, backend=MODEL_BACKEND)
+        denied = self.client.get(
+            reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+        )
+        self.assertRedirects(denied, reverse("ideas:home"), fetch_redirect_response=False)
+
+        self.idea.is_public = True
+        self.idea.save(update_fields=["is_public"])
+        allowed = self.client.get(
+            reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+        )
+        self.assertEqual(allowed.status_code, 200)
+
+    def test_idea_detail_uses_excerpt_and_full_review_link(self):
+        entry = self._entry(context=" ".join(f"word-{number}" for number in range(80)))
+        response = self.client.get(reverse("ideas:detail", args=[self.idea.pk]))
+        self.assertContains(response, "Open full review")
+        self.assertContains(
+            response, reverse("ideas:view_research_entry", args=[self.idea.pk, entry.pk])
+        )
+        self.assertNotContains(response, "word-79")
 
 
 class AuthorizedCreationDefaultTests(TestCase):

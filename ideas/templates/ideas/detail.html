@@ -440,10 +440,8 @@
               {% if r.tokens_used %}<span class="dim">{{ r.tokens_used }} tokens</span>{% endif %}
             </div>
             {% if r.context %}
-              <details class="effort-detail">
-                <summary>In-depth review</summary>
-                <p class="summary">{{ r.rendered_context }}</p>
-              </details>
+              <p class="summary research-excerpt">{{ r.rendered_excerpt }}</p>
+              <a class="btn small" href="{% url 'ideas:view_research_entry' idea.pk r.pk %}">Open full review</a>
             {% endif %}
           </li>
         {% endfor %}

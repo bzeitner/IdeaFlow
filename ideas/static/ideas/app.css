@@ -337,6 +337,7 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
   list-style: none; display: inline-block; margin-top: 6px; }
 .effort-detail summary::-webkit-details-marker { display: none; }
 .effort-detail summary:hover { text-decoration: underline; }
+.research-excerpt { margin: 8px 0; white-space: pre-line; }
 .open-questions { background: var(--warm-bg); border: 1px solid var(--warm-line);
   border-radius: 10px; padding: 12px 14px; margin: 10px 0 18px; }
 .open-questions h4 { margin: 0 0 4px; }

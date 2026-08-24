@@ -1,0 +1,23 @@
+{% extends "ideas/base.html" %}
+{% block title %}{{ entry.topic }} · {{ idea.title }} · IdeaFlow{% endblock %}
+{% block content %}
+  <article class="detail artifact-view research-entry-view">
+    <div class="card-head">
+      <h2>{{ entry.topic }}</h2>
+      <a class="btn" href="{{ idea.get_absolute_url }}#research-entry-{{ entry.pk }}">Back to idea</a>
+    </div>
+    <p class="dim">Research effort #{{ entry.pk }} on <a href="{{ idea.get_absolute_url }}">{{ idea.title }}</a> · {{ entry.occurred_at|date:"M j, Y g:i A" }}</p>
+    {% if entry.focus %}<p class="summary">{{ entry.focus }}</p>{% endif %}
+    <div class="meta">
+      {% include "ideas/_pill.html" with obj=entry.model %}
+      <span class="pill">Effort {{ entry.effort_stars }}</span>
+      <span class="pill">Quality {{ entry.quality_stars }}</span>
+      {% if entry.tokens_used %}<span class="dim">{{ entry.tokens_used }} tokens</span>{% endif %}
+    </div>
+    <div class="artifact-view-actions" aria-label="Research effort views">
+      {% if presentation.view != 'raw' %}<a class="btn" href="?view=raw">Raw</a>{% else %}<a class="btn primary" href="{% url 'ideas:view_research_entry' idea.pk entry.pk %}">Formatted</a>{% endif %}
+      <a class="help-link" href="{% url 'ideas:guide' %}#research-views">How research views work</a>
+    </div>
+    {% include "ideas/_presentation_body.html" with presentation_title=entry.topic %}
+  </article>
+{% endblock %}

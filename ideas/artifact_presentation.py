@@ -139,21 +139,49 @@ def source_format(artifact):
     return FORMAT_BY_EXTENSION.get(Path(artifact.file.name).suffix.lower(), "plain")
 
 
-def _inline(value):
-    """Escape text and add safe emphasis, code, and http(s) links."""
-    value = escape(value)
-    value = re.sub(r"`([^`]+)`", r"<code>\1</code>", value)
+INLINE_TOKEN_RE = re.compile(r"(`[^`]+`|\[[^\]]+\]\(https?://[^\s)]+\))")
+RESEARCH_REFERENCE_RE = re.compile(
+    r"\b(?:(?:research\s+)?(?:entry|effort))\s+#(?P<id>\d+)\b",
+    re.IGNORECASE,
+)
+
+
+def _plain_inline(value, reference_urls):
+    value = str(escape(value))
     value = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", value)
     value = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", value)
-    value = re.sub(
-        r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
-        r'<a href="\2" target="_blank" rel="noopener">\1</a>',
-        value,
-    )
-    return value
+
+    def link_reference(match):
+        url = reference_urls.get(int(match.group("id")))
+        if not url:
+            return match.group(0)
+        return f'<a href="{escape(url)}">{match.group(0)}</a>'
+
+    return RESEARCH_REFERENCE_RE.sub(link_reference, value)
 
 
-def render_markdown(value):
+def _inline(value, reference_urls=None):
+    """Render safe inline markup, linking references only in ordinary text."""
+    reference_urls = reference_urls or {}
+    output = []
+    cursor = 0
+    for match in INLINE_TOKEN_RE.finditer(value):
+        output.append(_plain_inline(value[cursor:match.start()], reference_urls))
+        token = match.group(0)
+        if token.startswith("`"):
+            output.append(f"<code>{escape(token[1:-1])}</code>")
+        else:
+            link = re.match(r"\[([^\]]+)\]\((https?://[^\s)]+)\)", token)
+            output.append(
+                f'<a href="{escape(link.group(2))}" target="_blank" rel="noopener">'
+                f'{escape(link.group(1))}</a>'
+            )
+        cursor = match.end()
+    output.append(_plain_inline(value[cursor:], reference_urls))
+    return "".join(output)
+
+
+def render_markdown(value, reference_urls=None):
     """Render a deliberately small, safe Markdown subset for reports."""
     lines = value.splitlines()
     output = []
@@ -162,7 +190,7 @@ def render_markdown(value):
 
     def flush_paragraph():
         if paragraph:
-            output.append(f"<p>{_inline(' '.join(paragraph))}</p>")
+            output.append(f"<p>{_inline(' '.join(paragraph), reference_urls)}</p>")
             paragraph.clear()
 
     def close_list():
@@ -196,10 +224,10 @@ def render_markdown(value):
             width = min(max(len(row) for row in rows), MAX_TABLE_COLUMNS)
             output.append('<div class="artifact-table-wrap"><table class="artifact-table"><thead><tr>')
             for cell in rows[0][:width]:
-                output.append(f"<th scope=\"col\">{_inline(cell)}</th>")
+                output.append(f"<th scope=\"col\">{_inline(cell, reference_urls)}</th>")
             output.append("</tr></thead><tbody>")
             for row in rows[1:MAX_TABLE_ROWS + 1]:
-                output.append("<tr>" + "".join(f"<td>{_inline(cell)}</td>" for cell in row[:width]) + "</tr>")
+                output.append("<tr>" + "".join(f"<td>{_inline(cell, reference_urls)}</td>" for cell in row[:width]) + "</tr>")
             output.append("</tbody></table></div>")
             continue
 
@@ -208,11 +236,11 @@ def render_markdown(value):
             flush_paragraph()
             close_list()
             level = len(heading.group(1)) + 1
-            output.append(f"<h{level}>{_inline(heading.group(2))}</h{level}>")
+            output.append(f"<h{level}>{_inline(heading.group(2), reference_urls)}</h{level}>")
         elif stripped.startswith("> "):
             flush_paragraph()
             close_list()
-            output.append(f"<blockquote>{_inline(stripped[2:])}</blockquote>")
+            output.append(f"<blockquote>{_inline(stripped[2:], reference_urls)}</blockquote>")
         elif re.match(r"^[-*]\s+", stripped):
             flush_paragraph()
             if list_type != "ul":
@@ -220,7 +248,7 @@ def render_markdown(value):
                 list_type = "ul"
                 output.append("<ul>")
             item_text = re.sub(r"^[-*]\s+", "", stripped)
-            output.append(f"<li>{_inline(item_text)}</li>")
+            output.append(f"<li>{_inline(item_text, reference_urls)}</li>")
         elif re.match(r"^\d+\.\s+", stripped):
             flush_paragraph()
             if list_type != "ol":
@@ -228,7 +256,7 @@ def render_markdown(value):
                 list_type = "ol"
                 output.append("<ol>")
             item_text = re.sub(r"^\d+\.\s+", "", stripped)
-            output.append(f"<li>{_inline(item_text)}</li>")
+            output.append(f"<li>{_inline(item_text, reference_urls)}</li>")
         else:
             close_list()
             paragraph.append(stripped)
@@ -284,12 +312,24 @@ def _json_within_depth(payload, limit=64):
     return True
 
 
-def present_artifact(artifact, content, requested_view="", source_truncated=False):
-    truncated = source_truncated or len(content) > MAX_RENDER_CHARS
-    content = content[:MAX_RENDER_CHARS]
-    fmt = source_format(artifact)
-    mode = artifact.presentation_mode
-    if requested_view == "raw" or mode == artifact.PresentationMode.RAW:
+def present_content(
+    content,
+    *,
+    source_format="plain",
+    requested_view="",
+    presentation_mode="auto",
+    report=False,
+    max_chars=MAX_RENDER_CHARS,
+    source_truncated=False,
+    reference_urls=None,
+):
+    """Present text without depending on an Artifact or ResearchEntry model."""
+    truncated = source_truncated or (max_chars is not None and len(content) > max_chars)
+    if max_chars is not None:
+        content = content[:max_chars]
+    fmt = source_format
+    mode = presentation_mode
+    if requested_view == "raw" or mode == "raw":
         return {"view": "raw", "format": fmt, "content": content, "truncated": truncated}
     if fmt == "html" and requested_view != "raw":
         return {
@@ -298,7 +338,7 @@ def present_artifact(artifact, content, requested_view="", source_truncated=Fals
             "content": f"{EMBEDDED_HTML_CSP}{sanitize_embedded_html(content)}",
             "truncated": truncated,
         }
-    if fmt in {"csv", "tsv"} or mode == artifact.PresentationMode.TABLE:
+    if fmt in {"csv", "tsv"} or mode == "table":
         try:
             table = _tabular(content, "\t" if fmt == "tsv" else ",")
             return {"view": "table", "format": fmt, "table": table, "truncated": truncated}
@@ -312,13 +352,41 @@ def present_artifact(artifact, content, requested_view="", source_truncated=Fals
         if not _json_within_depth(payload):
             return {"view": "raw", "format": fmt, "content": content, "malformed": True, "truncated": truncated}
         table = _flat_json_table(payload)
-        if table and requested_view != "structured" and mode != artifact.PresentationMode.STRUCTURED:
+        if table and requested_view != "structured" and mode != "structured":
             return {"view": "table", "format": fmt, "table": table, "truncated": truncated}
         try:
             structured = json.dumps(payload, indent=2, ensure_ascii=False)
         except (RecursionError, MemoryError, ValueError):
             return {"view": "raw", "format": fmt, "content": content, "malformed": True, "truncated": truncated}
         return {"view": "structured", "format": fmt, "content": structured, "truncated": truncated}
-    if fmt == "markdown" or artifact.kind in {artifact.Kind.REPORT, artifact.Kind.SUMMARY}:
-        return {"view": "report", "format": fmt, "html": render_markdown(content), "truncated": truncated}
+    if fmt == "markdown" or report:
+        return {
+            "view": "report",
+            "format": fmt,
+            "html": render_markdown(content, reference_urls),
+            "truncated": truncated,
+        }
     return {"view": "raw", "format": fmt, "content": content, "truncated": truncated}
+
+
+def present_artifact(artifact, content, requested_view="", source_truncated=False):
+    return present_content(
+        content,
+        source_format=source_format(artifact),
+        requested_view=requested_view,
+        presentation_mode=artifact.presentation_mode,
+        report=artifact.kind in {artifact.Kind.REPORT, artifact.Kind.SUMMARY},
+        source_truncated=source_truncated,
+    )
+
+
+def present_research_context(content, requested_view="", reference_urls=None):
+    """Bound formatted work while keeping the complete stored source available."""
+    return present_content(
+        content,
+        source_format="markdown",
+        requested_view=requested_view,
+        report=True,
+        max_chars=None if requested_view == "raw" else MAX_RENDER_CHARS,
+        reference_urls=reference_urls,
+    )

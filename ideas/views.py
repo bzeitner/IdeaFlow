@@ -14,11 +14,12 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import Truncator
 from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
 from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
-from .artifact_presentation import MAX_RENDER_CHARS, present_artifact
+from .artifact_presentation import MAX_RENDER_CHARS, present_artifact, present_research_context
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
@@ -791,8 +792,8 @@ def detail(request, pk):
     research_entries = list(idea.research_entries.all())
     research_entry_ids = {entry.pk for entry in research_entries}
     for entry in research_entries:
-        entry.rendered_context = render_research_context(
-            entry.context, research_entry_ids
+        entry.rendered_excerpt = render_research_context(
+            Truncator(entry.context).words(45), research_entry_ids
         )
     has_podcast_role = request.user.profile.has_role("role_podcast")
     podcast_show = getattr(idea, "podcast_show", None)
@@ -1577,12 +1578,46 @@ def request_summary(request, pk):
     return redirect("ideas:detail", pk=pk)
 
 
-def _artifact_access_or_denied(request, artifact):
-    idea = artifact.idea
+def _idea_access_or_denied(request, idea):
     if idea.is_public or request.user.profile.can_manage_status(idea.status):
         return None
     messages.error(request, "You don't have access to that.")
     return redirect("ideas:home")
+
+
+def _artifact_access_or_denied(request, artifact):
+    return _idea_access_or_denied(request, artifact.idea)
+
+
+@login_required
+def view_research_entry(request, pk, entry_pk):
+    entry = get_object_or_404(
+        ResearchEntry.objects.select_related("idea", "model"),
+        pk=entry_pk,
+        idea_id=pk,
+    )
+    denied = _idea_access_or_denied(request, entry.idea)
+    if denied:
+        return denied
+    reference_urls = {
+        entry_id: f'{reverse("ideas:detail", args=[pk])}#research-entry-{entry_id}'
+        for entry_id in entry.idea.research_entries.values_list("pk", flat=True)
+    }
+    presentation = present_research_context(
+        entry.context,
+        request.GET.get("view", ""),
+        reference_urls=reference_urls,
+    )
+    return render(
+        request,
+        "ideas/research_entry_view.html",
+        {
+            "idea": entry.idea,
+            "entry": entry,
+            "presentation": presentation,
+            "tabs": _tabs(request.user.profile),
+        },
+    )
 
 
 @login_required

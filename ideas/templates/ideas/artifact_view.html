@@ -14,21 +14,6 @@
       <a class="btn" href="{% url 'ideas:download_artifact' idea.pk artifact.pk %}" download="{{ artifact.download_filename }}">Download original</a>
       <a class="help-link" href="{% url 'ideas:guide' %}#artifact-views">How artifact views work</a>
     </div>
-    {% if presentation.truncated %}<p class="status-callout warning" role="status">This artifact is large, so the preview is shortened. Download the original for the complete content.</p>{% endif %}
-    {% if presentation.malformed %}<p class="status-callout warning" role="status">IdeaFlow could not confidently format this file, so its source is shown instead.</p>{% endif %}
-    {% if presentation.view == 'html' %}
-      <iframe class="artifact-frame" title="Formatted {{ artifact.title }}" sandbox referrerpolicy="no-referrer" srcdoc="{{ presentation.content }}"></iframe>
-    {% elif presentation.view == 'report' %}
-      <div class="artifact-report">{{ presentation.html }}</div>
-    {% elif presentation.view == 'table' %}
-      <div class="artifact-table-tools"><label><span class="sr-only">Search this table</span><input type="search" placeholder="Search this table…" data-artifact-table-search></label><span class="dim" data-artifact-table-count aria-live="polite"></span></div>
-      <div class="artifact-table-wrap"><table class="artifact-table" data-artifact-table><caption>{{ artifact.title }}</caption><thead><tr>{% for header in presentation.table.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in presentation.table.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
-      {% if presentation.table.truncated %}<p class="dim">Only the first 1,000 rows are shown. Download the original for the complete table.</p>{% endif %}
-    {% elif presentation.view == 'structured' %}
-      <pre class="artifact-text artifact-structured"><code>{{ presentation.content }}</code></pre>
-    {% else %}
-      <div class="artifact-raw-head"><strong>Raw {{ presentation.format|upper }} source</strong><label><input type="checkbox" data-wrap-artifact checked> Wrap long lines</label></div>
-      <pre class="artifact-text wrap" data-artifact-raw><code>{{ presentation.content }}</code></pre>
-    {% endif %}
+    {% include "ideas/_presentation_body.html" with presentation_title=artifact.title %}
   </article>
 {% endblock %}
