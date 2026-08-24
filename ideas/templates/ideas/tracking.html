@@ -9,7 +9,7 @@
     </div>
   </div>
 
-  <form method="get" class="tracking-filters" data-auto-submit-filters>
+  <form method="get" class="tracking-filters" data-auto-submit-filters data-persist-query-params="q,category,stage,attention,owner,sort" data-persist-query-defaults="sort=questions">
     <label class="filter-search">
       <span class="sr-only">Search ideas</span>
       <input type="search" name="q" value="{{ filters.q }}" placeholder="Search ideas…">
@@ -42,7 +42,7 @@
       <option value="oldest"{% if filters.sort == 'oldest' %} selected{% endif %}>Needs review</option>
     </select>
     <button class="btn primary" type="submit" data-filter-apply>Apply</button>
-    {% if filters.q or filters.category or filters.stage or filters.attention or filters.owner or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.category or filters.stage or filters.attention or filters.owner or filters.sort != 'questions' %}<a class="btn" href="{% url 'ideas:tracking' %}" data-clear-persisted-query>Clear</a>{% endif %}
   </form>
 
   {% if ideas %}
@@ -93,7 +93,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}">Clear filters</a></p>
+    <p class="empty">No ideas match these filters. <a href="{% url 'ideas:tracking' %}" data-clear-persisted-query>Clear filters</a></p>
   {% endif %}
   {% include "ideas/_history_metrics.html" %}
   <script src="{% static 'ideas/tracking.js' %}"></script>

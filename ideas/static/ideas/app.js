@@ -1,4 +1,25 @@
 (() => {
+  const parseDefaults = (raw = "") => Object.fromEntries(new URLSearchParams(raw));
+  const managedParams = (source, names, defaults = {}) => {
+    const managed = new URLSearchParams();
+    names.forEach((name) => {
+      source.getAll(name).filter(Boolean).forEach((value) => {
+        if (value !== defaults[name]) managed.append(name, value);
+      });
+    });
+    return managed;
+  };
+  const restoredParams = (current, saved) => {
+    const restored = new URLSearchParams(current);
+    restored.delete("page");
+    new URLSearchParams(saved).forEach((value, name) => restored.append(name, value));
+    return restored;
+  };
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { managedParams, parseDefaults, restoredParams };
+  }
+  if (typeof document === "undefined") return;
+
   const scrollKey = "ideaflow.pendingScrollRestore";
   const pageUrl = `${window.location.pathname}${window.location.search}`;
   let actionStarted = false;
@@ -11,6 +32,91 @@
     }
   } catch (_error) {
     // Actions still work if session storage is unavailable.
+  }
+
+  const persistenceUser = document.body.dataset.persistenceUser;
+  const persistenceKey = (scope) => `ideaflow.preferences.${persistenceUser}.${window.location.pathname}.${scope}`;
+
+  if (persistenceUser) {
+    const queryConfigs = Array.from(document.querySelectorAll("[data-persist-query-params]"));
+    queryConfigs.forEach((config) => {
+      const names = config.dataset.persistQueryParams.split(",").map((name) => name.trim());
+      const defaults = parseDefaults(config.dataset.persistQueryDefaults);
+      const key = persistenceKey("query");
+      const savedParams = () => {
+        const source = new URLSearchParams();
+        names.forEach((name) => {
+          config.querySelectorAll(`[name='${name}']`).forEach((control) => {
+            if ((control.type === "checkbox" || control.type === "radio") && !control.checked) return;
+            if (control.value) source.append(name, control.value);
+          });
+        });
+        const params = managedParams(source, names, defaults);
+        try {
+          if (params.toString()) localStorage.setItem(key, params.toString());
+          else localStorage.removeItem(key);
+        } catch (_error) {
+          // Filtering still works if local storage is unavailable.
+        }
+      };
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasManagedQuery = names.some((name) => urlParams.has(name));
+      if (hasManagedQuery) {
+        const managed = managedParams(urlParams, names, defaults);
+        try {
+          if (managed.toString()) localStorage.setItem(key, managed.toString());
+          else localStorage.removeItem(key);
+        } catch (_error) {
+          // Filtering still works if local storage is unavailable.
+        }
+      } else {
+        try {
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            const restored = restoredParams(window.location.search, saved);
+            window.location.replace(`${window.location.pathname}?${restored}`);
+            return;
+          }
+        } catch (_error) {
+          // Render the page defaults if local storage is unavailable.
+        }
+      }
+      if (config.matches("form")) {
+        config.addEventListener("submit", savedParams);
+      }
+    });
+
+    document.querySelectorAll("[data-clear-persisted-query]").forEach((link) => {
+      link.addEventListener("click", () => {
+        try { localStorage.removeItem(persistenceKey("query")); } catch (_error) { /* Continue navigation. */ }
+      });
+    });
+
+    document.querySelectorAll("[data-persist-controls]").forEach((container) => {
+      const key = persistenceKey(`controls.${container.dataset.persistControls}`);
+      const controls = Array.from(container.querySelectorAll("[data-persist-control]"));
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(key) || "{}"); } catch (_error) { saved = {}; }
+      const controlName = (control, index) => control.dataset.persistControl || control.name || control.id || String(index);
+      controls.forEach((control, index) => {
+        const name = controlName(control, index);
+        if (Object.prototype.hasOwnProperty.call(saved, name)) {
+          if (control.type === "checkbox" || control.type === "radio") control.checked = Boolean(saved[name]);
+          else control.value = saved[name];
+          control.dispatchEvent(new Event("input", { bubbles: true }));
+          control.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        const saveControls = () => {
+          const values = {};
+          controls.forEach((item, itemIndex) => {
+            values[controlName(item, itemIndex)] = item.type === "checkbox" || item.type === "radio" ? item.checked : item.value;
+          });
+          try { localStorage.setItem(key, JSON.stringify(values)); } catch (_error) { /* Controls still work. */ }
+        };
+        control.addEventListener("input", saveControls);
+        control.addEventListener("change", saveControls);
+      });
+    });
   }
 
   document.addEventListener("submit", () => { actionStarted = true; }, true);

@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="{% static 'ideas/icon-192.png' %}">
   <link rel="stylesheet" href="{% static 'ideas/app.css' %}">
 </head>
-<body>
+<body{% if user.is_authenticated %} data-persistence-user="{{ user.pk }}"{% endif %}>
   <header class="topbar">
     <a class="brand" href="{% url 'ideas:home' %}">
       <img class="brand-icon" src="{% static 'ideas/favicon.svg' %}" alt="" width="24" height="24">Idea<span>Flow</span></a>

@@ -3,8 +3,8 @@
 {% block content %}
   <div class="feeds-head">
     <h2>Feeds</h2>
-    <div class="feeds-filter">
-      <a class="btn small {% if not unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}">All</a>
+    <div class="feeds-filter" data-persist-query-params="unrated">
+      <a class="btn small {% if not unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}" data-clear-persisted-query>All</a>
       <a class="btn small {% if unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}?unrated=1">Unrated</a>
     </div>
   </div>

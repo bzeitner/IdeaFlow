@@ -111,6 +111,9 @@ class GraphViewTests(TestCase):
         response = self.client.get(reverse("ideas:graph"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Visible node")
+        self.assertContains(response, 'data-persist-query-params="archived"')
+        self.assertContains(response, 'data-persist-controls="graph"')
+        self.assertContains(response, "data-persist-control>", count=4)
 
     def test_other_role_cannot_open_graph(self):
         user = make_user(roles=["role_current"])

@@ -4,13 +4,13 @@
 {% block content %}
 <div class="page-head graph-head">
   <div><h2>Knowledge Graph</h2><p class="lede">Explore parentage and explicit relationships across ideas.</p>{% if graph_lab_enabled %}<a class="btn small" href="{% url 'ideas:graph_lab' %}">Open Graph Lab</a>{% endif %}</div>
-  <form method="get"><label><input type="checkbox" name="archived" value="1"{% if include_archived %} checked{% endif %} onchange="this.form.submit()"> Include archived</label></form>
+  <form method="get" data-persist-query-params="archived"><label><input type="checkbox" name="archived" value="1"{% if include_archived %} checked{% endif %} onchange="this.form.requestSubmit()"> Include archived</label></form>
 </div>
-<div class="graph-controls">
-  <input id="graph-search" type="search" placeholder="Find an idea…" aria-label="Find an idea">
-  <select id="graph-status" aria-label="Filter by status"><option value="">All statuses</option>{% for value, label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
-  <select id="graph-edge-type" aria-label="Filter by relationship"><option value="">All relationships</option>{% for value, label in relation_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
-  <select id="graph-layout" aria-label="Graph layout"><option value="cose">Force layout</option><option value="breadthfirst">Hierarchy</option><option value="circle">Circle</option></select>
+<div class="graph-controls" data-persist-controls="graph">
+  <input id="graph-search" type="search" placeholder="Find an idea…" aria-label="Find an idea" data-persist-control>
+  <select id="graph-status" aria-label="Filter by status" data-persist-control><option value="">All statuses</option>{% for value, label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+  <select id="graph-edge-type" aria-label="Filter by relationship" data-persist-control><option value="">All relationships</option>{% for value, label in relation_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+  <select id="graph-layout" aria-label="Graph layout" data-persist-control><option value="cose">Force layout</option><option value="breadthfirst">Hierarchy</option><option value="circle">Circle</option></select>
   <button class="btn small" id="graph-fit" type="button">Fit</button>
 </div>
 <div class="graph-shell">

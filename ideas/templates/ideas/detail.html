@@ -106,19 +106,19 @@
         <p class="dim">Target {{ idea.repeat_target_count }} result{{ idea.repeat_target_count|pluralize }} every {{ idea.repeat_interval_days }} day{{ idea.repeat_interval_days|pluralize }} · Last run {% if idea.last_repeat_run_at %}{{ idea.last_repeat_run_at|date:"M j, Y g:i A T" }}{% else %}never{% endif %} · {% if idea.repeat_paused %}<strong>Paused</strong>{% else %}Active{% endif %}</p>
         {% if can_manage %}<form method="post" action="{% url 'ideas:toggle_repeat_pause' idea.pk %}">{% csrf_token %}<button class="btn small" type="submit">{% if idea.repeat_paused %}Resume repeat task{% else %}Pause repeat task{% endif %}</button></form>{% endif %}
         {% if idea.repeat_results.all %}
-          <div class="repeat-results-panel" data-repeat-results-panel>
+          <div class="repeat-results-panel" data-repeat-results-panel data-persist-controls="repeat-results-{{ idea.pk }}">
             <div class="repeat-results-controls">
               <label class="repeat-results-search">Search
-                <input type="search" placeholder="Title or details" data-repeat-results-search>
+                <input type="search" placeholder="Title or details" data-repeat-results-search data-persist-control="search">
               </label>
               <label>Status
-                <select data-repeat-results-status>
+                <select data-repeat-results-status data-persist-control="status">
                   <option value="">All statuses</option>
                   {% for value, label in repeat_result_statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
                 </select>
               </label>
               <label>Sort by
-                <select data-repeat-results-sort>
+                <select data-repeat-results-sort data-persist-control="sort">
                   <option value="found-desc">Newest first</option>
                   <option value="found-asc">Oldest first</option>
                   <option value="title-asc">Title A–Z</option>

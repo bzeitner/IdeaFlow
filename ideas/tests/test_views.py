@@ -512,12 +512,15 @@ class FeedPageTests(TestCase):
         self.assertRedirects(response, reverse("ideas:home"))
 
     def test_manager_sees_feed_items(self):
-        self._login()
+        user = self._login()
         item = make_feed_item(title="Hello World", summary="A summary.")
         response = self.client.get(reverse("ideas:feeds"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Hello World")
         self.assertContains(response, "A summary.")
+        self.assertContains(response, f'data-persistence-user="{user.pk}"')
+        self.assertContains(response, 'data-persist-query-params="unrated"')
+        self.assertContains(response, "data-clear-persisted-query")
 
     def test_feed_item_shows_when_it_was_downloaded(self):
         self._login()
@@ -846,6 +849,7 @@ class RepeatTaskViewTests(TestCase):
         self.assertContains(response, "data-repeat-results-search")
         self.assertContains(response, "data-repeat-results-status")
         self.assertContains(response, "data-repeat-results-sort")
+        self.assertContains(response, f'data-persist-controls="repeat-results-{idea.pk}"')
         self.assertContains(response, 'data-title="local python role"')
 
         self.client.post(
@@ -970,6 +974,11 @@ class TrackingWorkflowTests(TestCase):
         response = self.client.get(reverse("ideas:tracking"))
 
         self.assertContains(response, "data-auto-submit-filters")
+        self.assertContains(
+            response,
+            'data-persist-query-params="q,category,stage,attention,owner,sort"',
+        )
+        self.assertContains(response, 'data-persist-query-defaults="sort=questions"')
         self.assertContains(response, "data-filter-apply")
         self.assertContains(response, 'src="/static/ideas/tracking.')
 
