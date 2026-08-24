@@ -1681,8 +1681,10 @@ def artifacts(request):
             extension_query |= Q(file__iendswith=extension)
         items = items.filter(Q(source_format=source) | extension_query)
     page = Paginator(items, 25).get_page(request.GET.get("page"))
+    recent_cutoff = timezone.now() - timedelta(days=1)
     for artifact in page.object_list:
         artifact.can_manage = profile.can_manage_status(artifact.idea.status)
+        artifact.is_recent = bool(artifact.generated_at) and artifact.generated_at >= recent_cutoff
     # Published episodes are their own kind of artifact, but live on Episode/
     # PodcastShow rather than the Artifact model, so they're queried and
     # listed separately here. Only publicly-listed shows' published episodes

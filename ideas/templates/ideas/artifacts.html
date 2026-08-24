@@ -42,7 +42,7 @@
         <li>
           <div class="card-head">
             <strong><a href="{{ artifact.idea.get_absolute_url }}">{{ artifact.idea.title }}</a> — {{ artifact.title }}</strong>
-            <span class="dim">{{ artifact.generated_at|date:"M j, Y" }}</span>
+            <span class="dim">{% if artifact.is_recent %}{{ artifact.generated_at|timesince }} ago{% else %}{{ artifact.generated_at|date:"M j, Y" }}{% endif %}</span>
           </div>
           {% if artifact.idea.summary %}<p class="summary dim">{{ artifact.idea.summary|truncatewords:30 }}</p>{% endif %}
           {% if artifact.description %}<p class="summary">{{ artifact.description }}</p>{% endif %}
