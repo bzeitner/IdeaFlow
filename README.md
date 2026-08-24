@@ -329,8 +329,10 @@ latest report and keeps older reports collapsed but available.
 
 **More agent modes** (`research_idea.sh <id> <mode>`): `execute` branches an
 idea's target `repo`, makes the change, opens a PR, and schedules a **critical
-PR review** as the next action; `critique` runs a deliberately critical persona
-over that PR. When that review finds no issues and required checks pass, the
+PR review** as the next action; `critique` creates a four-role team consisting
+of a Principal Developer, Senior Developer, Security Architect, and Performance
+Developer. Each independently reviews and reports before the lead synthesizes
+one PR verdict. When that review finds no issues and required checks pass, the
 reviewer merges the PR, verifies the merged state, and reconciles the completed
 review action in IdeaFlow. Both run on your laptop with your `gh` auth. Every successful agent
 effort replaces the idea's **Latest effort summary** with a concise outcome and

@@ -181,6 +181,20 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("approved-and-merged", text)
         self.assertIn("Never merge with a failing", text)
 
+    def test_critique_prompt_spawns_four_role_review_team(self):
+        text = prompt("critique")
+
+        self.assertIn("Create a review team and spawn these four agents", text)
+        self.assertIn("Principal Developer", text)
+        self.assertIn("Senior Developer", text)
+        self.assertIn("Security Architect", text)
+        self.assertIn("Performance Developer", text)
+        self.assertIn("Run them in parallel when supported", text)
+        self.assertIn("independent written report", text)
+        self.assertIn("Collect all four reports and synthesize them", text)
+        self.assertIn("subsection for each role", text)
+        self.assertIn("Do not let agents post duplicate", text)
+
     def test_feed_scoring_prompt_is_neutral_and_idea_specific(self):
         text = (ROOT / "score_items.sh").read_text()
 
