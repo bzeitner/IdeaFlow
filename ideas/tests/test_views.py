@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone as dt_timezone
+from unittest import mock
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -544,6 +545,59 @@ class ResearchHistoryViewTests(TestCase):
         self.assertEqual(
             [entry.topic for entry in entries], ["Newer work", "Older work"]
         )
+
+
+class ResearchQueueViewTests(TestCase):
+    def test_non_admin_is_denied(self):
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_queue"))
+
+        self.assertRedirects(
+            response, reverse("ideas:home"), fetch_redirect_response=False
+        )
+
+    def test_admin_sees_same_default_research_selection(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        new_idea = make_idea(title="Unresearched opportunity")
+        idle_idea = make_idea(title="Already complete", next_action="")
+        idle_idea.research_entries.create(topic="Initial research", model=make_ai_model())
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_queue"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"#{new_idea.pk} — Unresearched opportunity")
+        self.assertContains(response, "Research")
+        self.assertNotContains(response, "Already complete")
+        self.assertEqual(response.context["state"]["actionable"], 1)
+
+    def test_idle_default_run_shows_portfolio_reflection(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        idea = make_idea(title="Researched and idle", next_action="")
+        idea.research_entries.create(topic="Initial research", model=make_ai_model())
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_queue"))
+
+        self.assertContains(response, "Portfolio reflection")
+        self.assertContains(response, "Portfolio-wide")
+        self.assertEqual(response.context["job_count"], 1)
+        self.assertEqual(response.context["state"]["reason"], "idle")
+
+    def test_preview_does_not_load_feed_article_context(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        make_idea(title="Lean projection")
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        with mock.patch(
+            "ideas.feeds.recent_articles",
+            side_effect=AssertionError("feed context should not be loaded"),
+        ):
+            response = self.client.get(reverse("ideas:research_queue"))
+
+        self.assertEqual(response.status_code, 200)
 
 class GoogleOnlySignInTests(TestCase):
     def test_local_signup_url_is_gone(self):

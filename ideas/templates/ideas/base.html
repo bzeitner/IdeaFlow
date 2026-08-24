@@ -35,6 +35,7 @@
             <a href="{% url 'ideas:user_management' %}">Users</a>
             <a href="{% url 'ideas:idea_ownership' %}">Ownership</a>
             <a href="{% url 'ideas:research_history' %}">Research history</a>
+            <a href="{% url 'ideas:research_queue' %}">Next research run</a>
             <a href="{% url 'ideas:help_admin' %}">Help inbox{% if pending_help_count %} ({{ pending_help_count }}){% endif %}</a>
             <a href="{% url 'admin:index' %}">Configuration</a>
           </div>

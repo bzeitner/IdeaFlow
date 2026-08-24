@@ -27,6 +27,7 @@ from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, Epi
 from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
+from tools.task_selection import select_work
 
 STAR_RANGE = [1, 2, 3, 4, 5]
 
@@ -2006,6 +2007,127 @@ def research_history(request):
         request,
         "ideas/research_history.html",
         {"page": page, "tabs": _tabs(request.user.profile)},
+    )
+
+
+@role_required()
+def research_queue(request):
+    """Preview the default work list for the next research_all.sh invocation."""
+    ideas = list(
+        Idea.objects.prefetch_related(
+            "resources", "research_entries", "idea_personas__persona",
+            "persona_reviews",
+        )
+    )
+    now = timezone.now()
+
+    def selection_detail(idea):
+        persona_due = False
+        if (
+            idea.persona_review_enabled
+            and idea.status != Status.ARCHIVED
+            and not idea.persona_review_paused
+            and any(
+                assignment.active
+                and assignment.required
+                and assignment.persona.is_active
+                for assignment in idea.idea_personas.all()
+            )
+        ):
+            baseline = max(
+                value
+                for value in (
+                    idea.last_meaningful_progress_at,
+                    idea.last_persona_review_at,
+                )
+                if value is not None
+            )
+            persona_due = baseline <= now - timedelta(days=idea.persona_stall_days)
+        return {
+            "id": idea.pk,
+            "title": idea.title,
+            "status": idea.status,
+            "summary_requested_at": (
+                idea.summary_requested_at.isoformat()
+                if idea.summary_requested_at else None
+            ),
+            "next_action": idea.next_action,
+            "repo": idea.repo,
+            "agent_runs_since_feedback": idea.agent_runs_since_feedback,
+            "is_paused": idea.is_paused,
+            "repeat_task": {
+                "enabled": idea.repeat_enabled,
+                "paused": idea.repeat_paused,
+                "is_due": idea.repeat_is_due,
+            },
+            "persona_review": {
+                "is_due": persona_due,
+                "last_meaningful_progress_at": (
+                    idea.last_meaningful_progress_at.isoformat()
+                ),
+                "recent_reviews": [
+                    {
+                        "status": review.status,
+                        "created_at": review.created_at.isoformat(),
+                    }
+                    for review in list(idea.persona_reviews.all())[:10]
+                ],
+            },
+            "research_entries": [
+                {
+                    "topic": entry.topic,
+                    "occurred_at": entry.occurred_at.isoformat(),
+                    "created_at": entry.created_at.isoformat(),
+                }
+                for entry in idea.research_entries.all()
+            ],
+            "resources": [
+                {"url": resource.url, "label": resource.label}
+                for resource in idea.resources.all()
+            ],
+        }
+
+    details = {idea.pk: selection_detail(idea) for idea in ideas}
+    ideas_by_id = {idea.pk: idea for idea in ideas}
+    listing = [
+        {"id": idea.pk, "status": idea.status, "title": idea.title}
+        for idea in ideas
+    ]
+    selected, state = select_work(listing, details)
+    mode_labels = {
+        "research": "Research",
+        "review": "Review & synthesis",
+        "execute": "Execute next action",
+        "critique": "Critical PR review",
+        "persona": "Persona council review",
+        "repeat": "Repeat task",
+        "summary": "Artifact summary",
+    }
+    rows = [
+        {
+            "idea": ideas_by_id[idea_id],
+            "mode": mode,
+            "work_title": mode_labels.get(mode, mode.replace("_", " ").title()),
+        }
+        for idea_id, mode in selected
+    ]
+    if state["reason"] == "idle":
+        rows.append(
+            {
+                "idea": None,
+                "mode": "reflection",
+                "work_title": "Portfolio reflection",
+            }
+        )
+    return render(
+        request,
+        "ideas/research_queue.html",
+        {
+            "rows": rows,
+            "state": state,
+            "job_count": len(rows),
+            "tabs": _tabs(request.user.profile),
+        },
     )
 
 
