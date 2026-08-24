@@ -492,6 +492,59 @@ class UserManagementViewTests(TestCase):
         self.assertFalse(other_profile.role_admin)
 
 
+class ResearchHistoryViewTests(TestCase):
+    def test_non_admin_is_denied(self):
+        user = make_user(roles=["role_current"])
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_history"))
+
+        self.assertRedirects(
+            response, reverse("ideas:home"), fetch_redirect_response=False
+        )
+
+    def test_admin_sees_entries_with_linked_idea_and_work_title(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        idea = make_idea(title="Launch planning")
+        entry = idea.research_entries.create(
+            topic="Review & synthesis",
+            model=make_ai_model(),
+            occurred_at=timezone.now(),
+        )
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"#{idea.pk} — Launch planning")
+        self.assertContains(response, idea.get_absolute_url())
+        self.assertContains(response, "Review &amp; synthesis")
+        self.assertContains(
+            response,
+            reverse("ideas:view_research_entry", args=[idea.pk, entry.pk]),
+        )
+
+    def test_entries_are_newest_first(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        idea = make_idea()
+        model = make_ai_model()
+        idea.research_entries.create(
+            topic="Older work",
+            model=model,
+            occurred_at=timezone.now() - timedelta(hours=1),
+        )
+        idea.research_entries.create(
+            topic="Newer work", model=model, occurred_at=timezone.now()
+        )
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_history"))
+
+        entries = list(response.context["page"].object_list)
+        self.assertEqual(
+            [entry.topic for entry in entries], ["Newer work", "Older work"]
+        )
+
 class GoogleOnlySignInTests(TestCase):
     def test_local_signup_url_is_gone(self):
         response = self.client.get("/accounts/signup/")

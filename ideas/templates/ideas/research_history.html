@@ -1,0 +1,29 @@
+{% extends "ideas/base.html" %}
+{% block title %}Research History · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Research History</h2>
+  <p class="lede">Recorded Idea research, newest first.</p>
+  <div class="table-wrap">
+    <table class="tracking">
+      <thead><tr><th>Occurred at</th><th>Idea</th><th>Work title</th></tr></thead>
+      <tbody>
+        {% for entry in page %}
+          <tr>
+            <td>{{ entry.occurred_at|date:"M j, Y g:i A T" }}</td>
+            <td><a href="{{ entry.idea.get_absolute_url }}">#{{ entry.idea_id }} — {{ entry.idea.title }}</a></td>
+            <td><a href="{% url 'ideas:view_research_entry' entry.idea_id entry.pk %}">{{ entry.topic|default:"Untitled work" }}</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3">No research has been recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.paginator.num_pages > 1 %}
+    <nav class="help-pagination" aria-label="Research history pages">
+      {% if page.has_previous %}<a class="btn small" href="?page={{ page.previous_page_number }}">← Newer</a>{% endif %}
+      <span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}<a class="btn small" href="?page={{ page.next_page_number }}">Older →</a>{% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

@@ -1995,6 +1995,20 @@ def idea_ownership(request):
     )
 
 
+@role_required()
+def research_history(request):
+    """Admin-only history of recorded Idea research, newest first."""
+    entries = ResearchEntry.objects.select_related("idea").order_by(
+        "-occurred_at", "-pk"
+    )
+    page = Paginator(entries, 50).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "ideas/research_history.html",
+        {"page": page, "tabs": _tabs(request.user.profile)},
+    )
+
+
 @require_POST
 @role_required()
 def reassign_idea(request, pk):
