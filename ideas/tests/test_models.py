@@ -17,11 +17,13 @@ from ideas.models import (
     Persona,
     PodcastShow,
     Profile,
+    RepeatResult,
+    RepeatResultStatus,
     Status,
     VoiceProfile,
 )
 
-from .helpers import make_ai_model, make_category, make_episode, make_idea, make_podcast_show
+from .helpers import make_ai_model, make_category, make_episode, make_idea, make_podcast_show, make_user
 
 
 class LookupBaseSlugTests(TestCase):
@@ -258,6 +260,77 @@ class EpisodeTests(TestCase):
         make_episode(episode_number=1, slug="ep-1")
         # A second show's own episode_number=1 must not collide.
         make_episode(show=make_podcast_show(slug="other-show"), episode_number=1, slug="ep-1")
+
+    def test_publish_sets_status_and_approval_and_publication_fields(self):
+        episode = make_episode()
+        user = make_user()
+        episode.publish(by=user)
+        episode.refresh_from_db()
+        self.assertEqual(episode.status, EpisodeStatus.PUBLISHED)
+        self.assertIsNotNone(episode.published_at)
+        self.assertEqual(episode.published_by, user)
+        self.assertEqual(episode.approved_at, episode.published_at)
+        self.assertEqual(episode.approved_by, user)
+
+    def test_publish_refreshes_approval_fields_on_every_call(self):
+        # A republish (e.g. after unpublish) must not leave stale
+        # approved_at/approved_by from a prior approver.
+        episode = make_episode()
+        first_approver, second_approver = make_user(email="first@example.com"), make_user(email="second@example.com")
+        episode.publish(by=first_approver)
+        first_approved_at = episode.approved_at
+
+        episode.unpublish()
+        episode.publish(by=second_approver)
+        episode.refresh_from_db()
+
+        self.assertEqual(episode.approved_by, second_approver)
+        self.assertGreater(episode.approved_at, first_approved_at)
+
+    def test_publish_soft_deletes_its_actioned_repeat_results(self):
+        episode = make_episode()
+        source_idea = make_idea()
+        result = RepeatResult.objects.create(
+            idea=source_idea, title="Used", status=RepeatResultStatus.ACTIONED, episode=episode,
+        )
+        user = make_user()
+        episode.publish(by=user)
+        result.refresh_from_db()
+        self.assertTrue(result.is_deleted)
+        self.assertIsNotNone(result.deleted_at)
+        self.assertEqual(result.deleted_by, user)
+
+
+class RepeatResultSoftDeleteTests(TestCase):
+    def test_soft_delete_sets_who_and_when(self):
+        result = RepeatResult.objects.create(idea=make_idea(), title="Find")
+        user = make_user()
+        result.soft_delete(by=user)
+        result.refresh_from_db()
+        self.assertTrue(result.is_deleted)
+        self.assertIsNotNone(result.deleted_at)
+        self.assertEqual(result.deleted_by, user)
+
+    def test_default_manager_excludes_deleted_rows(self):
+        result = RepeatResult.objects.create(idea=make_idea(), title="Find")
+        result.soft_delete()
+        self.assertFalse(RepeatResult.objects.filter(pk=result.pk).exists())
+        self.assertTrue(RepeatResult.all_objects.filter(pk=result.pk).exists())
+
+    def test_reverse_relation_also_excludes_deleted_rows(self):
+        idea = make_idea()
+        result = RepeatResult.objects.create(idea=idea, title="Find")
+        result.soft_delete()
+        self.assertNotIn(result, list(idea.repeat_results.all()))
+
+    def test_a_new_result_can_reuse_a_deleted_rows_url(self):
+        # The unique (idea, url) constraint must not block rediscovery of a
+        # URL whose earlier RepeatResult was soft-deleted.
+        idea = make_idea()
+        original = RepeatResult.objects.create(idea=idea, title="First find", url="https://example.com/a")
+        original.soft_delete()
+        again = RepeatResult.objects.create(idea=idea, title="Found again", url="https://example.com/a")
+        self.assertNotEqual(original.pk, again.pk)
 
 
 class EpisodeRunTests(TestCase):

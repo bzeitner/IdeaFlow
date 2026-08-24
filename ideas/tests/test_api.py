@@ -4,7 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, IdeaPersona, Persona, PersonaReview, ResearchEntry, Status, VoiceProfile
+from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
 
 from .helpers import make_idea, make_podcast_show, make_stage, make_user
 
@@ -703,6 +703,53 @@ class ApiPodcastEpisodeTests(TestCase):
         idea.refresh_from_db()
         self.assertIsNotNone(idea.last_repeat_run_at)
         self.assertFalse(idea.repeat_is_due)
+
+    def test_repeat_result_ids_are_actioned_and_linked_to_the_episode(self):
+        source_idea = make_idea(repeat_enabled=True, title="Source backlog idea")
+        candidate = RepeatResult.objects.create(
+            idea=source_idea, title="A good find", url="https://example.com/a",
+            status=RepeatResultStatus.INTERESTED,
+        )
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        response = self._post(
+            idea,
+            {
+                "title": "Ep 1",
+                "script": _make_podcast_script(),
+                "repeat_result_ids": [candidate.pk],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["actioned_repeat_result_ids"], [candidate.pk])
+
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.status, RepeatResultStatus.ACTIONED)
+        self.assertEqual(candidate.episode_id, response.json()["episode_id"])
+
+    def test_oversized_repeat_result_ids_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        response = self._post(
+            idea,
+            {
+                "title": "Ep",
+                "script": _make_podcast_script(),
+                "repeat_result_ids": list(range(101)),
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Episode.objects.count(), 0)
+
+    def test_non_integer_repeat_result_ids_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        response = self._post(
+            idea,
+            {"title": "Ep", "script": _make_podcast_script(), "repeat_result_ids": ["abc"]},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Episode.objects.count(), 0)
 
     def test_episode_numbers_increment_per_show(self):
         idea = make_idea(repeat_enabled=True)

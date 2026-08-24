@@ -31,7 +31,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, VoiceProfile, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, RepeatResultStatus, ResearchEntry, Resource, Status, SuggestionStatus, VoiceProfile, WeeklySummary
 from .podcast_policy import (
     PODCAST_MAX_DURATION_SECONDS,
     PODCAST_WORDS_PER_SECOND,
@@ -487,6 +487,16 @@ def idea_podcast_episode(request, pk):
     if research_entry_id:
         research_entry = get_object_or_404(ResearchEntry, pk=research_entry_id, idea=idea)
 
+    repeat_result_ids = payload.get("repeat_result_ids", [])
+    if (
+        not isinstance(repeat_result_ids, list)
+        or len(repeat_result_ids) > 100
+        or not all(isinstance(rid, int) and not isinstance(rid, bool) for rid in repeat_result_ids)
+    ):
+        return JsonResponse(
+            {"error": "repeat_result_ids must be a list of at most 100 integers."}, status=400
+        )
+
     next_number = (
         Episode.objects.filter(show=show).aggregate(models.Max("episode_number"))["episode_number__max"] or 0
     ) + 1
@@ -529,6 +539,18 @@ def idea_podcast_episode(request, pk):
     run.manifest = manifest
     run.save(update_fields=["manifest"])
 
+    # Mark the source candidates this episode was built from as actioned and
+    # tie them to it. They're on whatever idea's repeat backlog produced them
+    # (often not this podcast idea itself), so look them up by id alone; the
+    # rows get deleted once the episode is actually published (Episode.publish()).
+    actioned_ids = []
+    if repeat_result_ids:
+        for result in RepeatResult.objects.filter(pk__in=repeat_result_ids):
+            result.status = RepeatResultStatus.ACTIONED
+            result.episode = episode
+            result.save(update_fields=["status", "episode", "updated_at"])
+            actioned_ids.append(result.pk)
+
     idea.last_repeat_run_at = timezone.now()
     idea.save(update_fields=["last_repeat_run_at", "updated_at"])
     return JsonResponse(
@@ -537,6 +559,7 @@ def idea_podcast_episode(request, pk):
             "episode_slug": episode.slug,
             "episode_number": episode.episode_number,
             "run_id": run.pk,
+            "actioned_repeat_result_ids": actioned_ids,
             "completed_at": idea.last_repeat_run_at.isoformat(),
         },
         status=201,

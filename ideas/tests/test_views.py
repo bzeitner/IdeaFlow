@@ -8,7 +8,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, RepeatResult, RepeatResultStatus, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -1689,6 +1689,33 @@ class EpisodeViewTests(TestCase):
         self.assertEqual(self.episode.status, EpisodeStatus.PUBLISHED)
         self.assertIsNotNone(self.episode.published_at)
         self.assertEqual(self.episode.published_by, self.user)
+        self.episode.audio_file.delete(save=False)
+
+    def test_publish_soft_deletes_actioned_repeat_results_from_their_source_idea(self):
+        source_idea = make_idea(title="Source backlog idea")
+        actioned = RepeatResult.objects.create(
+            idea=source_idea, title="Used in this episode", url="https://example.com/used",
+            status=RepeatResultStatus.ACTIONED, episode=self.episode,
+        )
+        untouched = RepeatResult.objects.create(
+            idea=source_idea, title="Still pending", status=RepeatResultStatus.INTERESTED,
+        )
+        self.episode.audio_file.save("episode.mp3", SimpleUploadedFile("episode.mp3", b"fake-audio"), save=True)
+
+        self.client.post(reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk]))
+
+        # Invisible through the default manager — "ignored by the rest of the
+        # system" — including reverse relations like source_idea.repeat_results.
+        self.assertFalse(RepeatResult.objects.filter(pk=actioned.pk).exists())
+        self.assertNotIn(actioned, list(source_idea.repeat_results.all()))
+        self.assertTrue(RepeatResult.objects.filter(pk=untouched.pk).exists())
+
+        # But not actually gone — kept, with who/when, for audit.
+        actioned.refresh_from_db()
+        self.assertTrue(actioned.is_deleted)
+        self.assertIsNotNone(actioned.deleted_at)
+        self.assertEqual(actioned.deleted_by, self.user)
+        self.assertTrue(RepeatResult.all_objects.filter(pk=actioned.pk).exists())
         self.episode.audio_file.delete(save=False)
 
     def test_reject_marks_ready_run_failed(self):

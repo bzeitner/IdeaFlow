@@ -1426,17 +1426,7 @@ def approve_and_publish_episode(request, pk, episode_pk):
     if not episode.audio_file:
         messages.error(request, "This episode has no rendered audio yet.")
         return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
-    now = timezone.now()
-    episode.status = EpisodeStatus.PUBLISHED
-    episode.approved_at = now
-    episode.approved_by = request.user
-    episode.published_at = now
-    episode.published_by = request.user
-    episode.save(
-        update_fields=[
-            "status", "approved_at", "approved_by", "published_at", "published_by", "updated_at",
-        ]
-    )
+    episode.publish(by=request.user)
     messages.success(request, f"Published “{episode.title}”.")
     return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
 

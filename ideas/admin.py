@@ -174,10 +174,16 @@ class RelationshipCouncilReviewAdmin(TooltipAdminMixin, admin.ModelAdmin):
 
 @admin.register(RepeatResult)
 class RepeatResultAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    list_display = ("title", "idea", "status", "found_at")
-    list_filter = ("status",)
+    list_display = ("title", "idea", "status", "found_at", "deleted_at", "deleted_by")
+    list_filter = ("status", ("deleted_at", admin.EmptyFieldListFilter))
     search_fields = ("title", "details", "url", "idea__title")
-    list_select_related = ("idea",)
+    list_select_related = ("idea", "episode", "deleted_by")
+
+    def get_queryset(self, request):
+        # The default manager hides soft-deleted rows everywhere else in the
+        # app; admin stays an audit surface, so it uses all_objects to keep
+        # deleted rows visible (and filterable via the Deleted at column).
+        return RepeatResult.all_objects.select_related(*self.list_select_related)
 
 
 @admin.register(ResearchEntry)

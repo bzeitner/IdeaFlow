@@ -987,6 +987,20 @@ class RepeatResultStatus(models.TextChoices):
     DISMISSED = "dismissed", "Dismissed"
 
 
+class RepeatResultManager(models.Manager):
+    """Default manager: excludes soft-deleted rows. Being the default (first
+    declared) manager, this also governs reverse-relation traversal —
+    idea.repeat_results and episode.repeat_results — and prefetch_related, so
+    a deleted result is invisible there too. Meta.base_manager_name is
+    pinned to all_objects (unfiltered) so internals that need every row
+    regardless of this filter — refresh_from_db(), delete cascades — keep
+    working on a soft-deleted instance. Use RepeatResult.all_objects for
+    admin/audit access to deleted rows."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class RepeatResult(models.Model):
     idea = models.ForeignKey(Idea, related_name="repeat_results", on_delete=models.CASCADE)
     title = models.CharField(max_length=300)
@@ -995,18 +1009,58 @@ class RepeatResult(models.Model):
     status = models.CharField(
         max_length=16, choices=RepeatResultStatus.choices, default=RepeatResultStatus.NEW
     )
+    episode = models.ForeignKey(
+        "Episode",
+        related_name="repeat_results",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="The podcast episode this candidate was actioned into, if any.",
+    )
     found_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Soft-delete timestamp — set once the episode this was "
+        "actioned into is published (see Episode.publish()). Deleted rows "
+        "are excluded everywhere by default; use RepeatResult.all_objects "
+        "to see them.",
+    )
+    deleted_by = models.ForeignKey(
+        User,
+        related_name="+",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="Who (or which action) triggered the soft delete.",
+    )
+
+    objects = RepeatResultManager()
+    all_objects = models.Manager()
 
     class Meta:
+        base_manager_name = "all_objects"
         ordering = ["-found_at", "-id"]
         constraints = [
             models.UniqueConstraint(
                 fields=["idea", "url"],
-                condition=~models.Q(url=""),
+                condition=~models.Q(url="") & models.Q(deleted_at__isnull=True),
                 name="unique_repeat_result_url_per_idea",
             )
         ]
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
+
+    def soft_delete(self, by=None):
+        """Mark deleted rather than actually deleting the row, so a
+        published episode's provenance (which candidates it was built from)
+        stays inspectable via RepeatResult.all_objects."""
+        self.deleted_at = timezone.now()
+        self.deleted_by = by
+        self.save(update_fields=["deleted_at", "deleted_by", "updated_at"])
 
     def __str__(self):
         return self.title
@@ -1365,6 +1419,26 @@ class Episode(models.Model):
     @property
     def is_published(self):
         return self.status == EpisodeStatus.PUBLISHED and bool(self.published_at)
+
+    def publish(self, *, by=None, now=None):
+        """Mark published and, since the actioned candidates that fed this
+        episode have now done their job, soft-delete them off their source
+        idea's backlog (RepeatResult rows with episode=self) — kept, not
+        hard-deleted, so this episode's provenance stays inspectable via
+        RepeatResult.all_objects. Unlike unpublish() below, this step isn't
+        meant to be reversed by calling unpublish()."""
+        now = now or timezone.now()
+        self.status = EpisodeStatus.PUBLISHED
+        self.approved_at = now
+        self.approved_by = by
+        self.published_at = now
+        self.published_by = by
+        self.save(
+            update_fields=[
+                "status", "approved_at", "approved_by", "published_at", "published_by", "updated_at",
+            ]
+        )
+        self.repeat_results.update(deleted_at=now, deleted_by=by, updated_at=now)
 
     def unpublish(self):
         """Reversible: clears published_at and flips status, but keeps the row
