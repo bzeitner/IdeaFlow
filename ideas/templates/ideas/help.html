@@ -1,0 +1,16 @@
+{% extends "ideas/base.html" %}
+{% block title %}Help · IdeaFlow{% endblock %}
+{% block content %}
+  <h1>Help</h1>
+  <p class="lede">Send a private message to an administrator. Their replies will appear here.</p>
+  <section class="help-thread" aria-label="Conversation with administrators">
+    {% for item in conversation %}
+      <article class="help-message {% if item.is_admin_reply %}from-admin{% else %}from-user{% endif %}">
+        <div class="help-message-meta"><strong>{% if item.is_admin_reply %}Admin{% else %}You{% endif %}</strong> · {{ item.created_at|date:"M j, Y, g:i a" }}</div>
+        <div>{{ item.body|linebreaksbr }}</div>
+      </article>
+    {% empty %}<div class="empty-state"><h3>How can we help?</h3><p>Your messages and admin responses will stay together on this page.</p></div>{% endfor %}
+  </section>
+  {% if conversation.paginator.num_pages > 1 %}<nav class="help-pagination" aria-label="Conversation pages">{% if conversation.has_previous %}<a class="btn small" href="?page={{ conversation.previous_page_number }}">← Older</a>{% endif %}<span class="dim">Page {{ conversation.number }} of {{ conversation.paginator.num_pages }}</span>{% if conversation.has_next %}<a class="btn small" href="?page={{ conversation.next_page_number }}">Newer →</a>{% endif %}</nav>{% endif %}
+  <form method="post" class="help-compose">{% csrf_token %}<label for="help-body">Message an admin</label><textarea id="help-body" name="body" rows="5" maxlength="5000" required></textarea><button class="btn primary" type="submit">Send message</button></form>
+{% endblock %}

@@ -34,12 +34,14 @@
           <div class="nav-menu-panel">
             <a href="{% url 'ideas:user_management' %}">Users</a>
             <a href="{% url 'ideas:idea_ownership' %}">Ownership</a>
+            <a href="{% url 'ideas:help_admin' %}">Help inbox{% if pending_help_count %} ({{ pending_help_count }}){% endif %}</a>
             <a href="{% url 'admin:index' %}">Configuration</a>
           </div>
         </details>{% endif %}
         {% if user.profile.role_admin or user.profile.role_add_ideas %}
           <a class="btn primary" href="{% url 'ideas:create' %}">+ New Idea</a>
         {% endif %}
+        <a class="nav-link" href="{% url 'ideas:help' %}"{% if active == 'help' %} aria-current="page"{% endif %}>Help</a>
         <details class="nav-menu profile-menu">
           <summary aria-label="Open account menu">{{ user.email|default:user.username }}</summary>
           <div class="nav-menu-panel nav-menu-panel-right">
@@ -55,6 +57,10 @@
       {% endif %}
     </div>
   </header>
+
+  {% if user.is_authenticated and user.profile.role_admin and pending_help_count %}
+    <a class="help-admin-banner" href="{% url 'ideas:help_admin' %}"><strong>{{ pending_help_count }} help conversation{{ pending_help_count|pluralize }}</strong> awaiting an admin response. Open inbox →</a>
+  {% endif %}
 
   {% if user.is_authenticated and tabs %}
     <nav class="tabs">

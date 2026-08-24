@@ -1574,6 +1574,38 @@ class Profile(models.Model):
         super().save(*args, **kwargs)
 
 
+class HelpMessage(models.Model):
+    """One message in a user's private conversation with IdeaFlow admins."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="help_messages",
+        on_delete=models.CASCADE,
+        help_text="The user whose help conversation this message belongs to.",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="help_messages_sent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    body = models.TextField(max_length=5000)
+    admin_response = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        indexes = [models.Index(fields=["user", "created_at"])]
+
+    @property
+    def is_admin_reply(self):
+        return self.admin_response
+
+    def __str__(self):
+        return f"Help message for {self.user} at {self.created_at:%Y-%m-%d %H:%M}"
+
+
 @receiver(post_save, sender=User)
 def provision_profile(sender, instance, created, **kwargs):
     if not created:

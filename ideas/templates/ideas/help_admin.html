@@ -1,0 +1,14 @@
+{% extends "ideas/base.html" %}
+{% block title %}Help inbox · IdeaFlow{% endblock %}
+{% block content %}
+  <h1>Help inbox</h1><p class="lede">Conversations awaiting a response appear first.</p>
+  <div class="help-inbox">
+    <aside class="help-conversation-list" aria-label="Help conversations">
+      {% for conversation_user in conversation_users %}<a href="{% url 'ideas:help_admin_conversation' conversation_user.pk %}" class="help-conversation-link{% if selected_user.pk == conversation_user.pk %} active{% endif %}"><strong>{{ conversation_user.email|default:conversation_user.username }}</strong><span>{% if not conversation_user.latest_is_admin %}<b class="needs-response">Needs response</b>{% else %}Replied{% endif %} · {{ conversation_user.latest_help_at|date:"M j, g:i a" }}</span></a>{% empty %}<p class="empty">No help messages yet.</p>{% endfor %}
+      {% if conversation_users.paginator.num_pages > 1 %}<nav class="help-pagination" aria-label="Inbox pages">{% if conversation_users.has_previous %}<a class="btn small" href="?inbox_page={{ conversation_users.previous_page_number }}">← Prev</a>{% endif %}<span class="dim">{{ conversation_users.number }} / {{ conversation_users.paginator.num_pages }}</span>{% if conversation_users.has_next %}<a class="btn small" href="?inbox_page={{ conversation_users.next_page_number }}">Next →</a>{% endif %}</nav>{% endif %}
+    </aside>
+    <section>{% if selected_user %}<h2>{{ selected_user.email|default:selected_user.username }}</h2><div class="help-thread">
+      {% for item in conversation %}<article class="help-message {% if item.is_admin_reply %}from-admin{% else %}from-user{% endif %}"><div class="help-message-meta"><strong>{% if item.is_admin_reply %}Admin{% else %}{{ selected_user.email|default:selected_user.username }}{% endif %}</strong> · {{ item.created_at|date:"M j, Y, g:i a" }}</div><div>{{ item.body|linebreaksbr }}</div></article>{% endfor %}
+    </div>{% if conversation.paginator.num_pages > 1 %}<nav class="help-pagination" aria-label="Conversation pages">{% if conversation.has_previous %}<a class="btn small" href="?page={{ conversation.previous_page_number }}">← Older</a>{% endif %}<span class="dim">Page {{ conversation.number }} of {{ conversation.paginator.num_pages }}</span>{% if conversation.has_next %}<a class="btn small" href="?page={{ conversation.next_page_number }}">Newer →</a>{% endif %}</nav>{% endif %}<form method="post" class="help-compose">{% csrf_token %}<label for="help-body">Reply</label><textarea id="help-body" name="body" rows="5" maxlength="5000" required></textarea><button class="btn primary" type="submit">Send response</button></form>{% else %}<div class="empty-state"><h3>Select a conversation</h3><p>Choose a user to read and respond to their messages.</p></div>{% endif %}</section>
+  </div>
+{% endblock %}

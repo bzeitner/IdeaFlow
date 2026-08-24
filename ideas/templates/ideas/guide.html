@@ -15,6 +15,7 @@
         <a href="#saved-views">Filters &amp; defaults</a>
         <a href="#artifact-views">Reports &amp; artifacts</a>
         <a href="#advanced">Advanced tools</a>
+        <a href="#help">Help</a>
         <a href="#access">Roles</a>
       </nav>
     </header>
@@ -126,8 +127,23 @@
       </dl>
     </section>
 
+    <section id="help" class="guide-section">
+      <div class="guide-section-heading"><span>9</span><div><h2>Message an administrator for help</h2><p>Every signed-in user has a private, persistent conversation with the admin team.</p></div></div>
+      <ol class="guide-steps">
+        <li><strong>Open Help in the header.</strong> The Help tab is available to every logged-in user, even when no Idea workspace roles have been assigned.</li>
+        <li><strong>Send your question or problem.</strong> Write a message of up to 5,000 characters. It is visible only to you and administrators.</li>
+        <li><strong>Return to the same page for responses.</strong> Your complete message history and every admin reply appear together in chronological order.</li>
+      </ol>
+      {% if user.is_authenticated %}<a class="btn primary" href="{% url 'ideas:help' %}">Open Help</a>{% endif %}
+      {% if user.is_authenticated and user.profile.role_admin %}
+        <h3>Responding as an administrator</h3>
+        <p>Open <strong>Admin → Help inbox</strong>. Conversations that need a response appear first and are labeled <strong>Needs response</strong>. Select a user to read the full conversation and send a reply. A banner across the app links to the inbox whenever one or more users are waiting; it clears after an admin responds.</p>
+        <a class="btn" href="{% url 'ideas:help_admin' %}">Open Help inbox</a>
+      {% endif %}
+    </section>
+
     <section id="access" class="guide-section">
-      <div class="guide-section-heading"><span>9</span><div><h2>Understand roles</h2><p>Roles grant capabilities; ownership identifies responsibility.</p></div></div>
+      <div class="guide-section-heading"><span>10</span><div><h2>Understand roles</h2><p>Roles grant capabilities; ownership identifies responsibility.</p></div></div>
       <div class="table-wrap"><table class="guide-table"><thead><tr><th>Role</th><th>What it allows</th></tr></thead><tbody>
         <tr><td>Current</td><td>View and manage Ideas in Current. Any Current, Tracking, or Archive role also grants access to the shared Feeds page.</td></tr>
         <tr><td>Tracking</td><td>View and manage Ideas in Tracking, including filters and quick updates.</td></tr>
@@ -140,6 +156,6 @@
       </tbody></table></div>
       <p class="guide-note">If you can read a public Idea but cannot edit it, that is expected. Ask an administrator for the corresponding Current, Tracking, or Archive role when you need to manage it.</p>
     </section>
-    <footer class="guide-section guide-updated"><p class="dim">Guide updated August 23, 2026 · Covers filters, preferences, human-friendly artifact views, and the current workspace lifecycle.</p></footer>
+    <footer class="guide-section guide-updated"><p class="dim">Guide updated August 23, 2026 · Covers help conversations, filters, preferences, human-friendly artifact views, and the current workspace lifecycle.</p></footer>
   </article>
 {% endblock %}

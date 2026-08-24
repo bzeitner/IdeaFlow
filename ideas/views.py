@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Case, CharField, Count, F, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, When
+from django.db.models import BooleanField, Case, CharField, Count, DateTimeField, F, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, When
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,7 +22,7 @@ from .artifact_presentation import MAX_RENDER_CHARS, present_artifact
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, FeedItemAssessment, GraphAccessCapability, Idea, IdeaFeed, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, FeedItemAssessment, GraphAccessCapability, HelpMessage, Idea, IdeaFeed, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
 from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
@@ -1939,3 +1939,66 @@ def reassign_idea(request, pk):
     idea.save(update_fields=["created_by", "updated_at"])
     messages.success(request, f"Reassigned “{idea.title}” to {owner.email or owner.username}.")
     return redirect("ideas:idea_ownership")
+
+
+def _save_help_message(request, conversation_user):
+    body = request.POST.get("body", "").strip()
+    if not body:
+        messages.error(request, "Enter a message before sending.")
+        return False
+    if len(body) > 5000:
+        messages.error(request, "Messages must be 5,000 characters or fewer.")
+        return False
+    HelpMessage.objects.create(
+        user=conversation_user,
+        sender=request.user,
+        body=body,
+        admin_response=request.user.profile.role_admin and request.user.pk != conversation_user.pk,
+    )
+    messages.success(request, "Message sent.")
+    return True
+
+
+@login_required
+def help_conversation(request):
+    """The signed-in user's private, persistent conversation with admins."""
+    if request.method == "POST":
+        _save_help_message(request, request.user)
+        return redirect("ideas:help")
+    conversation_paginator = Paginator(
+        HelpMessage.objects.filter(user=request.user).select_related("sender"), 100
+    )
+    messages_page = conversation_paginator.get_page(
+        request.GET.get("page") or conversation_paginator.num_pages
+    )
+    return render(request, "ideas/help.html", {"conversation": messages_page, "active": "help"})
+
+
+@role_required()
+def help_admin(request, user_id=None):
+    """Admin inbox, with one conversation per user and replies in context."""
+    User = get_user_model()
+    latest_messages = HelpMessage.objects.filter(user_id=OuterRef("pk")).order_by("-created_at", "-pk")
+    conversation_users = (
+        User.objects.filter(help_messages__isnull=False)
+        .annotate(
+            latest_help_at=Subquery(latest_messages.values("created_at")[:1], output_field=DateTimeField()),
+            latest_is_admin=Subquery(latest_messages.values("admin_response")[:1], output_field=BooleanField()),
+        )
+        .order_by("latest_is_admin", "-latest_help_at", "email", "username")
+        .distinct()
+    )
+    conversation_page = Paginator(conversation_users, 50).get_page(request.GET.get("inbox_page"))
+
+    selected_user = get_object_or_404(User, pk=user_id) if user_id is not None else None
+    if request.method == "POST":
+        if selected_user is None:
+            raise Http404
+        _save_help_message(request, selected_user)
+        return redirect("ideas:help_admin_conversation", user_id=selected_user.pk)
+    conversation = HelpMessage.objects.filter(user=selected_user).select_related("sender") if selected_user else HelpMessage.objects.none()
+    conversation_paginator = Paginator(conversation, 100)
+    messages_page = conversation_paginator.get_page(
+        request.GET.get("page") or conversation_paginator.num_pages
+    )
+    return render(request, "ideas/help_admin.html", {"conversation_users": conversation_page, "selected_user": selected_user, "conversation": messages_page})

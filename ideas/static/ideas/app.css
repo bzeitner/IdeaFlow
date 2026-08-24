@@ -74,6 +74,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 24px 20px 60px; }
   background: var(--line); color: var(--dim); border-radius: 10px;
   padding: 1px 7px; font-size: 12px; margin-left: 4px;
 }
+.help-admin-banner { display: block; max-width: 960px; margin: 8px auto 0; padding: 10px 14px; border: 1px solid var(--warm-line); border-radius: 8px; background: var(--warm-bg); color: var(--ink); text-decoration: none; }
 
 h1 { margin: 22px 0 5px; font-size: 30px; line-height: 1.18; letter-spacing: -.025em; }
 h2 { margin: 24px 0 4px; font-size: 22px; }
@@ -111,6 +112,26 @@ h4 { margin: 20px 0 6px; }
 
 .card-actions, .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; }
 .row-actions { margin-top: 0; }
+.help-thread { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
+.help-message { max-width: 78%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow-wrap: anywhere; }
+.help-message.from-user { align-self: flex-end; background: #eef4ff; border-color: #cbdaf6; }
+.help-message-meta { margin-bottom: 5px; color: var(--dim); font-size: 12px; }
+.help-compose { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.help-compose textarea { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+.help-compose .btn { align-self: flex-end; }
+.help-inbox { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 20px; align-items: start; }
+.help-conversation-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.help-conversation-link { display: flex; flex-direction: column; gap: 3px; padding: 12px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+.help-conversation-link:last-child { border-bottom: 0; }
+.help-conversation-link:hover, .help-conversation-link.active { background: #eef4ff; }
+.help-conversation-link span { color: var(--dim); font-size: 12px; }
+.needs-response { color: var(--danger); }
+.help-pagination { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px; }
+
+@media (max-width: 700px) {
+  .help-inbox { grid-template-columns: 1fr; }
+  .help-message { max-width: 92%; }
+}
 .page-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
 
 .btn {
