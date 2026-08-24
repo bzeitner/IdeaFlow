@@ -6,6 +6,7 @@ applies the default selection:
   * every idea with no research yet                  -> research
   * repo-backed ideas with a build-oriented action   -> execute
   * every other idea with a next action set          -> review
+  * researched ideas with newer human activity       -> review
   * researched ideas without a next action are skipped; continue to the next
     actionable idea instead of re-analyzing idle work
 
@@ -19,6 +20,7 @@ Kept as a standalone file (not an inline heredoc) because bash 3.2 mis-parses a
 heredoc nested inside a process substitution.
 """
 
+from datetime import datetime
 import json
 import os
 import subprocess
@@ -96,6 +98,24 @@ def main():
     def has_next(i):
         return bool((detail[i].get("next_action") or "").strip())
 
+    def has_new_signal(i):
+        entries = detail[i].get("research_entries") or []
+        research_times = [
+            entry.get("occurred_at")
+            for entry in entries
+            if entry.get("occurred_at")
+        ]
+        latest_research = max(
+            (datetime.fromisoformat(value) for value in research_times),
+            default=None,
+        )
+        progress = (detail[i].get("persona_review") or {}).get(
+            "last_meaningful_progress_at"
+        )
+        if not progress or latest_research is None:
+            return False
+        return datetime.fromisoformat(progress) > latest_research
+
     selected, seen = [], set()
 
     def add(i, mode):
@@ -148,6 +168,8 @@ def main():
                 return "research"
             if has_next(i):
                 return "review"
+            if has_new_signal(i):
+                return "review"                  # human activity since last research
             return None                           # researched, idle → skip
 
         for it in ideas:

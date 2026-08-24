@@ -143,6 +143,48 @@ class TaskSelectionStateTests(SimpleTestCase):
 
         self.assertIn("10 review Validate it", output)
 
+    def test_new_human_signal_selects_idle_researched_idea_for_review(self):
+        listing = [{"id": 12, "status": "tracking", "title": "Revisit it"}]
+        details = {
+            12: {
+                "title": "Revisit it",
+                "is_paused": False,
+                "research_entries": [
+                    {"id": 1, "occurred_at": "2026-08-20T10:00:00+00:00"}
+                ],
+                "next_action": "",
+                "persona_review": {
+                    "last_meaningful_progress_at": "2026-08-21T10:00:00+00:00"
+                },
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertIn("12 review Revisit it", output)
+        self.assertEqual(state["reason"], "actionable")
+
+    def test_old_human_signal_leaves_researched_idea_idle(self):
+        listing = [{"id": 13, "status": "tracking", "title": "Still idle"}]
+        details = {
+            13: {
+                "title": "Still idle",
+                "is_paused": False,
+                "research_entries": [
+                    {"id": 1, "occurred_at": "2026-08-21T10:00:00+00:00"}
+                ],
+                "next_action": "",
+                "persona_review": {
+                    "last_meaningful_progress_at": "2026-08-20T10:00:00+00:00"
+                },
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertEqual(output, "")
+        self.assertEqual(state["idle_ids"], [13])
+
     def test_due_persona_review_is_selected(self):
         listing = [{"id": 11, "status": "tracking", "title": "Stalled project"}]
         details = {
