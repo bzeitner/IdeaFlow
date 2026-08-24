@@ -355,7 +355,9 @@ persona-consensus provenance and never overwrite fields reserved for human answe
 `research_all.sh` researches ideas with no research yet and **reviews**
 already-researched ideas only when they have a clear next action. Researched
 ideas without one are skipped so the runner proceeds to the next actionable
-idea instead of re-analyzing them. If eligible ideas exist but all are idle, it
+idea instead of re-analyzing them. An idea whose latest run was **Review &
+synthesis** also waits for human feedback or an applied council action before
+another review, preventing review-of-review loops. If eligible ideas exist but all are idle, it
 runs a structured read-only portfolio reflection. If no ideas match, or all are
 paused/archived, it reports the reason and exits without launching an agent.
 Flags: `--review`, `--force`,

@@ -44,6 +44,32 @@ def is_build_action(value):
     return bool(words.intersection(BUILD_ACTION_TERMS))
 
 
+def council_acted_after_latest_entry(idea):
+    entries = idea.get("research_entries") or []
+    if not entries:
+        return False
+    latest_entry_at = entries[0].get("occurred_at") or entries[0].get("created_at") or ""
+    council_reviews = (idea.get("persona_review") or {}).get("recent_reviews") or []
+    return any(
+        review.get("status") == "consensus"
+        and (review.get("created_at") or "") > latest_entry_at
+        for review in council_reviews
+    )
+
+
+def awaiting_direction_after_review(idea):
+    """Avoid reviewing a review until a person or council changes the idea."""
+    entries = idea.get("research_entries") or []
+    if not entries or (entries[0].get("topic") or "").strip().lower() != "review & synthesis":
+        return False
+
+    # Human edits/answers reset this counter. A zero therefore means there has
+    # been human action since the agent-authored review.
+    if idea.get("agent_runs_since_feedback") == 0:
+        return False
+    return not council_acted_after_latest_entry(idea)
+
+
 def main():
     cli = sys.argv[1]
     status = os.environ.get("IF_STATUS") or None
@@ -62,12 +88,18 @@ def main():
     paused_ids = [
         it["id"]
         for it in listed_ideas
-        if it.get("status") != "archived" and detail[it["id"]].get("is_paused")
+        if it.get("status") != "archived"
+        and detail[it["id"]].get("is_paused")
+        and not council_acted_after_latest_entry(detail[it["id"]])
     ]
     ideas = [
         it
         for it in listed_ideas
-        if it.get("status") != "archived" and not detail[it["id"]].get("is_paused")
+        if it.get("status") != "archived"
+        and (
+            not detail[it["id"]].get("is_paused")
+            or council_acted_after_latest_entry(detail[it["id"]])
+        )
     ]
 
     # Repeat tasks have their own completion clock and intentionally do not use
@@ -141,7 +173,7 @@ def main():
             add(it["id"], "research")
     elif review:
         for it in ideas:
-            if has_research(it["id"]):
+            if has_research(it["id"]) and not awaiting_direction_after_review(detail[it["id"]]):
                 add(it["id"], "review")
     else:
         def has_open_pr(i):
@@ -167,6 +199,8 @@ def main():
             if not has_research(i):
                 return "research"
             if has_next(i):
+                if awaiting_direction_after_review(detail[i]):
+                    return None                 # wait for human or council action
                 return "review"
             if has_new_signal(i):
                 return "review"                  # human activity since last research

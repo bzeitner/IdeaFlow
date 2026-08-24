@@ -185,6 +185,85 @@ class TaskSelectionStateTests(SimpleTestCase):
         self.assertEqual(output, "")
         self.assertEqual(state["idle_ids"], [13])
 
+    def test_review_synthesis_is_not_reviewed_again_without_intervening_action(self):
+        listing = [{"id": 12, "status": "tracking", "title": "Reviewed idea"}]
+        details = {
+            12: {
+                "title": "Reviewed idea", "is_paused": False,
+                "agent_runs_since_feedback": 1,
+                "research_entries": [{
+                    "id": 2, "topic": "Review & synthesis",
+                    "occurred_at": "2026-08-24T10:00:00+00:00",
+                }],
+                "next_action": "Validate the remaining assumption",
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertEqual(output, "")
+        self.assertEqual(state["idle_ids"], [12])
+
+    def test_human_action_allows_work_after_review_synthesis(self):
+        listing = [{"id": 13, "status": "tracking", "title": "Human updated"}]
+        details = {
+            13: {
+                "title": "Human updated", "is_paused": False,
+                "agent_runs_since_feedback": 0,
+                "research_entries": [{"topic": "Review & synthesis"}],
+                "next_action": "Validate the newly selected market",
+            }
+        }
+
+        output, _state = self.run_selector(listing, details)
+
+        self.assertIn("13 review Human updated", output)
+
+    def test_council_consensus_allows_work_after_review_synthesis(self):
+        listing = [{"id": 14, "status": "tracking", "title": "Council updated"}]
+        details = {
+            14: {
+                "title": "Council updated", "is_paused": True,
+                "agent_runs_since_feedback": 1,
+                "research_entries": [{
+                    "topic": "Review & synthesis",
+                    "occurred_at": "2026-08-24T10:00:00+00:00",
+                }],
+                "next_action": "Test the council proposal",
+                "persona_review": {"recent_reviews": [{
+                    "status": "consensus",
+                    "created_at": "2026-08-24T11:00:00+00:00",
+                }]},
+            }
+        }
+
+        output, _state = self.run_selector(listing, details)
+
+        self.assertIn("14 review Council updated", output)
+
+    def test_council_disagreement_does_not_restart_review_synthesis(self):
+        listing = [{"id": 15, "status": "tracking", "title": "Council disagreed"}]
+        details = {
+            15: {
+                "title": "Council disagreed", "is_paused": True,
+                "agent_runs_since_feedback": 2,
+                "research_entries": [{
+                    "topic": "Review & synthesis",
+                    "occurred_at": "2026-08-24T10:00:00+00:00",
+                }],
+                "next_action": "Repeat the same review",
+                "persona_review": {"recent_reviews": [{
+                    "status": "no_consensus",
+                    "created_at": "2026-08-24T11:00:00+00:00",
+                }]},
+            }
+        }
+
+        output, state = self.run_selector(listing, details)
+
+        self.assertEqual(output, "")
+        self.assertEqual(state["paused_ids"], [15])
+
     def test_due_persona_review_is_selected(self):
         listing = [{"id": 11, "status": "tracking", "title": "Stalled project"}]
         details = {

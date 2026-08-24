@@ -56,6 +56,9 @@ never be used as agent credentials.
   action. The normal batch runner skips it and may use it as reflection evidence.
 - **Paused**: temporarily excluded after repeated agent runs without human
   feedback. A human must resume it or provide a next action.
+- **Awaiting direction**: the latest ordinary run was Review & synthesis. The
+  batch runner will not review that review again until a person provides input
+  or a later persona council reaches consensus and applies a new direction.
 
 ## Empty batch behavior
 
