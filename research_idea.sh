@@ -197,6 +197,19 @@ the script below — use exactly those names, no others.
    distinct speakers. Base every factual claim in "text" on the
    supporting idea's actual research_entries/artifacts; put source URLs
    only in "citations", never inline in spoken "text".
+   Favor depth over brevity: for each issue or claim drawn from the
+   supporting research, don't just state it — unpack why it matters, what
+   led to it, what it implies, and how it connects to the episode's other
+   threads, the way a host would when genuinely walking a listener through
+   something rather than reading a summary at them. Let speakers ask each
+   other follow-up questions, restate points in plainer terms, and work
+   through counterarguments or open questions in the research rather than
+   skipping past them. Set target_duration_seconds to
+   podcast_show.target_episode_duration_seconds from step 1's dump-idea
+   output — that is the show's configured target, not a suggestion to
+   override. Use the added depth to fill that runtime with real substance
+   instead of defaulting to a short script, but don't pad with filler to
+   reach it either.
 3. Create the episode and its render job exactly once — this both creates
    the job AND advances the repeat clock, so do not also call
    log-repeat-results for a podcast idea:
