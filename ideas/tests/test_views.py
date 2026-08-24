@@ -66,6 +66,16 @@ class GuideViewTests(TestCase):
         self.assertContains(response, "Turn a promising thought into focused work")
         self.assertContains(response, "Sign in with Google")
 
+    def test_guide_onboards_users_to_current_workflows(self):
+        response = self.client.get(reverse("ideas:guide"))
+
+        self.assertContains(response, "Complete your first session")
+        self.assertContains(response, "Status controls where work lives")
+        self.assertContains(response, "Build a durable work loop")
+        self.assertContains(response, "Ordinary agent work pauses after two runs")
+        self.assertContains(response, "pause or resume its future feed ingestion")
+        self.assertContains(response, "Any Current, Tracking, or Archive role also grants access")
+
     def test_header_links_to_guide(self):
         response = self.client.get(reverse("ideas:home"))
 
