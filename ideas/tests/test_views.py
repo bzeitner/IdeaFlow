@@ -7,7 +7,7 @@ from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
 
-from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -15,6 +15,7 @@ from .helpers import (
     make_category,
     make_episode,
     make_feed_item,
+    make_feed,
     make_idea,
     make_podcast_show,
     make_user,
@@ -519,7 +520,10 @@ class FeedPageTests(TestCase):
         self.assertContains(response, "Hello World")
         self.assertContains(response, "A summary.")
         self.assertContains(response, f'data-persistence-user="{user.pk}"')
-        self.assertContains(response, 'data-persist-query-params="unrated"')
+        self.assertContains(
+            response,
+            'data-persist-query-params="idea,category,unrated,sort"',
+        )
         self.assertContains(response, "data-clear-persisted-query")
 
     def test_feed_item_shows_when_it_was_downloaded(self):
@@ -576,6 +580,148 @@ class FeedPageTests(TestCase):
         response = self.client.get(reverse("ideas:feeds"), {"unrated": "1"})
         self.assertContains(response, "Summarized one")
         self.assertNotContains(response, "Bare title only")
+
+    def test_filters_by_idea_and_topic_and_lists_association(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        wanted_category = make_category(name="Robotics")
+        wanted = make_idea(title="Robot Idea", category=wanted_category)
+        other = make_idea(title="Garden Idea")
+        wanted_feed, other_feed = make_feed(), make_feed()
+        link_feed(wanted, wanted_feed)
+        link_feed(other, other_feed)
+        make_feed_item(feed=wanted_feed, title="Robot item")
+        make_feed_item(feed=other_feed, title="Garden item")
+
+        response = self.client.get(
+            reverse("ideas:feeds"),
+            {"idea": wanted.pk, "category": wanted_category.slug},
+        )
+        self.assertContains(response, "Robot item")
+        self.assertContains(response, "Robot Idea")
+        self.assertContains(response, "Robotics")
+        self.assertNotContains(response, "Garden item")
+
+    def test_pause_is_post_only_and_requires_idea_role(self):
+        idea = make_idea(status=Status.TRACKING)
+        user = self._login(("role_current",))
+        url = reverse("ideas:toggle_feed_ingestion_pause", args=[idea.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("ideas:home"))
+        idea.refresh_from_db()
+        self.assertFalse(idea.feed_ingestion_paused)
+
+        user.profile.role_tracking = True
+        user.profile.save()
+        self.client.post(url, {"paused": "1", "next": f"?idea={idea.pk}"})
+        idea.refresh_from_db()
+        self.assertTrue(idea.feed_ingestion_paused)
+
+        # Explicit state makes retries/double submissions idempotent.
+        self.client.post(url, {"paused": "1"})
+        idea.refresh_from_db()
+        self.assertTrue(idea.feed_ingestion_paused)
+        self.client.post(url, {"paused": "0"})
+        self.client.post(url, {"paused": "0"})
+        idea.refresh_from_db()
+        self.assertFalse(idea.feed_ingestion_paused)
+
+    def test_archived_idea_cannot_resume_ingestion(self):
+        self._login(("role_archive",))
+        idea = make_idea(status=Status.ARCHIVED, feed_ingestion_paused=True)
+        self.client.post(
+            reverse("ideas:toggle_feed_ingestion_pause", args=[idea.pk]),
+            {"paused": "0"},
+        )
+        idea.refresh_from_db()
+        self.assertTrue(idea.feed_ingestion_paused)
+
+    def test_filtered_count_and_sort_state_are_rendered(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        idea = make_idea(title="Counted Idea")
+        feed = make_feed()
+        link_feed(idea, feed)
+        make_feed_item(feed=feed, title="Included")
+        make_feed_item(title="Outside")
+        response = self.client.get(
+            reverse("ideas:feeds"), {"idea": idea.pk, "sort": "idea"}
+        )
+        self.assertContains(response, "1 matching feed item")
+        self.assertContains(response, "2 total feed items")
+        self.assertContains(response, 'option value="idea" selected')
+
+    def test_all_sort_modes_order_by_their_visible_dimension(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        late = timezone.now()
+        early = late - timedelta(days=2)
+        zeta_category = make_category(name="Zeta Topic")
+        alpha_category = make_category(name="Alpha Topic")
+        zeta_idea = make_idea(title="Zeta Idea", category=zeta_category)
+        alpha_idea = make_idea(title="Alpha Idea", category=alpha_category)
+        url_feed = make_feed(title="", url="https://z.example/feed.xml")
+        alpha_feed = make_feed(title="Alpha Feed")
+        link_feed(zeta_idea, url_feed)
+        link_feed(alpha_idea, alpha_feed)
+        first = make_feed_item(feed=url_feed, title="First", published_at=early)
+        second = make_feed_item(feed=alpha_feed, title="Second", published_at=late)
+        FeedItem.objects.filter(pk=first.pk).update(created_at=early)
+        FeedItem.objects.filter(pk=second.pk).update(created_at=late)
+
+        expected_first = {
+            "published_desc": "Second",
+            "published_asc": "First",
+            "downloaded_desc": "Second",
+            "feed": "Second",
+            "idea": "Second",
+            "category": "Second",
+        }
+        for sort, expected in expected_first.items():
+            with self.subTest(sort=sort):
+                response = self.client.get(reverse("ideas:feeds"), {"sort": sort})
+                self.assertEqual(response.context["rows"][0]["item"].title, expected)
+
+    def test_rating_and_pagination_preserve_filter_state(self):
+        self._login()
+        idea = make_idea()
+        for index in range(26):
+            make_feed_item(title=f"Item {index:02d}", summarized_at=timezone.now())
+        query = f"?idea={idea.pk}&category={idea.category.slug}&sort=feed&unrated=1"
+        item = make_feed_item(summarized_at=timezone.now())
+        response = self.client.post(
+            reverse("ideas:rate_feed_item", args=[item.pk]),
+            {"interest": "4", "next": query},
+        )
+        self.assertEqual(
+            response.headers["Location"],
+            f"{reverse('ideas:feeds')}{query}#item-{item.pk}",
+        )
+
+        response = self.client.get(
+            reverse("ideas:feeds"),
+            {"sort": "feed", "unrated": "1"},
+        )
+        next_link = response.context["pagination_suffix"]
+        self.assertIn("sort=feed", next_link)
+        self.assertIn("unrated=1", next_link)
+
+    def test_hidden_idea_is_not_disclosed_or_usable_as_filter(self):
+        from ideas.feeds import link_feed
+
+        self._login(("role_current",))
+        hidden = make_idea(title="Hidden Tracking Idea", status=Status.TRACKING)
+        feed = make_feed()
+        link_feed(hidden, feed)
+        make_feed_item(feed=feed, title="Shared item remains visible")
+        response = self.client.get(reverse("ideas:feeds"), {"idea": hidden.pk})
+        self.assertContains(response, "Shared item remains visible")
+        self.assertNotContains(response, "Hidden Tracking Idea")
+        self.assertIsNone(response.context["selected_idea"])
 
 
 class FeedLinkXssTests(TestCase):

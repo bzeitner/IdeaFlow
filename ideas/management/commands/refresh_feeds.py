@@ -11,8 +11,7 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from ideas.feeds import fetch_and_ingest
-from ideas.models import Feed
+from ideas.feeds import fetch_and_ingest, refreshable_feeds
 
 
 class Command(BaseCommand):
@@ -23,11 +22,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Only fetch feeds still linked to an idea — never re-ingest orphans.
-        feeds = Feed.objects.filter(is_active=True, idea_feeds__isnull=False).distinct()
+        feeds = refreshable_feeds()
         if options["feed"]:
             feeds = feeds.filter(pk=options["feed"])
             if not feeds.exists():
-                raise CommandError(f"No active feed with id {options['feed']}.")
+                raise CommandError(
+                    f"Feed {options['feed']} is not refreshable: it is inactive or "
+                    "has no unarchived, unpaused idea association."
+                )
 
         report = []
         for feed in feeds:

@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Case, CharField, Count, F, IntegerField, OuterRef, Q, Subquery, When
+from django.db.models import Case, CharField, Count, F, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, When
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,7 +21,7 @@ from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, Po
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, GraphAccessCapability, Idea, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, FeedItemAssessment, GraphAccessCapability, Idea, IdeaFeed, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
 from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
 from .weekly_metrics import metric_comparison_rows
@@ -1606,14 +1606,86 @@ def artifacts(request):
 @role_required("role_current", "role_tracking", "role_archive")
 def feeds(request):
     """Read the shared feed items and rate them (interest + info value)."""
-    items = FeedItem.objects.select_related("feed", "summary_model").prefetch_related(
-        "assessments__idea"
-    )
+    profile = request.user.profile
+    accessible_statuses = [
+        status for status, role in Profile.STATUS_ROLE.items() if profile.has_role(role)
+    ]
+    accessible_ideas = Idea.objects.filter(
+        Q(is_public=True) | Q(status__in=accessible_statuses)
+    ).select_related("category")
+
+    items = FeedItem.objects.select_related("feed", "summary_model")
+    total_count = items.count()
+
+    idea_value = request.GET.get("idea", "")
+    selected_idea = None
+    if idea_value.isdigit():
+        selected_idea = accessible_ideas.filter(pk=int(idea_value)).first()
+
+    category_value = request.GET.get("category", "")
+    selected_category = None
+    if category_value:
+        selected_category = Category.objects.filter(
+            slug=category_value, ideas__in=accessible_ideas
+        ).distinct().first()
+
+    scoped_ideas = accessible_ideas
+    if selected_idea is not None:
+        scoped_ideas = scoped_ideas.filter(pk=selected_idea.pk)
+    if selected_category is not None:
+        scoped_ideas = scoped_ideas.filter(category=selected_category)
+    if selected_idea is not None or selected_category is not None:
+        items = items.filter(feed__idea_feeds__idea__in=scoped_ideas).distinct()
+
     unrated = bool(request.GET.get("unrated"))
     if unrated:
         # Summarized only: an unsummarized item has nothing to read but its
         # title, and the summarized rows are otherwise buried thousands deep.
         items = items.filter(interest__isnull=True, summarized_at__isnull=False)
+
+    sort = request.GET.get("sort", "published_desc")
+    orderings = {
+        "published_desc": (F("published_at").desc(nulls_last=True), "-created_at", "-id"),
+        "published_asc": (F("published_at").asc(nulls_last=True), "created_at", "id"),
+        "downloaded_desc": ("-created_at", "-id"),
+        "feed": ("sort_feed", "-published_at", "-id"),
+        "idea": ("sort_idea", "-published_at", "-id"),
+        "category": ("sort_category", "-published_at", "-id"),
+    }
+    if sort not in orderings:
+        sort = "published_desc"
+    if sort == "feed":
+        items = items.annotate(
+            sort_feed=Case(
+                When(feed__title="", then=F("feed__url")),
+                default=F("feed__title"),
+                output_field=CharField(),
+            )
+        )
+    if sort in {"idea", "category"}:
+        items = items.annotate(
+            sort_idea=Min(
+                "feed__idea_feeds__idea__title",
+                filter=Q(feed__idea_feeds__idea__in=accessible_ideas),
+            ),
+            sort_category=Min(
+                "feed__idea_feeds__idea__category__name",
+                filter=Q(feed__idea_feeds__idea__in=accessible_ideas),
+            ),
+        )
+    items = items.order_by(*orderings[sort])
+
+    matching_count = items.count()
+    accessible_links = IdeaFeed.objects.filter(idea__in=accessible_ideas).select_related(
+        "idea", "idea__category"
+    ).order_by("idea__title", "idea_id")
+    accessible_assessments = FeedItemAssessment.objects.filter(
+        idea__in=accessible_ideas
+    ).select_related("idea")
+    items = items.prefetch_related(
+        Prefetch("feed__idea_feeds", queryset=accessible_links, to_attr="accessible_links"),
+        Prefetch("assessments", queryset=accessible_assessments, to_attr="accessible_assessments"),
+    )
     page = Paginator(items, 25).get_page(request.GET.get("page"))
     rows = [
         {
@@ -1623,18 +1695,22 @@ def feeds(request):
             "link": item.link if is_http_url(item.link) else "",
             "interest_stars": _stars(item.interest),
             "info_value_stars": _stars(item.info_value),
+            "ideas": [link.idea for link in item.feed.accessible_links],
             "assessments": [
                 {
                     "idea": assessment.idea,
                     "stars": _stars(assessment.usefulness),
                     "note": assessment.relevance_note,
                 }
-                for assessment in item.assessments.all()
+                for assessment in item.accessible_assessments
             ],
         }
         for item in page
     ]
-    querystring = f"?{request.GET.urlencode()}" if request.GET else ""
+    preserved = request.GET.copy()
+    preserved.pop("page", None)
+    querystring = f"?{preserved.urlencode()}" if preserved else ""
+    pagination_suffix = f"&{preserved.urlencode()}" if preserved else ""
     return render(
         request,
         "ideas/feeds.html",
@@ -1642,10 +1718,49 @@ def feeds(request):
             "rows": rows,
             "page": page,
             "unrated": unrated,
+            "total_count": total_count,
+            "matching_count": matching_count,
+            "ideas": accessible_ideas.order_by("title", "id"),
+            "categories": Category.objects.filter(ideas__in=accessible_ideas).distinct(),
+            "selected_idea": selected_idea,
+            "can_manage_selected_idea": bool(
+                selected_idea and profile.can_manage_status(selected_idea.status)
+            ),
+            "selected_category": selected_category,
+            "sort": sort,
             "querystring": querystring,
+            "pagination_suffix": pagination_suffix,
             "tabs": _tabs(request.user.profile),
         },
     )
+
+
+@login_required
+@require_POST
+def toggle_feed_ingestion_pause(request, pk):
+    """Pause/resume future feed refreshes for one idea, preserving history."""
+    idea = get_object_or_404(Idea, pk=pk)
+    denied = _require_status_role(request, idea.status)
+    if denied:
+        return denied
+    if idea.is_archived:
+        messages.error(request, "Archived ideas cannot resume feed ingestion.")
+    else:
+        desired = request.POST.get("paused")
+        if desired not in {"0", "1"}:
+            messages.error(request, "Choose whether feed ingestion should be paused.")
+            back = request.POST.get("next", "")
+            if not back.startswith("?"):
+                back = ""
+            return redirect(f"{reverse('ideas:feeds')}{back}")
+        idea.feed_ingestion_paused = desired == "1"
+        idea.save(update_fields=["feed_ingestion_paused", "updated_at"])
+        state = "paused" if idea.feed_ingestion_paused else "resumed"
+        messages.success(request, f"Feed ingestion {state} for “{idea.title}”.")
+    back = request.POST.get("next", "")
+    if not back.startswith("?"):
+        back = ""
+    return redirect(f"{reverse('ideas:feeds')}{back}")
 
 
 @role_required("role_current", "role_tracking", "role_archive")

@@ -8,7 +8,7 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
-from ideas.feeds import ingest_entries, link_feed, record_feed_item_summary
+from ideas.feeds import ingest_entries, link_feed, record_feed_item_summary, refreshable_feeds
 from ideas.models import FeedItem
 
 from .helpers import make_feed, make_feed_item, make_idea
@@ -69,11 +69,11 @@ class IngestTests(TestCase):
 
     def test_published_parsed_becomes_a_datetime(self):
         feed = make_feed()
+        published = feed.backfill_cutoff + timedelta(days=1)
         (item,) = ingest_entries(
-            feed, [entry("dated", published_parsed=(2026, 7, 20, 14, 30, 0, 0, 0, 0))]
+            feed, [entry("dated", published_parsed=published.utctimetuple())]
         )
-        self.assertEqual(item.published_at.year, 2026)
-        self.assertEqual(item.published_at.hour, 14)
+        self.assertEqual(item.published_at, published.replace(microsecond=0))
 
     def test_same_guid_across_feeds_is_allowed(self):
         a, b = make_feed(), make_feed()
@@ -182,6 +182,52 @@ class SummaryTests(TestCase):
 
 
 class FeedCommandTests(TestCase):
+    def test_only_unarchived_unpaused_idea_makes_feed_refreshable(self):
+        feed = make_feed()
+        idea = make_idea()
+        link_feed(idea, feed)
+        self.assertIn(feed, refreshable_feeds())
+
+        idea.feed_ingestion_paused = True
+        idea.save(update_fields=["feed_ingestion_paused"])
+        self.assertNotIn(feed, refreshable_feeds())
+
+        idea.feed_ingestion_paused = False
+        idea.status = "archived"
+        idea.save(update_fields=["feed_ingestion_paused", "status"])
+        self.assertNotIn(feed, refreshable_feeds())
+
+    def test_shared_feed_refreshes_while_any_idea_is_eligible(self):
+        feed = make_feed()
+        archived = make_idea(status="archived")
+        active = make_idea()
+        link_feed(archived, feed)
+        link_feed(active, feed)
+        self.assertIn(feed, refreshable_feeds())
+
+        active.feed_ingestion_paused = True
+        active.save(update_fields=["feed_ingestion_paused"])
+        self.assertNotIn(feed, refreshable_feeds())
+
+        active.feed_ingestion_paused = False
+        active.save(update_fields=["feed_ingestion_paused"])
+        self.assertIn(feed, refreshable_feeds())
+
+        active.status = "archived"
+        active.save(update_fields=["status"])
+        self.assertNotIn(feed, refreshable_feeds())
+
+        active.status = "tracking"
+        active.save(update_fields=["status"])
+        self.assertIn(feed, refreshable_feeds())
+
+    def test_targeted_refresh_rejects_ineligible_feed(self):
+        feed = make_feed()
+        idea = make_idea(feed_ingestion_paused=True)
+        link_feed(idea, feed)
+        with self.assertRaisesMessage(CommandError, "is not refreshable"):
+            run("refresh_feeds", "--feed", str(feed.pk))
+
     def test_add_feed_is_idempotent_and_links_idea(self):
         idea = make_idea()
         url = "https://example.com/rss.xml"

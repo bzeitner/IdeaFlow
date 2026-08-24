@@ -2,12 +2,70 @@
 {% block title %}Feeds · IdeaFlow{% endblock %}
 {% block content %}
   <div class="feeds-head">
-    <h2>Feeds</h2>
-    <div class="feeds-filter" data-persist-query-params="unrated">
-      <a class="btn small {% if not unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}" data-clear-persisted-query>All</a>
-      <a class="btn small {% if unrated %}primary{% endif %}" href="{% url 'ideas:feeds' %}?unrated=1">Unrated</a>
+    <div>
+      <h2>Feeds</h2>
+      <p class="dim feed-count">
+        {% if matching_count != total_count %}{{ matching_count }} matching feed item{{ matching_count|pluralize }} · {% endif %}
+        {{ total_count }} total feed item{{ total_count|pluralize }}
+      </p>
     </div>
   </div>
+
+  <form method="get" class="feeds-filter" data-auto-submit-filters data-persist-query-params="idea,category,unrated,sort" data-persist-query-defaults="sort=published_desc">
+    <label>
+      <span>Idea</span>
+      <select name="idea">
+        <option value="">All ideas</option>
+        {% for idea in ideas %}<option value="{{ idea.id }}"{% if selected_idea.id == idea.id %} selected{% endif %}>{{ idea.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Topic</span>
+      <select name="category">
+        <option value="">All topics</option>
+        {% for category in categories %}<option value="{{ category.slug }}"{% if selected_category.id == category.id %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Sort</span>
+      <select name="sort">
+        <option value="published_desc"{% if sort == 'published_desc' %} selected{% endif %}>Newest published</option>
+        <option value="published_asc"{% if sort == 'published_asc' %} selected{% endif %}>Oldest published</option>
+        <option value="downloaded_desc"{% if sort == 'downloaded_desc' %} selected{% endif %}>Newest downloaded</option>
+        <option value="feed"{% if sort == 'feed' %} selected{% endif %}>Feed title</option>
+        <option value="idea"{% if sort == 'idea' %} selected{% endif %}>Idea title</option>
+        <option value="category"{% if sort == 'category' %} selected{% endif %}>Topic</option>
+      </select>
+    </label>
+    <label class="feeds-unrated"><input type="checkbox" name="unrated" value="1"{% if unrated %} checked{% endif %}> Unrated only</label>
+    <button type="submit" class="btn small">Apply</button>
+    <a class="btn small" href="{% url 'ideas:feeds' %}" data-clear-persisted-query>Clear</a>
+  </form>
+
+  {% if selected_idea %}
+    <div class="feed-idea-state">
+      <strong>{{ selected_idea.title }}</strong>
+      {% if selected_idea.is_archived %}
+        <span class="dim">Archived — feed ingestion disabled</span>
+      {% elif selected_idea.feed_ingestion_paused %}
+        <span class="dim">Feed ingestion paused</span>
+        {% if can_manage_selected_idea %}
+        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ querystring }}"><input type="hidden" name="paused" value="0">
+          <button class="btn small" type="submit">Resume feeds</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <span class="dim">Feed ingestion active</span>
+        {% if can_manage_selected_idea %}
+        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ querystring }}"><input type="hidden" name="paused" value="1">
+          <button class="btn small" type="submit">Pause feeds</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endif %}
 
   {% for row in rows %}
     {% with item=row.item %}
@@ -20,6 +78,13 @@
           {{ item.feed.title|default:item.feed.url }}
           {% if item.published_at %} · Published {{ item.published_at|date:"M j, Y" }}{% endif %}
           · Downloaded {{ item.created_at|date:"M j, Y g:i A T" }}
+        </p>
+        <p class="feed-associations">
+          <span class="dim">Associated Ideas:</span>
+          {% for idea in row.ideas %}
+            <a href="{% url 'ideas:detail' idea.id %}">{{ idea.title }}</a>
+            {% include "ideas/_pill.html" with obj=idea.category %}{% if not forloop.last %}, {% endif %}
+          {% empty %}<span class="dim">None visible</span>{% endfor %}
         </p>
 
         {% if item.summary %}<p class="feed-summary">{{ item.summary }}</p>
@@ -67,11 +132,11 @@
   {% if page.has_other_pages %}
     <nav class="pager">
       {% if page.has_previous %}
-        <a class="btn small" href="?page={{ page.previous_page_number }}{% if unrated %}&unrated=1{% endif %}">← Prev</a>
+        <a class="btn small" href="?page={{ page.previous_page_number }}{{ pagination_suffix }}">← Prev</a>
       {% endif %}
       <span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
       {% if page.has_next %}
-        <a class="btn small" href="?page={{ page.next_page_number }}{% if unrated %}&unrated=1{% endif %}">Next →</a>
+        <a class="btn small" href="?page={{ page.next_page_number }}{{ pagination_suffix }}">Next →</a>
       {% endif %}
     </nav>
   {% endif %}

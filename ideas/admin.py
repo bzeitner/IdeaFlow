@@ -142,9 +142,9 @@ class IdeaPersonaInline(admin.TabularInline):
 
 @admin.register(Idea)
 class IdeaAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    list_display = ("title", "created_by", "category", "parent", "status", "stage", "interest_level", "is_public", "rank")
-    list_editable = ("status", "is_public", "rank")
-    list_filter = ("created_by", "status", "is_public", "category", "stage", "interest_level")
+    list_display = ("title", "created_by", "category", "parent", "status", "stage", "interest_level", "is_public", "feed_ingestion_paused", "rank")
+    list_editable = ("status", "is_public", "feed_ingestion_paused", "rank")
+    list_filter = ("created_by", "status", "is_public", "feed_ingestion_paused", "category", "stage", "interest_level")
     search_fields = ("title", "summary", "notes")
     list_select_related = ("created_by", "category", "stage", "parent")
     autocomplete_fields = ("created_by", "parent")

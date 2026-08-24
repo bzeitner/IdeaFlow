@@ -37,6 +37,7 @@ urlpatterns = [
     path("artifacts/", views.artifacts, name="artifacts"),
     path("feeds/", views.feeds, name="feeds"),
     path("feeds/<int:pk>/rate/", views.rate_feed_item, name="rate_feed_item"),
+    path("feeds/ideas/<int:pk>/pause/", views.toggle_feed_ingestion_pause, name="toggle_feed_ingestion_pause"),
     path("new/", views.idea_form, name="create"),
     path("<int:pk>/", views.detail, name="detail"),
     path("<int:pk>/edit/", views.idea_form, name="edit"),

@@ -16,7 +16,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from .models import Feed, FeedItem, IdeaFeed
+from .models import Feed, FeedItem, IdeaFeed, Status
 from .reporting import resolve_ai_model
 
 # Only ever fetch/store web feeds — no file://, ftp://, javascript:, data:, etc.
@@ -25,6 +25,19 @@ ALLOWED_SCHEMES = {"http", "https"}
 # Feed bodies are stored so a scoring agent doesn't have to re-download the
 # page; 20k characters is well past where a summary stops improving.
 CONTENT_MAX_CHARS = 20_000
+
+
+def refreshable_feeds():
+    """Feeds needed by at least one unarchived, unpaused idea.
+
+    Eligibility is evaluated at refresh time so pausing/archiving is reversible
+    and a shared feed continues while any other associated idea still needs it.
+    """
+    return Feed.objects.filter(
+        is_active=True,
+        idea_feeds__idea__feed_ingestion_paused=False,
+        idea_feeds__idea__status__in=(Status.CURRENT, Status.TRACKING),
+    ).distinct()
 
 
 def _ip_or_none(host):

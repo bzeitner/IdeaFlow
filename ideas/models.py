@@ -212,6 +212,10 @@ class Idea(models.Model):
         help_text="Manually cap how many feeds this idea keeps. Leave blank to "
         "use the default (5, or 10 for research categories).",
     )
+    feed_ingestion_paused = models.BooleanField(
+        default=False,
+        help_text="Pause future feed refreshes for this idea without hiding existing items.",
+    )
     repeat_enabled = models.BooleanField(default=False)
     repeat_paused = models.BooleanField(default=False)
     repeat_goal = models.TextField(
