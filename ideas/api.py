@@ -32,6 +32,11 @@ from django.views.decorators.csrf import csrf_exempt
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
 from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, ResearchEntry, Resource, Status, SuggestionStatus, VoiceProfile, WeeklySummary
+from .podcast_policy import (
+    PODCAST_MAX_DURATION_SECONDS,
+    PODCAST_WORDS_PER_SECOND,
+    minimum_script_word_count,
+)
 from .reporting import new_open_questions, record_effort
 from .serialize import (
     feed_item_to_dict,
@@ -352,10 +357,17 @@ _PODCAST_ALLOWED_EMOTIONS = {None, "curious", "skeptical", "excited", "calm", "s
 _PODCAST_MAX_SEGMENTS = 500
 _PODCAST_MAX_TEXT_CHARS = 2000
 _PODCAST_MAX_PAUSE_MS = 5000
-_PODCAST_MAX_TARGET_DURATION_SECONDS = 4 * 3600
 
 
-def _validate_podcast_script(script, active_voice_profile_names):
+def _podcast_script_word_count(script):
+    """Count the words that will actually be spoken by the render worker."""
+    return sum(
+        len(re.findall(r"\b[\w]+(?:['’-][\w]+)*\b", segment["text"], flags=re.UNICODE))
+        for segment in script["segments"]
+    )
+
+
+def _validate_podcast_script(script, active_voice_profile_names, configured_duration_seconds=None):
     """A first line of defense against an obviously malformed or unsafe
     script before an Episode/EpisodeRun row is created — the render worker
     independently re-validates the manifest built from this against its own
@@ -369,7 +381,7 @@ def _validate_podcast_script(script, active_voice_profile_names):
     if not isinstance(title, str) or not title.strip() or len(title) > 300:
         raise ValueError("script.title must be a non-empty string of at most 300 characters.")
     target_duration = script.get("target_duration_seconds")
-    if not isinstance(target_duration, (int, float)) or not (0 < target_duration <= _PODCAST_MAX_TARGET_DURATION_SECONDS):
+    if not isinstance(target_duration, (int, float)) or not (0 < target_duration <= PODCAST_MAX_DURATION_SECONDS):
         raise ValueError("script.target_duration_seconds is missing or out of range.")
 
     segments = script.get("segments")
@@ -414,6 +426,19 @@ def _validate_podcast_script(script, active_voice_profile_names):
         if not isinstance(citation, dict):
             raise ValueError(f"citations[{i}] must be an object.")
 
+    if configured_duration_seconds:
+        if configured_duration_seconds > PODCAST_MAX_DURATION_SECONDS:
+            raise ValueError("show target duration exceeds the 1-hour limit.")
+        minimum_words = minimum_script_word_count(configured_duration_seconds)
+        word_count = _podcast_script_word_count(script)
+        if word_count < minimum_words:
+            raise ValueError(
+                f"script is too short for the show's configured duration: {word_count} spoken "
+                f"words, but at least {minimum_words} are required (half of "
+                f"{configured_duration_seconds}s at {PODCAST_WORDS_PER_SECOND:g} words/second). "
+                "Add substantive sections or explore the existing topics in more depth."
+            )
+
 
 @require_api_token
 @transaction.atomic
@@ -449,7 +474,11 @@ def idea_podcast_episode(request, pk):
         VoiceProfile.objects.filter(is_active=True).values_list("name", flat=True)
     )
     try:
-        _validate_podcast_script(script, active_voice_profile_names)
+        _validate_podcast_script(
+            script,
+            active_voice_profile_names,
+            configured_duration_seconds=show.target_episode_duration_seconds,
+        )
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 

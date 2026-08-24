@@ -16,6 +16,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 from pgvector.django import VectorField
 
+from .podcast_policy import PODCAST_MAX_DURATION_SECONDS
+
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
 
 # The one email that's always fully provisioned — everyone else starts with no roles.
@@ -1267,7 +1269,12 @@ class PodcastShow(models.Model):
     )
     is_explicit = models.BooleanField(default=False)
     default_tts_engine = models.CharField(max_length=32, default="fish-s2-pro")
-    target_episode_duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    target_episode_duration_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MaxValueValidator(PODCAST_MAX_DURATION_SECONDS)],
+        help_text="Maximum 1 hour (3,600 seconds).",
+    )
     # Deliberately distinct from Idea.is_public, which only means "readable by
     # any signed-in IdeaFlow user." This flag controls whether the show's RSS
     # feed and episode pages are reachable by anyone, signed in or not — the

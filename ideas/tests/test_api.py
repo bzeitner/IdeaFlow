@@ -759,6 +759,40 @@ class ApiPodcastEpisodeTests(TestCase):
         response = self._post(idea, {"title": "Ep", "script": script})
         self.assertEqual(response.status_code, 400)
 
+    def test_script_under_half_configured_duration_is_rejected(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea, target_episode_duration_seconds=60)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least 75", response.json()["error"])
+        self.assertEqual(Episode.objects.count(), 0)
+
+    def test_script_at_half_configured_duration_is_accepted(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea, target_episode_duration_seconds=8)
+        script = _make_podcast_script()
+        script["segments"][0]["text"] = "one two three four five"
+        script["segments"][1]["text"] = "six seven eight nine ten"
+        response = self._post(idea, {"title": "Ep", "script": script})
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_fractional_minimum_word_threshold_rounds_up(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea, target_episode_duration_seconds=9)
+        script = _make_podcast_script()
+        script["segments"][0]["text"] = "one two three four five six"
+        script["segments"][1]["text"] = "seven eight nine ten eleven"
+        response = self._post(idea, {"title": "Ep", "script": script})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least 12", response.json()["error"])
+
+    def test_show_duration_over_one_hour_is_rejected_defensively(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea, target_episode_duration_seconds=3601)
+        response = self._post(idea, {"title": "Ep", "script": _make_podcast_script()})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("1-hour limit", response.json()["error"])
+
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
 class ApiFeedTests(TestCase):

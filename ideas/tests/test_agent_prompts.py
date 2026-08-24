@@ -115,6 +115,9 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("create-podcast-episode 123", text)
         self.assertIn("do not also call", text)
         self.assertIn("log-repeat-results for a podcast idea", text)
+        self.assertIn("podcast_show.minimum_script_word_count", text)
+        self.assertIn("single authoritative threshold", text)
+        self.assertIn("Recount and", text)
 
     def test_research_prompt_requires_a_decision_and_current_summary(self):
         text = prompt("research")

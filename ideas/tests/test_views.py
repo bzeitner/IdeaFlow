@@ -1825,6 +1825,19 @@ class PodcastShowFormTests(TestCase):
         self.assertEqual(show.title, "New Title")
         self.assertEqual(PodcastShow.objects.count(), 1)
 
+    def test_duration_cannot_exceed_one_hour(self):
+        response = self.client.post(
+            reverse("ideas:podcast_show_form", args=[self.idea.pk]),
+            {
+                "title": "Long Show", "slug": "long-show", "description": "",
+                "host_name": "", "language": "en", "category": "",
+                "target_episode_duration_seconds": "3601",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ensure this value is less than or equal to 3600")
+        self.assertFalse(PodcastShow.objects.filter(idea=self.idea).exists())
+
     def test_setup_requires_manage_role(self):
         other = make_user("noroles@example.com")
         self.client.force_login(other, backend=MODEL_BACKEND)

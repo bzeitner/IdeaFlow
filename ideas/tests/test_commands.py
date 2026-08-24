@@ -8,7 +8,7 @@ from django.test import TestCase, override_settings
 
 from ideas.models import ResearchEntry, Status
 
-from .helpers import make_idea, make_stage
+from .helpers import make_idea, make_podcast_show, make_stage
 
 
 def run(command, *args):
@@ -32,6 +32,12 @@ class DumpIdeaTests(TestCase):
         make_idea(title="B", status=Status.TRACKING)
         data = json.loads(run("dump_idea"))
         self.assertEqual({i["title"] for i in data["ideas"]}, {"A", "B"})
+
+    def test_dump_podcast_includes_server_computed_minimum_words(self):
+        idea = make_idea(title="Podcast")
+        make_podcast_show(idea=idea, target_episode_duration_seconds=9)
+        data = json.loads(run("dump_idea", str(idea.pk)))
+        self.assertEqual(data["podcast_show"]["minimum_script_word_count"], 12)
 
     def test_dump_list_filtered_by_status(self):
         make_idea(title="A", status=Status.CURRENT)

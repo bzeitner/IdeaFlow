@@ -4,6 +4,8 @@ Both the `dump_idea` management command and the `/api/` views serialize through
 here, so the shape an agent reads is identical however it connects.
 """
 
+from .podcast_policy import minimum_script_word_count
+
 
 def _lookup(obj):
     """A Category/Stage/AIModel as {name, slug}, or None when unset."""
@@ -102,6 +104,9 @@ def podcast_show_to_dict(show):
         "slug": show.slug,
         "default_tts_engine": show.default_tts_engine,
         "target_episode_duration_seconds": show.target_episode_duration_seconds,
+        "minimum_script_word_count": minimum_script_word_count(
+            show.target_episode_duration_seconds
+        ),
         "voice_profiles": [
             {"name": vp.name, "speaker_label": vp.speaker_label}
             for vp in VoiceProfile.objects.filter(is_active=True).order_by("name")

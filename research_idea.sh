@@ -209,7 +209,14 @@ the script below — use exactly those names, no others.
    output — that is the show's configured target, not a suggestion to
    override. Use the added depth to fill that runtime with real substance
    instead of defaulting to a short script, but don't pad with filler to
-   reach it either.
+   reach it either. Before submitting, count the words across every segment's
+   text. The server has already calculated the half-runtime requirement as
+   podcast_show.minimum_script_word_count in step 1's dump-idea output; use that
+   value as the single authoritative threshold. If the script is under it,
+   revise it before continuing: add substantive sections from
+   the available research or go deeper on existing topics by explaining causes,
+   implications, connections, counterarguments, and open questions. Recount and
+   repeat until it meets the minimum; never submit a knowingly undersized script.
 3. Create the episode and its render job exactly once — this both creates
    the job AND advances the repeat clock, so do not also call
    log-repeat-results for a podcast idea:
