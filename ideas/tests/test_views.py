@@ -556,6 +556,24 @@ class FeedPageTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.interest, 4)
 
+    def test_rate_returns_json_for_in_place_save(self):
+        self._login()
+        item = make_feed_item()
+        response = self.client.post(
+            reverse("ideas:rate_feed_item", args=[item.pk]),
+            {"interest": "4"},
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "field": "interest", "value": 4})
+
+    def test_feed_rating_forms_enable_in_place_save(self):
+        self._login()
+        make_feed_item(summarized_at=timezone.now())
+        response = self.client.get(reverse("ideas:feeds"))
+        self.assertContains(response, "data-feed-rating-form")
+        self.assertContains(response, "data-feed-rating-status")
+
     def test_rate_sets_info_value(self):
         self._login()
         item = make_feed_item()

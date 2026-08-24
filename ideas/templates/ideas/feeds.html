@@ -92,7 +92,7 @@
         {% else %}<p class="feed-summary dim">Not summarized yet.</p>{% endif %}
 
         <div class="feed-ratings">
-          <form method="post" action="{% url 'ideas:rate_feed_item' item.id %}" class="rate-form">
+          <form method="post" action="{% url 'ideas:rate_feed_item' item.id %}" class="rate-form" data-feed-rating-form>
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ querystring }}">
             <div class="rate-row">
@@ -111,6 +111,7 @@
                   {% if filled %}★{% else %}☆{% endif %}</button>
               {% endfor %}
             </div>
+            <span class="dim rate-save-status" data-feed-rating-status aria-live="polite"></span>
           </form>
           {% for assessment in row.assessments %}
             <div class="rate-row muted"{% if assessment.note %} title="{{ assessment.note }}"{% endif %}>

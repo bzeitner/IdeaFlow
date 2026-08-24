@@ -162,6 +162,46 @@
     }
   });
 
+  document.querySelectorAll("[data-feed-rating-form]").forEach((form) => {
+    const status = form.querySelector("[data-feed-rating-status]");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitted = event.submitter;
+      if (!submitted?.name) return;
+      const buttons = Array.from(form.querySelectorAll("button[type='submit']"));
+      const formData = new FormData(form);
+      formData.set(submitted.name, submitted.value);
+      buttons.forEach((button) => { button.disabled = true; });
+      status.textContent = "Saving…";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: formData,
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not save");
+        form.querySelectorAll(`button[name='${payload.field}']`).forEach((button) => {
+          const filled = Number(button.value) <= payload.value;
+          button.classList.toggle("on", filled);
+          button.textContent = filled ? "★" : "☆";
+        });
+        status.textContent = new URLSearchParams(window.location.search).has("unrated")
+          ? "Saved — this item will leave this view when refreshed."
+          : "Saved";
+        window.setTimeout(() => {
+          if (status.textContent === "Saved") status.textContent = "";
+        }, 1800);
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        buttons.forEach((button) => { button.disabled = false; });
+        actionStarted = false;
+      }
+    });
+  });
+
   document.querySelectorAll("[data-repeat-result-form]").forEach((form) => {
     const select = form.querySelector("select[name='status']");
     const saveStatus = form.querySelector("[data-save-status]");

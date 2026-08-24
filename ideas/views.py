@@ -1888,6 +1888,8 @@ def rate_feed_item(request, pk):
     if request.method != "POST":
         return redirect("ideas:feeds")
     item = get_object_or_404(FeedItem, pk=pk)
+    saved_field = None
+    saved_value = None
     for field in ("interest", "info_value"):
         if field in request.POST:
             try:
@@ -1897,7 +1899,13 @@ def rate_feed_item(request, pk):
             if 1 <= value <= 5:
                 setattr(item, field, value)
                 item.save(update_fields=[field])
+                saved_field = field
+                saved_value = value
             break
+    if request.headers.get("Accept") == "application/json":
+        if saved_field is None:
+            return JsonResponse({"ok": False, "error": "Choose a rating from 1 to 5."}, status=400)
+        return JsonResponse({"ok": True, "field": saved_field, "value": saved_value})
     # Return the user to the same page/filter, scrolled to the item they rated.
     back = request.POST.get("next", "")
     return redirect(f"{reverse('ideas:feeds')}{back}#item-{pk}")
