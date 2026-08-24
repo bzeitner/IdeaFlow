@@ -1,0 +1,12 @@
+# Runs after the Sunday 11 PM hourly feed refresh. The explicit timezone keeps
+# "Sunday night" stable across Pacific daylight-saving transitions.
+
+[Unit]
+Description=IdeaFlow: prune orphan feeds weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 23:15:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

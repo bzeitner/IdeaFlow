@@ -1,0 +1,14 @@
+# Oneshot unit that removes feeds no longer linked to any Idea. Paired with
+# ideaflow-prune-orphan-feeds.timer.
+
+[Unit]
+Description=IdeaFlow: prune orphan feeds
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python manage.py prune_orphan_feeds
+TimeoutStartSec=10min

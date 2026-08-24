@@ -419,6 +419,16 @@ systemctl enable --now ideaflow-refresh-feeds.timer
 systemctl list-timers ideaflow-refresh-feeds.timer --no-pager
 ```
 
+Orphan feed cleanup (Sunday at 11:15 PM Pacific, after the hourly refresh):
+
+```bash
+# as root
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-prune-orphan-feeds.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-prune-orphan-feeds.timer
+systemctl list-timers ideaflow-prune-orphan-feeds.timer --no-pager
+```
+
 Weekly portfolio summary (Sunday at 12:01 AM, covering the prior Sunday-Saturday and backfilling any missing activity weeks):
 
 ```bash
