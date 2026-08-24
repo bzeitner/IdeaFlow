@@ -64,7 +64,7 @@
               {% if idea.open_question_count %}<a class="pill question-pill" href="{{ idea.get_absolute_url }}#open-questions">❓ Human input needed ({{ idea.open_question_count }})</a>{% endif %}
               {% if idea.needs_persona_intervention %}<a class="pill council-intervention-pill" href="{{ idea.get_absolute_url }}#persona-council">⚠ Council disagreed — intervention needed</a>{% endif %}
               {% if idea.following_persona_council_direction %}<a class="pill" href="{{ idea.get_absolute_url }}#persona-council">Following council direction</a>{% elif idea.persona_review_days_until is not None %}<a class="pill" href="{{ idea.get_absolute_url }}#persona-council">Council action in {{ idea.persona_review_days_until }} day{{ idea.persona_review_days_until|pluralize }}</a>{% endif %}
-              <span class="dim">Updated {{ idea.updated_at|date:"M j, Y" }}</span>
+              <span class="dim">Updated {% if idea.recent_update_label %}{{ idea.recent_update_label }}{% else %}{{ idea.updated_at|date:"M j, Y" }}{% endif %}</span>
               {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
               {% if idea.pr_url %}<a class="pr-icon" href="{{ idea.pr_url }}" target="_blank" rel="noopener">Open PR ↗</a>{% endif %}
             </div>

@@ -36,6 +36,23 @@ def _stars(value):
     return [(n, n <= filled_to) for n in STAR_RANGE]
 
 
+def _recent_update_label(updated_at, now):
+    """Human-scale age for Tracking updates from the last 24 hours."""
+    elapsed_seconds = max(0, int((now - updated_at).total_seconds()))
+    if elapsed_seconds >= 24 * 60 * 60:
+        return ""
+    total_minutes = elapsed_seconds // 60
+    if total_minutes == 0:
+        return "less than a minute ago"
+    hours, minutes = divmod(total_minutes, 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    return f"{' '.join(parts)} ago"
+
+
 def _history_metrics(ideas):
     """All recorded effort for the ideas currently represented by a list page."""
     ideas = list(ideas)
@@ -713,6 +730,9 @@ def tracking(request):
         # family/rank ordering above within each priority group.
         ideas = sorted(ideas, key=lambda idea: idea.open_question_count == 0)
     ideas = list(ideas)
+    now = timezone.now()
+    for idea in ideas:
+        idea.recent_update_label = _recent_update_label(idea.updated_at, now)
     return render(
         request,
         "ideas/tracking.html",

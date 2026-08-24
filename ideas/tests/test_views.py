@@ -1296,6 +1296,23 @@ class TrackingWorkflowTests(TestCase):
         self.assertContains(response, "Last update (newest first)")
         self.assertContains(response, '<option value="updated" selected>', html=False)
 
+    def test_recent_updates_show_elapsed_hours_and_minutes(self):
+        recent = make_idea(title="Recently changed", status=Status.TRACKING)
+        seven_minutes = make_idea(title="Minutes only", status=Status.TRACKING)
+        old = make_idea(title="Older change", status=Status.TRACKING)
+        now = timezone.now()
+        Idea.objects.filter(pk=recent.pk).update(updated_at=now - timedelta(hours=2, minutes=16))
+        Idea.objects.filter(pk=seven_minutes.pk).update(updated_at=now - timedelta(minutes=7))
+        Idea.objects.filter(pk=old.pk).update(updated_at=now - timedelta(hours=25))
+
+        response = self.client.get(reverse("ideas:tracking"))
+
+        self.assertContains(response, "Updated 2 hours 16 minutes ago")
+        self.assertContains(response, "Updated 7 minutes ago")
+        old_date = date(timezone.localtime(now - timedelta(hours=25)), "M j, Y")
+        self.assertContains(response, f"Updated {old_date}")
+        self.assertNotContains(response, "Updated 25 hours ago")
+
     def test_quick_update_saves_next_action_and_clears_pause(self):
         idea = make_idea(
             status=Status.TRACKING, next_action="", agent_runs_since_feedback=2
