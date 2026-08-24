@@ -1646,7 +1646,7 @@ def feeds(request):
     sort = request.GET.get("sort", "published_desc")
     orderings = {
         "published_desc": (F("published_at").desc(nulls_last=True), "-created_at", "-id"),
-        "published_asc": (F("published_at").asc(nulls_last=True), "created_at", "id"),
+        "published_asc": ("published_missing", "published_at", "created_at", "id"),
         "downloaded_desc": ("-created_at", "-id"),
         "feed": ("sort_feed", "-published_at", "-id"),
         "idea": ("sort_idea", "-published_at", "-id"),
@@ -1654,6 +1654,16 @@ def feeds(request):
     }
     if sort not in orderings:
         sort = "published_desc"
+    if sort == "published_asc":
+        # Avoid backend-specific ASC NULLS LAST SQL, particularly on a
+        # DISTINCT queryset produced by Idea/topic filtering.
+        items = items.annotate(
+            published_missing=Case(
+                When(published_at__isnull=True, then=1),
+                default=0,
+                output_field=IntegerField(),
+            )
+        )
     if sort == "feed":
         items = items.annotate(
             sort_feed=Case(

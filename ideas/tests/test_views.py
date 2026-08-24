@@ -686,6 +686,30 @@ class FeedPageTests(TestCase):
                 response = self.client.get(reverse("ideas:feeds"), {"sort": sort})
                 self.assertEqual(response.context["rows"][0]["item"].title, expected)
 
+    def test_oldest_published_with_idea_filter_puts_undated_items_last(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        idea = make_idea()
+        feed = make_feed()
+        link_feed(idea, feed)
+        make_feed_item(
+            feed=feed,
+            title="Dated item",
+            published_at=timezone.now() - timedelta(days=1),
+        )
+        make_feed_item(feed=feed, title="Undated item", published_at=None)
+
+        response = self.client.get(
+            reverse("ideas:feeds"),
+            {"idea": idea.pk, "sort": "published_asc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["item"].title for row in response.context["rows"]],
+            ["Dated item", "Undated item"],
+        )
+
     def test_rating_and_pagination_preserve_filter_state(self):
         self._login()
         idea = make_idea()
