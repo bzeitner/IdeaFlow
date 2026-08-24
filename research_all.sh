@@ -7,6 +7,7 @@
 #   * every idea with no research yet          -> research mode
 #   * repo-backed ideas with a build action     -> execute mode (implement it)
 #   * every other idea with a next action set   -> review mode (advance it)
+#   * researched ideas with newer human activity -> review mode (reconsider it)
 #   * researched ideas without a next action are skipped
 #
 #   IDEAFLOW_API_TOKEN=... ./research_all.sh [options]
