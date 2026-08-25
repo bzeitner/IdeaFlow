@@ -375,8 +375,14 @@ Steps:
    what changed since the last effort, what's validated vs still open, and what
    decision the evidence supports. Do fresh web research only for a named gap
    whose answer would change that decision — don't repeat prior work.
-3. Register any new RSS/Atom feeds you find, rating each one's relevance to this
-   idea 1-5 (the idea keeps only its top-rated feeds):
+3. Compare this idea's current feed count to its feed_cap (both in dump-idea
+   output). If there's headroom (fewer feeds than feed_cap), actively search
+   for additional high-quality, non-duplicate RSS/Atom feeds relevant to this
+   idea — don't just wait to stumble across one during other research. Only
+   conclude the roster is complete if you can name a specific reason an
+   additional feed wouldn't add distinct coverage (not "no gap was found").
+   Register each new feed and rate its relevance 1-5 (the idea keeps only its
+   top-rated feeds, so a low-value one just gets pruned):
      ${IFCLI} add-feed --url <url> --idea ${ID} --rating <1-5>
 4. Write a concise markdown report to ${REPORT} with: decision; changes since
    the last review; evidence and source URLs; facts versus assumptions;
@@ -446,10 +452,15 @@ Research IdeaFlow idea ${ID}. Talk to IdeaFlow only through the client "${IFCLI}
 2. Research the decision, not just the topic. Use existing research first, then
    investigate market, competitors, feasibility, risks, and concrete next steps
    as relevant. Cite source URLs and separate facts from assumptions.
-3. Register any RSS/Atom feeds you come across (blogs, news, release feeds) so
-   they're tracked centrally and summarized once — don't fetch/summarize them
-   inline. Register each distinct feed and rate its relevance to this idea 1-5
-   (the idea keeps only its top-rated feeds):
+3. Compare this idea's current feed count to its feed_cap (both in dump-idea
+   output). If there's headroom (fewer feeds than feed_cap), actively search
+   for additional high-quality, non-duplicate RSS/Atom feeds (blogs, news,
+   release feeds) relevant to this idea — don't just register ones you happen
+   to come across. Don't fetch/summarize them inline; IdeaFlow tracks and
+   summarizes each registered feed centrally, once. Only conclude the roster
+   is complete if you can name a specific reason an additional feed wouldn't
+   add distinct coverage. Register each distinct feed and rate its relevance
+   to this idea 1-5 (the idea keeps only its top-rated feeds):
      ${IFCLI} add-feed --url <feed-url> --idea ${ID} --rating <1-5>
 4. Write a markdown report to ${REPORT} with: recommendation; key evidence and
    source URLs; competitors or alternatives; feasibility; risks; open questions;
