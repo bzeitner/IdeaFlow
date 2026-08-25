@@ -57,6 +57,19 @@ class ApiReadTests(TestCase):
         titles = [i["title"] for i in response.json()["ideas"]]
         self.assertEqual(titles, ["Trk"])
 
+    def test_list_exposes_repeat_status_without_a_full_detail_dump(self):
+        # score_items_all.sh filters this list for repeat-enabled, unpaused
+        # ideas without fetching each one's full detail dump.
+        make_idea(title="On", repeat_enabled=True, repeat_paused=False)
+        make_idea(title="Paused", repeat_enabled=True, repeat_paused=True)
+        make_idea(title="Off", repeat_enabled=False)
+        response = self.client.get("/api/ideas/", **AUTH)
+        by_title = {i["title"]: i for i in response.json()["ideas"]}
+        self.assertEqual(by_title["On"]["repeat_enabled"], True)
+        self.assertEqual(by_title["On"]["repeat_paused"], False)
+        self.assertEqual(by_title["Paused"]["repeat_paused"], True)
+        self.assertEqual(by_title["Off"]["repeat_enabled"], False)
+
     def test_detail_includes_related_collections(self):
         idea = make_idea(title="Deep", notes="secret notes")
         idea.resources.create(label="Docs", url="https://example.com")

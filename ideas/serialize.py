@@ -136,6 +136,11 @@ def idea_to_dict(idea, *, detail=True):
         "url": idea.get_absolute_url(),
         "created_at": idea.created_at.isoformat(),
         "updated_at": idea.updated_at.isoformat(),
+        # Cheap scalars (no extra query), unlike the heavier repeat_task
+        # object below — kept available even in the detail=False list view so
+        # a caller can filter for repeat-enabled ideas without a full dump.
+        "repeat_enabled": idea.repeat_enabled,
+        "repeat_paused": idea.repeat_paused,
     }
     if detail:
         from django.db.models import F

@@ -30,12 +30,11 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
 fi
 
 IDS="$(
-  "$IFCLI" list-ideas 2>/dev/null | python3 -c '
+  "$IFCLI" list-ideas | python3 -c '
 import json, sys
 ideas = json.load(sys.stdin)["ideas"]
 for idea in ideas:
-    repeat = idea.get("repeat") or {}
-    if repeat.get("enabled") and not repeat.get("paused"):
+    if idea.get("repeat_enabled") and not idea.get("repeat_paused"):
         print(idea["id"])
 '
 )"
