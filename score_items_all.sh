@@ -45,14 +45,23 @@ if [[ -z "$IDS" ]]; then
 fi
 
 FAILED=()
-while read -r id; do
+# Read ids from process substitution, not a `while read <<< "$IDS"` here-
+# string: score_items.sh launches `claude -p`, which reads stdin itself, and
+# sharing stdin between the loop's `read` and that child would let it
+# consume the rest of the id list — silently ending the loop after idea 1.
+# (That's exactly what happened the first time this ran: idea 92 got
+# scored, then the loop just stopped, with no error and a "Done." at the
+# end.) Process substitution gives the loop its own fd, independent of the
+# script's/child's stdin, so this holds regardless of what score_items.sh's
+# child processes read.
+while IFS= read -r id; do
   [[ -z "$id" ]] && continue
   echo "=== idea ${id} ===" >&2
-  if ! "$SCRIPT_DIR/score_items.sh" "$id" "$@"; then
+  if ! "$SCRIPT_DIR/score_items.sh" "$id" "$@" < /dev/null; then
     echo "warning: scoring idea ${id} failed; continuing with the rest." >&2
     FAILED+=("$id")
   fi
-done <<< "$IDS"
+done < <(printf '%s\n' "$IDS")
 
 if [[ "${#FAILED[@]}" -gt 0 ]]; then
   echo "Done, with failures for idea(s): ${FAILED[*]}" >&2
