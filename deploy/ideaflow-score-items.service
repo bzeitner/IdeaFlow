@@ -1,15 +1,21 @@
-# Oneshot unit that scores one idea's queued feed items with a headless agent.
-# Paired with the .timer. Unlike refresh-feeds this does NOT run manage.py: the
-# app has no LLM dependency by design, so scoring runs through score_items.sh
-# against the HTTP API. Install both to /etc/systemd/system/, then:
+# Oneshot unit that scores every repeat-enabled, unpaused idea's queued feed
+# items with a headless agent — score_items.sh's assessments are per-idea, so
+# an idea left out here never accumulates candidates, regardless of how good
+# its feed roster is. Paired with the .timer. Unlike refresh-feeds this does
+# NOT run manage.py: the app has no LLM dependency by design, so scoring runs
+# through score_items_all.sh (looping score_items.sh) against the HTTP API.
+# Install both to /etc/systemd/system/, then:
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ideaflow-score-items.timer
 #
-# Needs: the `claude` CLI on PATH for user ideaflow, and IDEAFLOW_API_TOKEN in
-# /etc/ideaflow/agent.env (same token the client uses).
+# Needs: the `claude` CLI installed for user ideaflow (systemd units don't
+# source ~/.bashrc/.profile, so its install dir is set explicitly below via
+# Environment=PATH — adjust if `claude` lives somewhere else), and
+# IDEAFLOW_API_TOKEN in /etc/ideaflow/agent.env (same token the client uses;
+# create the file with 0640 root:ideaflow — see deploy/README.md).
 
 [Unit]
-Description=IdeaFlow: score queued feed items for idea 8
+Description=IdeaFlow: score queued feed items for every repeat-enabled idea
 After=network-online.target
 Wants=network-online.target
 
@@ -18,6 +24,7 @@ Type=oneshot
 User=ideaflow
 Group=ideaflow
 WorkingDirectory=/home/ideaflow/IdeaFlow
+Environment=PATH=/home/ideaflow/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=/etc/ideaflow/agent.env
-ExecStart=/home/ideaflow/IdeaFlow/score_items.sh 8 --limit 25
-TimeoutStartSec=45min
+ExecStart=/home/ideaflow/IdeaFlow/score_items_all.sh --limit 25
+TimeoutStartSec=4h

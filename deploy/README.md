@@ -440,6 +440,25 @@ systemctl enable --now ideaflow-weekly-summary.timer
 systemctl list-timers ideaflow-weekly-summary.timer --no-pager
 ```
 
+Score queued feed items (daily at 6:30 AM, for every repeat-enabled idea):
+
+```bash
+# as root — create the token file first (0640 root:ideaflow) if it doesn't
+# already exist; the service fails outright without it.
+install -d -m 0755 /etc/ideaflow
+grep '^IDEAFLOW_API_TOKEN=' /home/ideaflow/IdeaFlow/.env > /etc/ideaflow/agent.env
+chown root:ideaflow /etc/ideaflow/agent.env
+chmod 640 /etc/ideaflow/agent.env
+
+# the `claude` CLI must be installed for user ideaflow — this unit sets PATH
+# explicitly (systemd doesn't source ~/.bashrc/.profile), so confirm the path
+# in ideaflow-score-items.service's Environment=PATH matches `command -v claude`.
+cp /home/ideaflow/IdeaFlow/deploy/ideaflow-score-items.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now ideaflow-score-items.timer
+systemctl list-timers ideaflow-score-items.timer --no-pager
+```
+
 Nightly DB backup (kept 14 days):
 
 ```bash
