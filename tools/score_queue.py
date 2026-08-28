@@ -71,12 +71,15 @@ def main(argv=None):
         for f in idea.get("feeds", [])
         if (f.get("rating") or 0) >= a.min_rating
     }
-    if not feeds:
-        sys.exit(f"error: idea {a.idea} has no feeds rated >= {a.min_rating}.")
-
-    items = client(
-        "feed-items", "--unassessed", "--content", "--idea", str(a.idea)
-    )["items"]
+    # An idea without qualifying feeds has no scoring work. Treat that as an
+    # empty queue rather than a failure so the all-ideas batch can complete.
+    items = (
+        client("feed-items", "--unassessed", "--content", "--idea", str(a.idea))[
+            "items"
+        ]
+        if feeds
+        else []
+    )
     cutoff = datetime.now(timezone.utc) - timedelta(days=a.since_days)
 
     queue = []
