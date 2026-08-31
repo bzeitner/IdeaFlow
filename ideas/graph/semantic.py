@@ -46,6 +46,17 @@ def content_hash(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def bounded_semantic_text(text, max_chars=None):
+    """Keep semantic input deterministic and safely below provider token caps."""
+    limit = max_chars or settings.IDEAFLOW_SEMANTIC_MAX_INPUT_CHARS
+    if len(text) <= limit:
+        return text
+    marker = "\n\n[... older semantic context truncated ...]\n\n"
+    available = max(0, limit - len(marker))
+    head = (available * 2) // 3
+    return f"{text[:head]}{marker}{text[-(available - head):]}"
+
+
 class SemanticAPI:
     def __init__(self, *, api_key=None, api_base=None, embedding_model=None, classifier_model=None):
         self.api_key = api_key if api_key is not None else settings.IDEAFLOW_SEMANTIC_API_KEY
@@ -162,6 +173,7 @@ class SemanticAPI:
             raise RuntimeError(f"Semantic API request failed: {exc}") from exc
 
     def embed(self, text):
+        text = bounded_semantic_text(text)
         data, _run = self._measured_post(
             "/embeddings",
             {"model": self.embedding_model, "input": text, "dimensions": EMBEDDING_DIMENSIONS},

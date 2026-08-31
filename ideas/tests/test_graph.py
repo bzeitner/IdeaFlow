@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from ideas.graph.projection import graph_context, graph_projection, neighborhood
 from ideas.graph.revision import current_revision
-from ideas.graph.semantic import content_hash, process_idea, semantic_text
+from ideas.graph.semantic import bounded_semantic_text, content_hash, process_idea, semantic_text
 from ideas.models import IdeaRelation, IdeaRelationSuggestion, IdeaSemanticState, RelationType, RelationshipCouncilReview, ResearchEntry, SemanticGraphSettings, SemanticStatus, Status, SuggestionStatus
 
 from .helpers import MODEL_BACKEND, make_ai_model, make_idea, make_user
@@ -326,6 +326,15 @@ class FakeSemanticAPI:
 
 
 class SemanticGraphTests(TestCase):
+    def test_long_semantic_input_keeps_head_and_tail_within_limit(self):
+        text = "begin-" + ("middle" * 100) + "-recent-end"
+        bounded = bounded_semantic_text(text, max_chars=120)
+
+        self.assertLessEqual(len(bounded), 120)
+        self.assertTrue(bounded.startswith("begin-"))
+        self.assertTrue(bounded.endswith("-recent-end"))
+        self.assertIn("truncated", bounded)
+
     def ready_target(self, title="Target evidence"):
         target = make_idea(title=title)
         state = target.semantic_state
