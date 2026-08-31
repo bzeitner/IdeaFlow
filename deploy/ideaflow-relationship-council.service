@@ -7,6 +7,7 @@ Type=oneshot
 User=ideaflow
 Group=ideaflow
 WorkingDirectory=/home/ideaflow/IdeaFlow
+Environment=PATH=/home/ideaflow/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=/home/ideaflow/IdeaFlow/.env
 EnvironmentFile=-/etc/ideaflow/agent.env
 ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python tools/review_relationships.py --limit 10
