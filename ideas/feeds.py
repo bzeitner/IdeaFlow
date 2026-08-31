@@ -13,6 +13,7 @@ from datetime import datetime, timezone as dt_timezone
 from urllib.parse import urlsplit
 
 from django.db import transaction
+from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 
@@ -153,6 +154,13 @@ def ingest_entries(feed, entries, *, limit=None):
             },
         )
         if was_created:
+            # Phase 3 mirrors only genuinely new ingress into the measured
+            # evidence funnel. Historical rows enter through the importer with
+            # eligible_for_processing=False and are never backlogged for LLMs.
+            if settings.IDEAFLOW_SOURCES_PHASE3_ENABLED:
+                from sources.services import sync_new_feed_item
+
+                sync_new_feed_item(item)
             created.append(item)
     return created
 
@@ -217,6 +225,11 @@ def prune_idea_feeds(idea):
     for link in links[keep:]:
         feed_id = link.feed_id
         removed.append(feed_id)
+        from sources.models import Subscription
+
+        Subscription.objects.filter(legacy_idea_feed=link).update(
+            legacy_idea_feed=None, is_paused=True
+        )
         link.delete()
         if not IdeaFeed.objects.filter(feed_id=feed_id).exists():
             Feed.objects.filter(pk=feed_id).delete()
@@ -230,6 +243,10 @@ def link_feed(idea, feed, rating=None):
     if rating is not None:
         link.rating = _star(rating, "rating")
         link.save(update_fields=["rating"])
+    if settings.IDEAFLOW_SOURCES_PHASE3_ENABLED:
+        from sources.services import ensure_subscription
+
+        ensure_subscription(link)
     prune_idea_feeds(idea)
     return link
 
@@ -284,7 +301,7 @@ def record_feed_item_summary(
             and existing.produced_by_run_id != produced_by_run.pk
         ):
             raise ValueError("Assessment is already attributed to another execution run.")
-        FeedItemAssessment.objects.update_or_create(
+        assessment, _created = FeedItemAssessment.objects.update_or_create(
             idea=idea,
             item=item,
             defaults={
@@ -296,4 +313,8 @@ def record_feed_item_summary(
                 ),
             },
         )
+        if settings.IDEAFLOW_SOURCES_PHASE3_ENABLED:
+            from sources.services import sync_legacy_assessment
+
+            sync_legacy_assessment(assessment)
     return item

@@ -880,6 +880,31 @@ def feed_item_list(request):
     if request.GET.get("unsummarized"):
         items = items.filter(summarized_at__isnull=True)
 
+    phase3_candidates = None
+    if (
+        settings.IDEAFLOW_SOURCES_PHASE3_ENABLED
+        and idea is not None
+        and request.GET.get("unassessed")
+    ):
+        from django.db.models import Case, IntegerField, When
+        from sources.models import EvidenceCandidate
+
+        phase3_candidates = list(
+            EvidenceCandidate.objects.filter(
+                idea=idea,
+                source_item__eligible_for_processing=True,
+                source_item__legacy_feed_item__isnull=False,
+            )
+            .select_related("source_item")
+            .order_by("rank", "source_item_id")
+        )
+        ranked_ids = [candidate.source_item.legacy_feed_item_id for candidate in phase3_candidates]
+        ordering = Case(
+            *[When(pk=item_id, then=position) for position, item_id in enumerate(ranked_ids)],
+            output_field=IntegerField(),
+        )
+        items = items.filter(pk__in=ranked_ids).order_by(ordering)
+
     # Cap items per feed (e.g. ?per_feed=5) — bounds summaries per feed per
     # idea per effort.
     per_feed = request.GET.get("per_feed")
@@ -905,6 +930,19 @@ def feed_item_list(request):
     if limit is None and with_content:
         limit = DEFAULT_CONTENT_LIMIT
     items = items[offset : offset + limit] if limit else items[offset:]
+
+    if phase3_candidates is not None:
+        selected_ids = {item.pk for item in items}
+        now = timezone.now()
+        from sources.models import EvidenceCandidate
+
+        EvidenceCandidate.objects.filter(
+            pk__in=[
+                candidate.pk for candidate in phase3_candidates
+                if candidate.source_item.legacy_feed_item_id in selected_ids
+            ],
+            exposed_at__isnull=True,
+        ).update(exposed_at=now)
 
     if idea is not None:
         from django.db.models import Prefetch

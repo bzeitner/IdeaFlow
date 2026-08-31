@@ -4,6 +4,8 @@ Both the `dump_idea` management command and the `/api/` views serialize through
 here, so the shape an agent reads is identical however it connects.
 """
 
+from django.conf import settings
+
 from .podcast_policy import minimum_script_word_count
 
 
@@ -80,6 +82,28 @@ def feed_item_to_dict(item, *, content=False, idea=None):
             if assessment
             else None
         )
+        candidate = None
+        if settings.IDEAFLOW_SOURCES_PHASE3_ENABLED:
+            from sources.models import EvidenceCandidate
+
+            candidate = EvidenceCandidate.objects.filter(
+                source_item__legacy_feed_item=item, idea=idea
+            ).first()
+        if candidate is not None:
+            assignment = candidate.assignments.select_related("experiment").first()
+            data["evidence"] = {
+                "candidate_id": candidate.pk,
+                "rank": candidate.rank,
+                "deterministic_score": candidate.deterministic_score,
+                "experiment": (
+                    {
+                        "key": assignment.experiment.key,
+                        "assignment_id": assignment.pk,
+                        "variant": assignment.variant,
+                    }
+                    if assignment else None
+                ),
+            }
     return data
 
 
