@@ -8,6 +8,7 @@ User=ideaflow
 Group=ideaflow
 WorkingDirectory=/home/ideaflow/IdeaFlow
 EnvironmentFile=/home/ideaflow/IdeaFlow/.env
+EnvironmentFile=-/etc/ideaflow/agent.env
 ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python tools/review_relationships.py --limit 10
 
 [Install]

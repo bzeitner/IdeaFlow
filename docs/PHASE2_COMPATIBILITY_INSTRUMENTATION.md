@@ -38,7 +38,7 @@ The command prints the token once. Store it only on the worker:
 IDEAFLOW_EXECUTION_API_TOKEN=<one-time-token>
 ```
 
-The worker still needs `IDEAFLOW_API_TOKEN` for existing idea/reporting operations. The execution credential cannot call those broader endpoints.
+The worker still needs `IDEAFLOW_API_TOKEN` for existing idea/reporting operations. The execution credential cannot call those broader endpoints. For systemd workers, keep both tokens in `/etc/ideaflow/agent.env` (mode `0640`, owner `root:ideaflow`); the relationship-council unit loads that file in addition to application configuration.
 
 ## Canary rollout
 
