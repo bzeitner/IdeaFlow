@@ -435,6 +435,10 @@ class PersonaReview(models.Model):
         NO_CONSENSUS = "no_consensus", "No consensus"
 
     idea = models.ForeignKey(Idea, related_name="persona_reviews", on_delete=models.CASCADE)
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="persona_reviews",
+        on_delete=models.SET_NULL,
+    )
     proposal = models.JSONField(default=dict)
     context = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices)
@@ -687,6 +691,10 @@ class SuggestionStatus(models.TextChoices):
 
 class IdeaRelationSuggestion(models.Model):
     analyzed_idea = models.ForeignKey(Idea, related_name="semantic_analyses", on_delete=models.CASCADE)
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="relation_suggestions", on_delete=models.SET_NULL,
+    )
     source = models.ForeignKey(Idea, related_name="outgoing_relation_suggestions", on_delete=models.CASCADE)
     target = models.ForeignKey(Idea, related_name="incoming_relation_suggestions", on_delete=models.CASCADE)
     relation_type = models.CharField(max_length=24, choices=RelationType.choices)
@@ -729,6 +737,10 @@ class RelationshipCouncilReview(models.Model):
         IdeaRelationSuggestion,
         related_name="relationship_council_review",
         on_delete=models.CASCADE,
+    )
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="relationship_council_reviews", on_delete=models.SET_NULL,
     )
     outcome = models.CharField(max_length=16, choices=Outcome.choices)
     reviewed_at = models.DateTimeField(auto_now_add=True)
@@ -798,6 +810,10 @@ class AIModel(LookupBase):
 class ResearchEntry(models.Model):
     idea = models.ForeignKey(
         Idea, related_name="research_entries", on_delete=models.CASCADE
+    )
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="research_entries",
+        on_delete=models.SET_NULL,
     )
     topic = models.CharField(max_length=200)
     focus = models.CharField(max_length=200, blank=True)
@@ -887,6 +903,10 @@ class Artifact(models.Model):
 
     idea = models.ForeignKey(
         Idea, related_name="artifacts", on_delete=models.CASCADE
+    )
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="artifacts",
+        on_delete=models.SET_NULL,
     )
     research_entry = models.ForeignKey(
         ResearchEntry,
@@ -1003,6 +1023,10 @@ class RepeatResultManager(models.Manager):
 
 class RepeatResult(models.Model):
     idea = models.ForeignKey(Idea, related_name="repeat_results", on_delete=models.CASCADE)
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="repeat_results",
+        on_delete=models.SET_NULL,
+    )
     title = models.CharField(max_length=300)
     url = models.URLField(max_length=1000, blank=True)
     details = models.TextField(blank=True)
@@ -1067,6 +1091,10 @@ class RepeatResult(models.Model):
 
 
 class WeeklySummary(models.Model):
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="weekly_summaries",
+        on_delete=models.SET_NULL,
+    )
     period_start = models.DateField()
     period_end = models.DateField()
     title = models.CharField(max_length=200)
@@ -1156,6 +1184,10 @@ class FeedItem(models.Model):
 
     # Filled once, by the ingesting agent.
     summary = models.TextField(blank=True)
+    summarized_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="summarized_feed_items", on_delete=models.SET_NULL,
+    )
     summary_model = models.ForeignKey(
         AIModel,
         related_name="feed_items",
@@ -1223,6 +1255,10 @@ class FeedItemAssessment(models.Model):
 
     idea = models.ForeignKey(
         Idea, related_name="feed_item_assessments", on_delete=models.CASCADE
+    )
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="feed_item_assessments", on_delete=models.SET_NULL,
     )
     item = models.ForeignKey(
         FeedItem, related_name="assessments", on_delete=models.CASCADE
@@ -1355,6 +1391,10 @@ class PodcastShow(models.Model):
 
 class Episode(models.Model):
     show = models.ForeignKey(PodcastShow, related_name="episodes", on_delete=models.CASCADE)
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True, related_name="podcast_episodes",
+        on_delete=models.SET_NULL,
+    )
     # Stable, permanent identifier for the RSS <guid> — independent of slug,
     # which may change if the title changes.
     guid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)

@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     # returns the first match across INSTALLED_APPS, and ideas/templates/account/
     # overrides allauth's default (unstyled) account templates.
     'ideas',
+    'executions',
     'django.contrib.sites',
     'allauth',
     'allauth.account',
@@ -281,6 +282,13 @@ IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS = env_bool(
 )
 IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS = env_int(
     'IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS', 30
+)
+IDEAFLOW_EXECUTION_PAYLOAD_ROOT = Path(
+    os.getenv('IDEAFLOW_EXECUTION_PAYLOAD_ROOT')
+    or str(BASE_DIR / 'private_execution_payloads')
+)
+IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES = env_int(
+    'IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES', 10 * 1024 * 1024
 )
 
 # Semantic graph enrichment. The worker uses OpenAI-compatible JSON endpoints;
