@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     ExecutionEvent, ExecutionTrace, LLMRun, ModelConfiguration, PricingVersion,
-    ToolInvocation, WorkflowDefinition, WorkflowVersion,
+    ServicePrincipal, ToolInvocation, WorkflowDefinition, WorkflowVersion,
 )
 
 
@@ -56,3 +56,11 @@ class AppendOnlyAdmin(AuditAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(ServicePrincipal)
+class ServicePrincipalAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_active", "scopes", "last_used_at", "revoked_at")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
+    readonly_fields = ("token_hash", "last_used_at", "created_at", "revoked_at")

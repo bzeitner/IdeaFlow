@@ -54,6 +54,96 @@ class SemanticAPI:
         self.classifier_model = classifier_model or settings.IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL
         if not self.api_key:
             raise ValueError("IDEAFLOW_SEMANTIC_API_KEY is not configured.")
+        self.idea = None
+        self.trace = None
+        self.last_classification_run = None
+
+    def begin(self, idea):
+        self.idea = idea
+        self.trace = None
+        self.last_classification_run = None
+
+    def _ensure_trace(self):
+        if self.trace or not settings.IDEAFLOW_EXECUTION_FLAGS.get("instrumentation", False):
+            return self.trace
+        from executions.models import ApprovalStatus, WorkflowVersion
+        from executions.services import start_trace
+
+        version = WorkflowVersion.objects.select_related("workflow").filter(
+            workflow__key="relationship_classification",
+            workflow__is_active=True,
+            status=ApprovalStatus.APPROVED,
+        ).order_by("-version").first()
+        if version is None:
+            raise RuntimeError("No approved relationship_classification workflow exists.")
+        self.trace, _created = start_trace(
+            version, trigger="management_command", subject=self.idea,
+            actor_label="process_semantic_graph",
+        )
+        return self.trace
+
+    def _measured_post(self, path, payload, *, purpose, prompt_keys=()):
+        trace = self._ensure_trace()
+        if trace is None:
+            return self._post(path, payload), None
+        from executions.models import ModelConfiguration
+        from executions.services import canonical_hash, complete_run, fail_run, start_run
+        from ideas.models import PromptRevisionStatus, PromptTemplate
+
+        model = str(payload["model"])
+        frozen = {"provider": "openai-compatible", "model_identifier": model, "settings": {"api_base": self.api_base}}
+        configuration = ModelConfiguration.objects.filter(content_hash=canonical_hash(frozen)).first()
+        if configuration is None:
+            configuration = ModelConfiguration.objects.create(
+                provider="openai-compatible", model_identifier=model,
+                settings={"api_base": self.api_base}, content_hash=canonical_hash(frozen),
+            )
+        manifest = []
+        for key in prompt_keys:
+            revision = PromptTemplate.objects.get(key=key, is_active=True).revisions.filter(
+                status=PromptRevisionStatus.APPROVED
+            ).order_by("-version").first()
+            if revision is None:
+                raise RuntimeError(f"No approved prompt revision exists for {key}.")
+            manifest.append({"key": key, "version": revision.version, "sha256": content_hash(revision.content)})
+        run, _created = start_run(
+            trace, configuration, purpose=purpose,
+            prompt_revision_manifest=manifest,
+            rendered_input_hash=canonical_hash(payload),
+            context_manifest={"endpoint": path},
+        )
+        try:
+            data = self._post(path, payload)
+        except Exception as exc:
+            fail_run(
+                run, error_class=type(exc).__name__, error_detail=str(exc),
+                measurement_unavailable_reasons=["provider_request_failed"],
+            )
+            raise
+        usage_data = data.get("usage") or {}
+        usage = {
+            "input_tokens": usage_data.get("prompt_tokens"),
+            "output_tokens": usage_data.get("completion_tokens"),
+            "total_tokens": usage_data.get("total_tokens"),
+        }
+        reasons = ["provider_cost_unavailable"]
+        if not any(value is not None for value in usage.values()):
+            reasons.append("provider_usage_unavailable")
+        complete_run(
+            run, output_hash=canonical_hash(data),
+            provider_request_id=str(data.get("id") or ""), usage=usage,
+            measurement_status="partial", measurement_unavailable_reasons=reasons,
+        )
+        return data, run
+
+    def finish(self, error=None):
+        if not self.trace:
+            return
+        from executions.services import complete_trace, fail_trace
+        if error is None:
+            complete_trace(self.trace)
+        else:
+            fail_trace(self.trace, reason=str(error))
 
     def _post(self, path, payload):
         request = Request(
@@ -72,9 +162,10 @@ class SemanticAPI:
             raise RuntimeError(f"Semantic API request failed: {exc}") from exc
 
     def embed(self, text):
-        data = self._post(
+        data, _run = self._measured_post(
             "/embeddings",
             {"model": self.embedding_model, "input": text, "dimensions": EMBEDDING_DIMENSIONS},
+            purpose="embedding",
         )
         vector = data["data"][0]["embedding"]
         if len(vector) != EMBEDDING_DIMENSIONS:
@@ -92,7 +183,7 @@ class SemanticAPI:
             source_text=semantic_text(source)[:10000],
             candidate_text=candidate_text,
         )
-        data = self._post(
+        data, run = self._measured_post(
             "/chat/completions",
             {
                 "model": self.classifier_model,
@@ -103,7 +194,10 @@ class SemanticAPI:
                     {"role": "user", "content": prompt},
                 ],
             },
+            purpose="classification",
+            prompt_keys=("semantic-relationship-classifier",),
         )
+        self.last_classification_run = run
         content = data["choices"][0]["message"]["content"]
         return json.loads(content).get("relationships", [])
 
@@ -194,7 +288,7 @@ def auto_accept_pending(confidence_percent):
     return accepted
 
 
-def _store_suggestions(source, source_state, candidates, relationships, classifier_model):
+def _store_suggestions(source, source_state, candidates, relationships, classifier_model, produced_by_run=None):
     candidate_map = {idea.pk: (idea, similarity) for idea, similarity in candidates}
     auto_accept_threshold = SemanticGraphSettings.load().auto_accept_confidence_percent / 100
     seen = set()
@@ -236,6 +330,7 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
                 "source_content_hash": source_hash,
                 "target_content_hash": target_hash,
                 "classifier_model": classifier_model,
+                "produced_by_run": produced_by_run,
                 "reviewed_by": None,
                 "reviewed_at": None,
                 "accepted_relation": None,
@@ -259,6 +354,8 @@ def _store_suggestions(source, source_state, candidates, relationships, classifi
 
 def process_idea(idea, *, api=None):
     api = api or SemanticAPI()
+    if hasattr(api, "begin"):
+        api.begin(idea)
     state, _created = IdeaSemanticState.objects.get_or_create(idea=idea)
     text = semantic_text(idea)
     digest = content_hash(text)
@@ -274,13 +371,20 @@ def process_idea(idea, *, api=None):
         candidates = nearest_candidates(state)
         relationships = api.classify(idea, candidates) if candidates else []
         with transaction.atomic():
-            _store_suggestions(idea, state, candidates, relationships, api.classifier_model)
+            _store_suggestions(
+                idea, state, candidates, relationships, api.classifier_model,
+                produced_by_run=getattr(api, "last_classification_run", None),
+            )
             state.status = SemanticStatus.READY
             state.processed_at = timezone.now()
             state.save(update_fields=["status", "processed_at", "updated_at"])
+        if hasattr(api, "finish"):
+            api.finish()
         return len(relationships)
     except Exception as exc:
         state.status = SemanticStatus.FAILED
         state.error = str(exc)[:4000]
         state.save(update_fields=["status", "error", "updated_at"])
+        if hasattr(api, "finish"):
+            api.finish(error=exc)
         raise

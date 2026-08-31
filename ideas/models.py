@@ -755,6 +755,10 @@ class RelationshipCouncilVote(models.Model):
     review = models.ForeignKey(
         RelationshipCouncilReview, related_name="votes", on_delete=models.CASCADE
     )
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="relationship_council_votes", on_delete=models.SET_NULL,
+    )
     persona = models.ForeignKey(Persona, on_delete=models.PROTECT)
     provider = models.CharField(max_length=16)
     model = models.CharField(max_length=100, blank=True)

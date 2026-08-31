@@ -1,4 +1,5 @@
 import uuid
+import hashlib
 
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -63,6 +64,29 @@ class AuditRetainedModel(models.Model):
         raise ValidationError(
             f"{type(self).__name__} records are retained for execution audit."
         )
+
+
+class ServicePrincipal(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    token_hash = models.CharField(max_length=64, unique=True)
+    scopes = models.JSONField(default=list)
+    is_active = models.BooleanField(default=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    @staticmethod
+    def hash_token(token):
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def has_scope(self, required):
+        return required in self.scopes or "execution:*" in self.scopes
+
+    def __str__(self):
+        return self.name
 
 
 class WorkflowDefinition(models.Model):

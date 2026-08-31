@@ -36,6 +36,8 @@ AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+# shellcheck source=tools/execution_telemetry.sh
+source "$SCRIPT_DIR/tools/execution_telemetry.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -194,8 +196,20 @@ PROMPT
     printf '%s\n' "$prompt"
     return 0
   fi
+  local prompt_file output_file execution_model agent_status
+  prompt_file="$(mktemp -t ideaflow-reflection-prompt.XXXXXX.txt)"
+  output_file="$(mktemp -t ideaflow-reflection-output.XXXXXX.txt)"
+  chmod 600 "$prompt_file" "$output_file"
+  printf '%s' "$prompt" > "$prompt_file"
+  execution_model="$REQUESTED_MODEL"
+  [[ "$execution_model" == "task-routed" ]] && execution_model="claude-cli-default"
+  execution_start \
+    reflection "" "$AGENT" "$execution_model" generation "$prompt_file" \
+    agent-portfolio-reflection shared-standards
+  set +e
   if [[ "$AGENT" == "claude" ]]; then
-    "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch"
+    "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch" | tee "$output_file"
+    agent_status="${PIPESTATUS[0]}"
   else
     local codex_args=(
       --search
@@ -205,8 +219,17 @@ PROMPT
     )
     [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && codex_args+=(--model "$IDEAFLOW_CODEX_MODEL")
     codex_args+=(exec --ephemeral)
-    "$AGENT_BIN" "${codex_args[@]}" "$prompt"
+    "$AGENT_BIN" "${codex_args[@]}" "$prompt" | tee "$output_file"
+    agent_status="${PIPESTATUS[0]}"
   fi
+  set -e
+  if [[ "$agent_status" -eq 0 ]]; then
+    execution_succeed "$output_file"
+  else
+    execution_fail "$agent_status" "${AGENT} reflection process exited ${agent_status}"
+  fi
+  rm -f "$prompt_file" "$output_file"
+  return "$agent_status"
 }
 
 if [[ "$REFLECT" -eq 1 ]]; then

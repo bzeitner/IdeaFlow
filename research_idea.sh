@@ -52,6 +52,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+# shellcheck source=tools/execution_telemetry.sh
+source "$SCRIPT_DIR/tools/execution_telemetry.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -558,9 +560,29 @@ fi
 
 echo "→ ${AGENT}/${MODE}: ${TITLE:-(untitled)} (#${ID}) against ${BASE}; report scratch file: ${REPORT}" >&2
 
+PROMPT_FILE="$(mktemp -t "idea-${ID}-${MODE}-prompt.XXXXXX.txt")"
+OUTPUT_FILE="$(mktemp -t "idea-${ID}-${MODE}-output.XXXXXX.txt")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+printf '%s' "$PROMPT" > "$PROMPT_FILE"
+cleanup_execution_files() {
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+}
+trap cleanup_execution_files EXIT
+
+WORKFLOW="$MODE"
+PURPOSE="generation"
+[[ "$MODE" == "persona" ]] && WORKFLOW="persona_council" && PURPOSE="evaluation"
+[[ "$MODE" == "critique" ]] && PURPOSE="evaluation"
+execution_start \
+  "$WORKFLOW" "$ID" "$PROVIDER" "$EXECUTION_MODEL" "$PURPOSE" "$PROMPT_FILE" \
+  "agent-${MODE}" shared-standards pr-resource-standard human-summary-standard \
+  effort-quality-standard child-suggestion-standard next-action-standard
+
+set +e
 if [[ "$AGENT" == "claude" ]]; then
   "$AGENT_BIN" -p "$PROMPT" \
-    --allowedTools "Bash,Read,Write,WebSearch,WebFetch"
+    --allowedTools "Bash,Read,Write,WebSearch,WebFetch" | tee "$OUTPUT_FILE"
+  AGENT_STATUS="${PIPESTATUS[0]}"
 else
   CODEX_ARGS=(
     --search
@@ -570,5 +592,13 @@ else
   )
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && CODEX_ARGS+=(--model "$IDEAFLOW_CODEX_MODEL")
   CODEX_ARGS+=(exec --ephemeral)
-  "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT"
+  "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT" | tee "$OUTPUT_FILE"
+  AGENT_STATUS="${PIPESTATUS[0]}"
+fi
+set -e
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  execution_succeed "$OUTPUT_FILE"
+else
+  execution_fail "$AGENT_STATUS" "${AGENT} ${MODE} process exited ${AGENT_STATUS}"
+  exit "$AGENT_STATUS"
 fi

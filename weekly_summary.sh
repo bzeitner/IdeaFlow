@@ -18,6 +18,8 @@ done
 
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+# shellcheck source=tools/execution_telemetry.sh
+source "$SCRIPT_DIR/tools/execution_telemetry.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 
@@ -139,13 +141,35 @@ if [[ "$PRINT_PROMPT" -eq 1 ]]; then
   exit 0
 fi
 
+PROMPT_FILE="$(mktemp -t "weekly-summary-prompt.XXXXXX.txt")"
+OUTPUT_FILE="$(mktemp -t "weekly-summary-output.XXXXXX.txt")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+printf '%s' "$PROMPT" > "$PROMPT_FILE"
+cleanup_execution_files() {
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+}
+trap cleanup_execution_files EXIT
+execution_start \
+  weekly_summary "" "$PROVIDER" "$EXECUTION_MODEL" generation "$PROMPT_FILE" \
+  agent-weekly-summary shared-standards
+
+set +e
 if [[ "$AGENT" == "claude" ]]; then
-  "$AGENT_BIN" -p "$PROMPT" --allowedTools "Bash,Read,Write"
+  "$AGENT_BIN" -p "$PROMPT" --allowedTools "Bash,Read,Write" | tee "$OUTPUT_FILE"
+  AGENT_STATUS="${PIPESTATUS[0]}"
 elif [[ "$AGENT" == "codex" ]]; then
   args=(-C "$SCRIPT_DIR" --sandbox danger-full-access --ask-for-approval never)
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && args+=(--model "$IDEAFLOW_CODEX_MODEL")
-  "$AGENT_BIN" "${args[@]}" exec --ephemeral "$PROMPT"
+  "$AGENT_BIN" "${args[@]}" exec --ephemeral "$PROMPT" | tee "$OUTPUT_FILE"
+  AGENT_STATUS="${PIPESTATUS[0]}"
 else
   echo "error: IDEAFLOW_AGENT must be claude or codex." >&2
   exit 2
+fi
+set -e
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  execution_succeed "$OUTPUT_FILE"
+else
+  execution_fail "$AGENT_STATUS" "${AGENT} weekly summary process exited ${AGENT_STATUS}"
+  exit "$AGENT_STATUS"
 fi

@@ -290,6 +290,9 @@ IDEAFLOW_EXECUTION_PAYLOAD_ROOT = Path(
 IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES = env_int(
     'IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES', 10 * 1024 * 1024
 )
+IDEAFLOW_EXECUTION_API_MAX_BYTES = env_int(
+    'IDEAFLOW_EXECUTION_API_MAX_BYTES', 1024 * 1024
+)
 
 # Semantic graph enrichment. The worker uses OpenAI-compatible JSON endpoints;
 # changing embedding models requires a full semantic backfill because vectors

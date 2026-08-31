@@ -257,7 +257,8 @@ def recent_articles(idea, limit=10):
 
 
 def record_feed_item_summary(
-    item, *, summary, model=None, idea=None, usefulness=None, relevance_note=""
+    item, *, summary, model=None, idea=None, usefulness=None, relevance_note="",
+    produced_by_run=None,
 ):
     """Store one neutral global summary and an optional idea-specific score."""
     from .models import FeedItemAssessment
@@ -272,14 +273,27 @@ def record_feed_item_summary(
         if model:
             item.summary_model = resolve_ai_model(model)
         item.summarized_at = timezone.now()
-        item.save(update_fields=["summary", "summary_model", "summarized_at"])
+        item.summarized_by_run = produced_by_run
+        item.save(update_fields=[
+            "summary", "summary_model", "summarized_at", "summarized_by_run"
+        ])
     if usefulness is not None:
+        existing = FeedItemAssessment.objects.filter(idea=idea, item=item).first()
+        if (
+            existing and existing.produced_by_run_id and produced_by_run
+            and existing.produced_by_run_id != produced_by_run.pk
+        ):
+            raise ValueError("Assessment is already attributed to another execution run.")
         FeedItemAssessment.objects.update_or_create(
             idea=idea,
             item=item,
             defaults={
                 "usefulness": score,
                 "relevance_note": relevance_note or "",
+                "produced_by_run": (
+                    existing.produced_by_run if existing and existing.produced_by_run_id
+                    else produced_by_run
+                ),
             },
         )
     return item

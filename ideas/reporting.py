@@ -139,6 +139,7 @@ def record_effort(
     queued_next_actions=None,
     exec_summary=None,
     open_questions=None,
+    produced_by_run=None,
 ):
     """Create a ResearchEntry for `idea`, plus an optional result Resource and an
     optional stage/status move / next-action update. Returns
@@ -161,6 +162,7 @@ def record_effort(
     clean_questions = new_open_questions(idea, clean_questions)
     entry = ResearchEntry.objects.create(
         idea=idea,
+        produced_by_run=produced_by_run,
         topic=topic,
         focus=focus or "",
         context=context or "",

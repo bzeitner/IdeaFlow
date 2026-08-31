@@ -38,6 +38,7 @@ def research_entry_to_dict(entry):
         "model": _lookup(entry.model),
         "execution_provider": entry.execution_provider,
         "execution_model": entry.execution_model,
+        "execution_run_id": str(entry.produced_by_run_id) if entry.produced_by_run_id else None,
         "tokens_used": entry.tokens_used,
         "occurred_at": entry.occurred_at.isoformat(),
         "created_at": entry.created_at.isoformat(),
@@ -55,6 +56,9 @@ def feed_item_to_dict(item, *, content=False, idea=None):
         "summary": item.summary,
         "summary_model": _lookup(item.summary_model),
         "summarized_at": item.summarized_at.isoformat() if item.summarized_at else None,
+        "summary_execution_run_id": (
+            str(item.summarized_by_run_id) if item.summarized_by_run_id else None
+        ),
         "interest": item.interest,
         "info_value": item.info_value,
     }
@@ -68,6 +72,10 @@ def feed_item_to_dict(item, *, content=False, idea=None):
             {
                 "usefulness": assessment.usefulness,
                 "relevance_note": assessment.relevance_note,
+                "execution_run_id": (
+                    str(assessment.produced_by_run_id)
+                    if assessment.produced_by_run_id else None
+                ),
             }
             if assessment
             else None

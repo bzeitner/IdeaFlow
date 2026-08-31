@@ -230,6 +230,22 @@ def complete_trace(trace, *, completed_at=None):
 
 
 @transaction.atomic
+def fail_trace(trace, *, reason="", completed_at=None):
+    trace = ExecutionTrace.objects.select_for_update().get(pk=trace.pk)
+    if trace.status in TERMINAL_STATUSES:
+        return trace, False
+    now = completed_at or timezone.now()
+    trace.status = TraceStatus.FAILED
+    trace.completed_at = now
+    trace.save(update_fields=["status", "completed_at"])
+    append_event(
+        trace, "trace.failed", occurred_at=now,
+        payload={"reason": redact_error_detail(reason, limit=1000)},
+    )
+    return trace, True
+
+
+@transaction.atomic
 def start_tool_invocation(
     run, *, tool_name, tool_version="", mutating=False, request_ref="",
     request_hash="", idempotency_key="", affected_objects=None,

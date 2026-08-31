@@ -47,13 +47,15 @@ import uuid
 DEFAULT_BASE = "https://ideaflow.bitesoftheweek.com"
 
 
-def _request(method, path, *, params=None, body=None):
+def _request(method, path, *, params=None, body=None, execution=False):
     base = os.environ.get("IDEAFLOW_API_BASE", DEFAULT_BASE).rstrip("/")
-    token = os.environ.get("IDEAFLOW_API_TOKEN", "").strip()
+    token_name = "IDEAFLOW_EXECUTION_API_TOKEN" if execution else "IDEAFLOW_API_TOKEN"
+    token = os.environ.get(token_name, "").strip()
     if not token:
-        sys.exit("error: IDEAFLOW_API_TOKEN is not set.")
+        sys.exit(f"error: {token_name} is not set.")
 
-    url = f"{base}/api{path}"
+    prefix = "/api/executions" if execution else "/api"
+    url = f"{base}{prefix}{path}"
     if params:
         query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
         if query:
@@ -161,6 +163,7 @@ def cmd_log_weekly_summary(a):
             "execution_provider": a.provider,
             "tokens_used": a.tokens,
             "metrics": metrics,
+            "execution_run_id": os.environ.get("IDEAFLOW_RUN_ID") or None,
         },
     )
 
@@ -210,6 +213,7 @@ def cmd_log_effort(a):
         "queued_next_actions": a.queue_next_action,
         "exec_summary": a.exec_summary,
         "open_questions": a.open_question,
+        "execution_run_id": os.environ.get("IDEAFLOW_RUN_ID") or None,
     }
     if a.repo_url:
         body["resource"] = {"url": a.repo_url, "label": a.repo_label or ""}
@@ -227,6 +231,7 @@ def cmd_upload_artifact(a):
             "description": a.description or "",
             "kind": a.kind,
             "research_entry_id": a.research_entry,
+            "execution_run_id": os.environ.get("IDEAFLOW_RUN_ID") or None,
         },
         a.file,
     )
@@ -235,13 +240,20 @@ def cmd_upload_artifact(a):
 def cmd_log_repeat_results(a):
     with open(a.results_file, encoding="utf-8") as fh:
         results = json.load(fh)
-    return _request("POST", f"/ideas/{a.id}/repeat-results/", body={"results": results})
+    return _request(
+        "POST", f"/ideas/{a.id}/repeat-results/",
+        body={
+            "results": results,
+            "execution_run_id": os.environ.get("IDEAFLOW_RUN_ID") or None,
+        },
+    )
 
 
 def cmd_create_podcast_episode(a):
     with open(a.script_file, encoding="utf-8") as fh:
         script = json.load(fh)
     body = {"title": a.title, "script": script}
+    body["execution_run_id"] = os.environ.get("IDEAFLOW_RUN_ID") or None
     if a.description:
         body["description"] = a.description
     if a.show_notes:
@@ -254,6 +266,7 @@ def cmd_create_podcast_episode(a):
 def cmd_submit_persona_review(a):
     with open(a.review_file, encoding="utf-8") as fh:
         body = json.load(fh)
+    body["execution_run_id"] = os.environ.get("IDEAFLOW_RUN_ID") or None
     return _request("POST", f"/ideas/{a.id}/persona-reviews/", body=body)
 
 
@@ -264,6 +277,8 @@ def cmd_relationship_council_queue(a):
 def cmd_submit_relationship_council_review(a):
     with open(a.review_file, encoding="utf-8") as fh:
         body = json.load(fh)
+    if os.environ.get("IDEAFLOW_RUN_ID"):
+        body["execution_run_id"] = os.environ["IDEAFLOW_RUN_ID"]
     return _request(
         "POST",
         f"/relationship-council-reviews/{a.suggestion_id}/",
@@ -317,8 +332,126 @@ def cmd_summarize_item(a):
         "usefulness": a.usefulness,
         "idea_id": a.idea,
         "relevance_note": a.relevance_note,
+        "execution_run_id": os.environ.get("IDEAFLOW_RUN_ID") or None,
     }
     return _request("POST", f"/feed-items/{a.id}/summarize/", body=body)
+
+
+def _sha256_file(path):
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def cmd_trace_start(a):
+    return _request(
+        "POST", "/v1/traces/", execution=True,
+        body={
+            "workflow": a.workflow,
+            "workflow_version": a.workflow_version,
+            "subject": {"type": "idea", "id": a.idea} if a.idea else None,
+            "trigger": a.trigger,
+            "correlation_key": a.correlation_key,
+            "idempotency_key": a.idempotency_key,
+        },
+    )
+
+
+def cmd_run_start(a):
+    body = {
+        "provider": a.provider,
+        "model": a.model,
+        "purpose": a.purpose,
+        "prompt_keys": a.prompt_key,
+        "rendered_input_hash": _sha256_file(a.input_file),
+        "idempotency_key": a.idempotency_key,
+    }
+    if os.environ.get("IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS", "").lower() in {"1", "true", "yes"}:
+        body["rendered_input"] = _read_text("", a.input_file)
+    return _request(
+        "POST", f"/v1/traces/{a.trace_id}/runs/", execution=True, body=body
+    )
+
+
+def cmd_run_complete(a):
+    body = {
+        "output_hash": _sha256_file(a.output_file),
+        "finish_reason": a.finish_reason,
+        "measurement_status": a.measurement_status,
+        "measurement_unavailable_reasons": a.measurement_unavailable_reason,
+        "usage": {
+            "input_tokens": a.input_tokens,
+            "output_tokens": a.output_tokens,
+            "cached_tokens": a.cached_tokens,
+            "reasoning_tokens": a.reasoning_tokens,
+            "total_tokens": a.total_tokens,
+        },
+        "provider_request_id": a.provider_request_id,
+        "cost_micros": a.cost_micros,
+        "cost_source": a.cost_source,
+    }
+    if os.environ.get("IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS", "").lower() in {"1", "true", "yes"}:
+        body["output"] = _read_text("", a.output_file)
+    return _request(
+        "POST", f"/v1/runs/{a.run_id}/complete/", execution=True, body=body
+    )
+
+
+def cmd_run_fail(a):
+    return _request(
+        "POST", f"/v1/runs/{a.run_id}/fail/", execution=True,
+        body={
+            "error_class": a.error_class,
+            "error_code": a.error_code,
+            "error_detail": a.error_detail,
+            "measurement_status": "unavailable",
+            "measurement_unavailable_reasons": a.measurement_unavailable_reason,
+        },
+    )
+
+
+def cmd_trace_complete(a):
+    return _request(
+        "POST", f"/v1/traces/{a.trace_id}/complete/", execution=True, body={}
+    )
+
+
+def cmd_trace_fail(a):
+    return _request(
+        "POST", f"/v1/traces/{a.trace_id}/fail/", execution=True,
+        body={"reason": a.reason},
+    )
+
+
+def cmd_tool_start(a):
+    return _request(
+        "POST", f"/v1/runs/{a.run_id}/tools/", execution=True,
+        body={
+            "tool_name": a.tool_name,
+            "tool_version": a.tool_version,
+            "mutating": a.mutating,
+            "request_hash": a.request_hash,
+            "idempotency_key": a.idempotency_key,
+        },
+    )
+
+
+def cmd_tool_complete(a):
+    return _request(
+        "POST", f"/v1/tools/{a.tool_id}/complete/", execution=True,
+        body={"response_hash": a.response_hash},
+    )
+
+
+def cmd_tool_fail(a):
+    return _request(
+        "POST", f"/v1/tools/{a.tool_id}/fail/", execution=True,
+        body={"error_class": a.error_class, "error_detail": a.error_detail},
+    )
 
 
 def build_parser():
@@ -515,6 +648,80 @@ def build_parser():
     s.add_argument("--idea", type=int, help="Idea this usefulness score applies to.")
     s.add_argument("--relevance-note", default="")
     s.set_defaults(func=cmd_summarize_item)
+
+    s = sub.add_parser("trace-start", help="Create an idempotent execution trace.")
+    s.add_argument("--workflow", required=True)
+    s.add_argument("--workflow-version", type=int)
+    s.add_argument("--idea", type=int)
+    s.add_argument("--trigger", default="machine")
+    s.add_argument("--correlation-key", default="")
+    s.add_argument("--idempotency-key", default="")
+    s.set_defaults(func=cmd_trace_start)
+
+    s = sub.add_parser("run-start", help="Start one provider attempt under a trace.")
+    s.add_argument("--trace-id", required=True)
+    s.add_argument("--provider", required=True)
+    s.add_argument("--model", required=True)
+    s.add_argument("--purpose", default="generation", choices=(
+        "generation", "classification", "extraction", "evaluation", "embedding"
+    ))
+    s.add_argument("--prompt-key", action="append", default=[])
+    s.add_argument("--input-file", required=True)
+    s.add_argument("--idempotency-key", default="")
+    s.set_defaults(func=cmd_run_start)
+
+    s = sub.add_parser("run-complete", help="Complete one provider attempt.")
+    s.add_argument("--run-id", required=True)
+    s.add_argument("--output-file", required=True)
+    s.add_argument("--finish-reason", default="stop")
+    s.add_argument("--measurement-status", choices=("complete", "partial"), default="partial")
+    s.add_argument("--measurement-unavailable-reason", action="append", default=[])
+    s.add_argument("--input-tokens", type=int)
+    s.add_argument("--output-tokens", type=int)
+    s.add_argument("--cached-tokens", type=int)
+    s.add_argument("--reasoning-tokens", type=int)
+    s.add_argument("--total-tokens", type=int)
+    s.add_argument("--provider-request-id", default="")
+    s.add_argument("--cost-micros", type=int)
+    s.add_argument("--cost-source", default="")
+    s.set_defaults(func=cmd_run_complete)
+
+    s = sub.add_parser("run-fail", help="Fail one provider attempt.")
+    s.add_argument("--run-id", required=True)
+    s.add_argument("--error-class", required=True)
+    s.add_argument("--error-code", default="")
+    s.add_argument("--error-detail", default="")
+    s.add_argument("--measurement-unavailable-reason", action="append", default=[])
+    s.set_defaults(func=cmd_run_fail)
+
+    s = sub.add_parser("trace-complete", help="Mark a trace successful.")
+    s.add_argument("--trace-id", required=True)
+    s.set_defaults(func=cmd_trace_complete)
+
+    s = sub.add_parser("trace-fail", help="Mark a trace failed.")
+    s.add_argument("--trace-id", required=True)
+    s.add_argument("--reason", default="")
+    s.set_defaults(func=cmd_trace_fail)
+
+    s = sub.add_parser("tool-start", help="Start a tool invocation under a run.")
+    s.add_argument("--run-id", required=True)
+    s.add_argument("--tool-name", required=True)
+    s.add_argument("--tool-version", default="")
+    s.add_argument("--mutating", action="store_true")
+    s.add_argument("--request-hash", default="")
+    s.add_argument("--idempotency-key", default="")
+    s.set_defaults(func=cmd_tool_start)
+
+    s = sub.add_parser("tool-complete", help="Complete a tool invocation.")
+    s.add_argument("--tool-id", required=True)
+    s.add_argument("--response-hash", default="")
+    s.set_defaults(func=cmd_tool_complete)
+
+    s = sub.add_parser("tool-fail", help="Fail a tool invocation.")
+    s.add_argument("--tool-id", required=True)
+    s.add_argument("--error-class", required=True)
+    s.add_argument("--error-detail", default="")
+    s.set_defaults(func=cmd_tool_fail)
 
     return p
 

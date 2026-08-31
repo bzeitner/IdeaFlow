@@ -64,6 +64,33 @@ _DETAIL_PREFETCH = (
 DEFAULT_CONTENT_LIMIT = 100
 
 
+def _execution_run(payload, *, idea=None, workflows=()):
+    """Resolve optional compatibility provenance without trusting the caller."""
+    run_id = payload.get("execution_run_id") if payload else None
+    if not run_id:
+        return None
+    from executions.models import LLMRun, TraceStatus
+
+    run = get_object_or_404(
+        LLMRun.objects.select_related(
+            "trace__subject_content_type", "trace__workflow_version__workflow"
+        ),
+        pk=run_id,
+    )
+    trace = run.trace
+    if run.status not in {TraceStatus.RUNNING, TraceStatus.SUCCEEDED}:
+        raise ValueError("Execution run is not usable for provenance.")
+    if workflows and trace.workflow_version.workflow.key not in workflows:
+        raise ValueError("Execution run workflow does not match this operation.")
+    if idea is not None and (
+        trace.subject_content_type is None
+        or trace.subject_content_type.model != "idea"
+        or trace.subject_object_id != idea.pk
+    ):
+        raise ValueError("Execution run subject does not match this idea.")
+    return run
+
+
 def _provided_token(request):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -162,6 +189,10 @@ def weekly_summary_list(request):
         metrics = normalize_weekly_metrics(payload.get("metrics") or {})
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+    try:
+        produced_by_run = _execution_run(payload, workflows=("weekly_summary",))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     defaults = {
         "title": (payload.get("title") or f"Weekly summary: {period_start}–{period_end}")[:200],
         "content": content,
@@ -170,6 +201,7 @@ def weekly_summary_list(request):
         "tokens_used": tokens_used,
         "metrics": metrics,
         "generated_at": timezone.now(),
+        "produced_by_run": produced_by_run,
     }
     summary, created = WeeklySummary.objects.update_or_create(
         period_start=period_start, period_end=period_end, defaults=defaults
@@ -229,6 +261,14 @@ def idea_artifact(request, pk, artifact_pk=None):
     if entry_id:
         entry = get_object_or_404(ResearchEntry, pk=entry_id, idea=idea)
     generated_at = parse_datetime(request.POST.get("generated_at") or "") or timezone.now()
+    try:
+        produced_by_run = _execution_run(
+            request.POST,
+            idea=idea,
+            workflows=("research", "review", "execute", "critique", "summary"),
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     created = artifact is None
     if artifact is None and kind == Artifact.Kind.SUMMARY:
         artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
@@ -240,6 +280,10 @@ def idea_artifact(request, pk, artifact_pk=None):
     artifact.kind = kind
     artifact.url = external_url
     artifact.research_entry = entry
+    if artifact.produced_by_run_id and produced_by_run and artifact.produced_by_run_id != produced_by_run.pk:
+        return JsonResponse({"error": "Artifact is already attributed to another run."}, status=409)
+    if artifact.produced_by_run_id is None:
+        artifact.produced_by_run = produced_by_run
     artifact.generated_at = generated_at
     if uploaded:
         filename = Artifact.build_storage_filename(artifact.title, uploaded.name)
@@ -331,6 +375,10 @@ def idea_repeat_results(request, pk):
     results = payload.get("results")
     if not isinstance(results, list) or len(results) > 100:
         return JsonResponse({"error": "results must be a list of at most 100 items."}, status=400)
+    try:
+        produced_by_run = _execution_run(payload, idea=idea, workflows=("repeat",))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     created = []
     for item in results:
         if not isinstance(item, dict) or not (item.get("title") or "").strip():
@@ -340,10 +388,17 @@ def idea_repeat_results(request, pk):
         details = (item.get("details") or "").strip()
         if url:
             result, was_created = RepeatResult.objects.get_or_create(
-                idea=idea, url=url, defaults={"title": title, "details": details}
+                idea=idea, url=url,
+                defaults={
+                    "title": title, "details": details,
+                    "produced_by_run": produced_by_run,
+                },
             )
         else:
-            result = RepeatResult.objects.create(idea=idea, title=title, details=details)
+            result = RepeatResult.objects.create(
+                idea=idea, title=title, details=details,
+                produced_by_run=produced_by_run,
+            )
             was_created = True
         if was_created:
             created.append(result.pk)
@@ -466,6 +521,13 @@ def idea_podcast_episode(request, pk):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
 
+    try:
+        produced_by_run = _execution_run(
+            payload, idea=idea, workflows=("podcast_script", "repeat")
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+
     title = (payload.get("title") or "").strip()
     if not title:
         return JsonResponse({"error": "title is required."}, status=400)
@@ -509,6 +571,7 @@ def idea_podcast_episode(request, pk):
 
     episode = Episode.objects.create(
         show=show,
+        produced_by_run=produced_by_run,
         slug=slug,
         episode_number=next_number,
         research_entry=research_entry,
@@ -649,6 +712,15 @@ def idea_effort(request, pk):
     resource = payload.get("resource") or {}
 
     try:
+        produced_by_run = _execution_run(
+            payload,
+            idea=idea,
+            workflows=("research", "review", "execute", "critique"),
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+
+    try:
         entry, res = record_effort(
             idea,
             topic=payload.get("topic", ""),
@@ -669,6 +741,7 @@ def idea_effort(request, pk):
             queued_next_actions=payload.get("queued_next_actions") or [],
             exec_summary=payload.get("exec_summary"),
             open_questions=payload.get("open_questions") or [],
+            produced_by_run=produced_by_run,
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
@@ -877,6 +950,12 @@ def feed_item_summarize(request, pk):
                 {"error": "This feed item is not linked to that idea."}, status=400
             )
     try:
+        produced_by_run = _execution_run(
+            payload, idea=idea, workflows=("feed_score",)
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    try:
         record_feed_item_summary(
             item,
             summary=payload.get("summary", ""),
@@ -884,6 +963,7 @@ def feed_item_summarize(request, pk):
             idea=idea,
             usefulness=payload.get("usefulness"),
             relevance_note=payload.get("relevance_note", ""),
+            produced_by_run=produced_by_run,
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
@@ -996,6 +1076,12 @@ def idea_persona_review(request, pk):
     votes = payload.get("votes") if isinstance(payload, dict) else None
     if not isinstance(proposal, dict) or not isinstance(votes, list):
         return JsonResponse({"error": "proposal must be an object and votes a list."}, status=400)
+    try:
+        produced_by_run = _execution_run(
+            payload, idea=idea, workflows=("persona_council",)
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     if proposal.get("reversible") is not True:
         return JsonResponse(
             {"error": "Persona councils may act only on explicitly reversible proposals."},
@@ -1064,6 +1150,7 @@ def idea_persona_review(request, pk):
     context = graph_context(idea, depth=2, task="persona")
     review = PersonaReview.objects.create(
         idea=idea,
+        produced_by_run=produced_by_run,
         proposal=proposal,
         context=context,
         status=(PersonaReview.Status.CONSENSUS if consensus else PersonaReview.Status.NO_CONSENSUS),
@@ -1192,6 +1279,14 @@ def relationship_council_submit(request, suggestion_pk):
     votes = payload.get("votes") if isinstance(payload, dict) else None
     if not isinstance(votes, list) or len(votes) != 3:
         return JsonResponse({"error": "Exactly three council votes are required."}, status=400)
+    try:
+        produced_by_run = _execution_run(
+            payload,
+            idea=suggestion.source,
+            workflows=("relationship_council",),
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     assignments = {
         assignment.persona_id: assignment
         for assignment in suggestion.source.idea_personas.select_related("persona").filter(
@@ -1214,11 +1309,18 @@ def relationship_council_submit(request, suggestion_pk):
         if provider not in {"claude", "codex"} or not rationale:
             return JsonResponse({"error": "Each vote requires a Claude/Codex provider and rationale."}, status=400)
         providers.add(provider)
+        try:
+            vote_run = _execution_run(
+                raw, idea=suggestion.source, workflows=("relationship_council",),
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=409)
         parsed[persona_id] = {
             "decision": decision,
             "provider": provider,
             "model": str(raw.get("model") or "")[:100],
             "rationale": rationale[:4000],
+            "produced_by_run": vote_run,
         }
     if set(parsed) != set(assignments) or providers != {"claude", "codex"}:
         return JsonResponse({"error": "All three personas must vote, using at least one Claude and one Codex run."}, status=400)
@@ -1242,6 +1344,7 @@ def relationship_council_submit(request, suggestion_pk):
     review = RelationshipCouncilReview.objects.create(
         suggestion=suggestion,
         outcome=outcome,
+        produced_by_run=produced_by_run,
     )
     RelationshipCouncilVote.objects.bulk_create(
         [

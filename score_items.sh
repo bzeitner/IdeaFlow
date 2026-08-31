@@ -28,6 +28,7 @@ cd "$SCRIPT_DIR"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
+source "$SCRIPT_DIR/tools/execution_telemetry.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -152,5 +153,27 @@ if [[ -n "$managed_score_template" ]]; then
   PROMPT="$(printf '%s' "$managed_score_template" | ID="$ID" IFCLI="$IFCLI" BASE="$BASE" QUEUE="$QUEUE" SIZE="$SIZE" MODEL="$MODEL" SHARED_STANDARDS="$SHARED_STANDARDS" python3 -c 'import os,sys; from string import Template; print(Template(sys.stdin.read()).safe_substitute(os.environ))')"
 fi
 
+PROMPT_FILE="$(mktemp -t "idea-${ID}-feed-prompt.XXXXXX.txt")"
+OUTPUT_FILE="$(mktemp -t "idea-${ID}-feed-output.XXXXXX.txt")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+printf '%s' "$PROMPT" > "$PROMPT_FILE"
+cleanup_execution_files() {
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+}
+trap cleanup_execution_files EXIT
+
+execution_start \
+  feed_score "$ID" claude "$MODEL" classification "$PROMPT_FILE" \
+  agent-feed-scoring shared-standards
+
+set +e
 claude -p "$PROMPT" \
-  --allowedTools "Bash,Read,WebFetch,WebSearch"
+  --allowedTools "Bash,Read,WebFetch,WebSearch" | tee "$OUTPUT_FILE"
+AGENT_STATUS="${PIPESTATUS[0]}"
+set -e
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  execution_succeed "$OUTPUT_FILE"
+else
+  execution_fail "$AGENT_STATUS" "claude feed-scoring process exited ${AGENT_STATUS}"
+  exit "$AGENT_STATUS"
+fi
