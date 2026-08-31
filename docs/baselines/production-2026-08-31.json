@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0.0",
+  "registry_version": "1.0.0",
+  "generated_at": "2026-08-31T16:31:09.127101+00:00",
+  "collection": {
+    "environment": "production",
+    "method": "read-only Django ORM queries over SSH",
+    "window": "2026-08-31T15:03:41Z/2026-08-31T16:31:09Z",
+    "note": "The snapshot combines additive read-only queries. Production remained live during the collection window, so independently queried totals may reflect normal intervening writes."
+  },
+  "ideas": {
+    "total": 102,
+    "by_status": [
+      {"status": "archived", "count": 49},
+      {"status": "tracking", "count": 53}
+    ],
+    "by_stage": [
+      {"stage": null, "count": 54},
+      {"stage": "Building", "count": 20},
+      {"stage": "Exploring", "count": 27},
+      {"stage": "Stalled", "count": 1}
+    ],
+    "by_category": [
+      {"category": "Research", "count": 47},
+      {"category": "App", "count": 15},
+      {"category": "App Improvement", "count": 15},
+      {"category": "Side Project", "count": 8},
+      {"category": "Project", "count": 7},
+      {"category": "Research Effort", "count": 6},
+      {"category": "Passive Income", "count": 2},
+      {"category": "Book", "count": 1},
+      {"category": "Podcast", "count": 1},
+      {"category": "Focus Project", "count": 0},
+      {"category": "News", "count": 0}
+    ]
+  },
+  "research": {
+    "entries": 425,
+    "latest": "2026-08-30T20:40:23.031125+00:00",
+    "tokens_known": 425,
+    "tokens_total": 10386700,
+    "legacy_quality_average": 3.8658823529411763,
+    "by_execution": [
+      {"provider": "", "execution_model": "", "model_label": "Claude Opus 4.8", "count": 200, "tokens": 6288500, "quality_average": 3.785},
+      {"provider": "claude", "execution_model": "claude-sonnet-5", "model_label": "Claude Sonnet 5", "count": 87, "tokens": 1961000, "quality_average": 3.954022988505747},
+      {"provider": "claude", "execution_model": "claude-opus-4-8", "model_label": "Claude Opus 4.8", "count": 57, "tokens": 1498500, "quality_average": 3.56140350877193},
+      {"provider": "codex", "execution_model": "codex-default", "model_label": "Claude Opus 4.8", "count": 49, "tokens": 429000, "quality_average": 4.183673469387755},
+      {"provider": "codex", "execution_model": "codex-default", "model_label": "Claude Sonnet 5", "count": 32, "tokens": 209700, "quality_average": 4.1875}
+    ]
+  },
+  "feeds": {
+    "feeds": 213,
+    "active_feeds": 213,
+    "idea_feed_links": 258,
+    "ideas_with_feeds": 58,
+    "feeds_linked_to_multiple_ideas": 31,
+    "items": 20460,
+    "summarized": 659,
+    "summarized_ratio": 0.032209,
+    "assessed": 637,
+    "assessed_ratio": 0.031134,
+    "human_interest_rated": 33,
+    "human_interest_ratio": 0.001613,
+    "human_info_rated": 29,
+    "human_info_ratio": 0.001417,
+    "items_with_multiple_idea_assessments": 0,
+    "usefulness": [
+      {"value": 1, "count": 219},
+      {"value": 2, "count": 96},
+      {"value": 3, "count": 45},
+      {"value": 4, "count": 243},
+      {"value": 5, "count": 34}
+    ],
+    "high_usefulness": 277,
+    "latest_fetch": "2026-08-31T15:03:41.471983+00:00"
+  },
+  "graph": {
+    "relations": 285,
+    "suggestions": 992,
+    "suggestions_by_status": [
+      {"status": "accepted", "count": 213},
+      {"status": "pending", "count": 23},
+      {"status": "rejected", "count": 501},
+      {"status": "superseded", "count": 255}
+    ],
+    "relationship_council_reviews": 481,
+    "council_outcomes": [
+      {"outcome": "accepted", "count": 3},
+      {"outcome": "no_decision", "count": 52},
+      {"outcome": "rejected", "count": 426}
+    ],
+    "persona_reviews": 25,
+    "persona_statuses": [
+      {"status": "consensus", "count": 25}
+    ]
+  },
+  "repeat": {
+    "active_results": 229,
+    "all_results_including_soft_deleted": 245,
+    "by_status": [
+      {"status": "actioned", "count": 10},
+      {"status": "dismissed", "count": 8},
+      {"status": "interested", "count": 19},
+      {"status": "new", "count": 192}
+    ]
+  },
+  "podcast": {
+    "shows": 4,
+    "episodes": 18,
+    "episodes_by_status": [
+      {"status": "draft", "count": 8},
+      {"status": "published", "count": 10}
+    ],
+    "runs": 20,
+    "runs_by_status": [
+      {"status": "failed", "count": 2},
+      {"status": "ready_for_review", "count": 18}
+    ],
+    "episodes_with_regeneration": 2
+  },
+  "governance": {
+    "prompt_templates": 19,
+    "prompt_revisions": 39,
+    "prompt_revisions_by_status": [
+      {"status": "approved", "count": 23},
+      {"status": "proposed", "count": 2},
+      {"status": "superseded", "count": 14}
+    ]
+  },
+  "other": {
+    "artifacts": 33,
+    "weekly_summaries": 4,
+    "help_messages": 0
+  },
+  "measurement_limitations": [
+    "Legacy rows do not identify exact rendered prompts or prompt revisions.",
+    "Research token totals are caller-reported and are not split by token class.",
+    "Legacy records do not contain provider latency or normalized cost.",
+    "Missing human ratings are not equivalent to negative feedback.",
+    "Podcast regeneration is inferred from episodes with more than one render run.",
+    "The production database remained live during the collection window."
+  ]
+}

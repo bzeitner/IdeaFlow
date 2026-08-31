@@ -261,6 +261,28 @@ IDEAFLOW_TASK_MODELS = {
     'weekly_summary': os.getenv('IDEAFLOW_MODEL_WEEKLY_SUMMARY', 'claude-opus-4-8'),
 }
 
+# Measurement-first rewrite rollout flags. Phase 0 only exposes configuration;
+# none of these flags change runtime behavior until its owning phase lands.
+# Keep them independently switchable so one workflow can be canaried and rolled
+# back without disabling the baseline/audit tools.
+IDEAFLOW_EXECUTION_FLAGS = {
+    'instrumentation': env_bool('IDEAFLOW_EXECUTION_INSTRUMENTATION', False),
+    'gateway': env_bool('IDEAFLOW_EXECUTION_GATEWAY', False),
+    'projections': env_bool('IDEAFLOW_EXECUTION_PROJECTIONS', False),
+    'feedback': env_bool('IDEAFLOW_EXECUTION_FEEDBACK', False),
+    'experiments': env_bool('IDEAFLOW_EXECUTION_EXPERIMENTS', False),
+}
+
+# Raw prompts and responses are more sensitive than aggregate telemetry. These
+# settings declare the Phase 0 policy and will be enforced by the execution
+# payload store in Phase 1. Raw payload capture remains off by default.
+IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS = env_bool(
+    'IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS', False
+)
+IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS = env_int(
+    'IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS', 30
+)
+
 # Semantic graph enrichment. The worker uses OpenAI-compatible JSON endpoints;
 # changing embedding models requires a full semantic backfill because vectors
 # from different models must never be compared.

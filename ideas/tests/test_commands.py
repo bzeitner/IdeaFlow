@@ -7,6 +7,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
 from ideas.models import ResearchEntry, Status
+from ideas.instrumentation import CALL_SITES, METRICS, validate_registries
 
 from .helpers import make_idea, make_podcast_show, make_stage
 
@@ -48,6 +49,43 @@ class DumpIdeaTests(TestCase):
     def test_unknown_idea_raises(self):
         with self.assertRaises(CommandError):
             run("dump_idea", "999999")
+
+
+class AuditLlmBaselineTests(TestCase):
+    def test_registry_is_valid_and_contains_stable_core_workflows(self):
+        self.assertEqual(validate_registries(), [])
+        self.assertIn("feed-score", {item.key for item in CALL_SITES})
+        self.assertIn("research.accepted_7d", {item.key for item in METRICS})
+
+    def test_registry_command_emits_versioned_json(self):
+        data = json.loads(run("audit_llm_baseline", "--registry"))
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertTrue(data["call_sites"])
+        self.assertTrue(data["metrics"])
+
+    def test_baseline_reports_current_database_without_mutation(self):
+        idea = make_idea()
+        before = idea.updated_at
+        data = json.loads(run("audit_llm_baseline"))
+        self.assertEqual(data["schema_version"], "1.0.0")
+        self.assertEqual(data["ideas"]["total"], 1)
+        self.assertIn("measurement_limitations", data)
+        idea.refresh_from_db()
+        self.assertEqual(idea.updated_at, before)
+
+    def test_output_does_not_overwrite_existing_report(self):
+        path = self._write_tmp("existing")
+        with self.assertRaises(CommandError):
+            run("audit_llm_baseline", "--registry", "--output", path)
+
+    def _write_tmp(self, text):
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".json")
+        with open(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        self.addCleanup(lambda: __import__("os").remove(path))
+        return path
 
 
 class LogEffortTests(TestCase):
