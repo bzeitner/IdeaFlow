@@ -1,8 +1,9 @@
 from django.contrib import admin
 
 from .models import (
-    ExecutionEvent, ExecutionTrace, LLMRun, ModelConfiguration, PricingVersion,
-    ServicePrincipal, ToolInvocation, WorkflowDefinition, WorkflowVersion,
+    ArtifactVersion, DeterministicJob, ExecutionEvent, ExecutionTrace, LLMRun,
+    ModelConfiguration, OutcomeEvent, PricingVersion, ServicePrincipal,
+    ToolInvocation, WorkflowCutover, WorkflowDefinition, WorkflowVersion,
 )
 
 
@@ -64,3 +65,19 @@ class ServicePrincipalAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name",)
     readonly_fields = ("token_hash", "last_used_at", "created_at", "revoked_at")
+
+
+@admin.register(WorkflowCutover)
+class WorkflowCutoverAdmin(admin.ModelAdmin):
+    list_display = ("workflow_key", "mode", "changed_at", "changed_by")
+    list_filter = ("mode",)
+    readonly_fields = ("changed_at",)
+
+
+@admin.register(DeterministicJob, ArtifactVersion, OutcomeEvent)
+class Phase4AuditAdmin(AuditAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return tuple(field.name for field in self.model._meta.fields)
+
+    def has_add_permission(self, request):
+        return False

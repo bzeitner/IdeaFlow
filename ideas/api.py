@@ -12,6 +12,7 @@ The token goes in an `Authorization: Bearer <token>` (or `X-API-Token`) header.
 Unset token disables the whole API, so it stays off until you opt in.
 """
 
+import hashlib
 import json
 import re
 from collections import defaultdict
@@ -28,6 +29,12 @@ from django.utils.dateparse import parse_date, parse_datetime
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
+
+from executions.models import LLMRun
+from executions.services import (
+    enforce_projection_write, record_artifact_version, record_deterministic_job,
+    record_outcome,
+)
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
@@ -193,6 +200,25 @@ def weekly_summary_list(request):
         produced_by_run = _execution_run(payload, workflows=("weekly_summary",))
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=409)
+    try:
+        enforce_projection_write("weekly_summary", produced_by_run)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    completed_runs = LLMRun.objects.filter(
+        completed_at__date__gte=period_start,
+        completed_at__date__lte=period_end,
+    )
+    execution_totals = completed_runs.aggregate(
+        tokens=models.Sum("total_tokens", default=0),
+        cost_micros=models.Sum("cost_micros", default=0),
+    )
+    metrics["execution_ledger"] = {
+        "runs": completed_runs.count(),
+        "succeeded": completed_runs.filter(status="succeeded").count(),
+        "failed": completed_runs.filter(status="failed").count(),
+        "tokens": execution_totals["tokens"],
+        "cost_micros": execution_totals["cost_micros"],
+    }
     defaults = {
         "title": (payload.get("title") or f"Weekly summary: {period_start}–{period_end}")[:200],
         "content": content,
@@ -206,6 +232,13 @@ def weekly_summary_list(request):
     summary, created = WeeklySummary.objects.update_or_create(
         period_start=period_start, period_end=period_end, defaults=defaults
     )
+    if produced_by_run and produced_by_run.trace.subject:
+        subject = produced_by_run.trace.subject
+        if isinstance(subject, Idea):
+            record_outcome(
+                subject, "weekly_summary.generated", run=produced_by_run,
+                idempotency_key=f"weekly-summary:{summary.pk}:{summary.generated_at.isoformat()}",
+            )
     return JsonResponse(weekly_summary_to_dict(summary), status=201 if created else 200)
 
 
@@ -267,14 +300,21 @@ def idea_artifact(request, pk, artifact_pk=None):
             idea=idea,
             workflows=("research", "review", "execute", "critique", "summary"),
         )
-    except ValueError as exc:
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    workflow_key = (
+        produced_by_run.trace.workflow_version.workflow.key
+        if produced_by_run else "summary" if kind == Artifact.Kind.SUMMARY else "research"
+    )
+    try:
+        enforce_projection_write(workflow_key, produced_by_run)
+    except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=409)
     created = artifact is None
     if artifact is None and kind == Artifact.Kind.SUMMARY:
         artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
         created = artifact is None
     artifact = artifact or Artifact(idea=idea)
-    old_file_name = artifact.file.name if artifact.pk and artifact.file and uploaded else ""
     artifact.title = title[:200]
     artifact.description = description
     artifact.kind = kind
@@ -289,8 +329,26 @@ def idea_artifact(request, pk, artifact_pk=None):
         filename = Artifact.build_storage_filename(artifact.title, uploaded.name)
         artifact.file.save(filename, uploaded, save=False)
     artifact.save()
-    if old_file_name and old_file_name != artifact.file.name:
-        artifact.file.storage.delete(old_file_name)
+    if artifact.file:
+        digest = hashlib.sha256()
+        with artifact.file.open("rb") as artifact_file:
+            for chunk in iter(lambda: artifact_file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        record_artifact_version(
+            artifact=artifact,
+            producing_run=produced_by_run,
+            media_type=getattr(uploaded, "content_type", "") or "application/octet-stream",
+            checksum_sha256=digest.hexdigest(),
+            storage_key=artifact.file.name,
+        )
+    elif external_url:
+        record_artifact_version(
+            artifact=artifact,
+            producing_run=produced_by_run,
+            media_type="text/uri-list",
+            checksum_sha256=hashlib.sha256(external_url.encode("utf-8")).hexdigest(),
+            storage_key=external_url,
+        )
     if kind == Artifact.Kind.SUMMARY and idea.summary_requested_at:
         idea.summary_requested_at = None
         idea.save(update_fields=["summary_requested_at", "updated_at"])
@@ -327,6 +385,15 @@ def idea_reconcile_pr(request, pk):
     if state not in {"CLOSED", "MERGED"}:
         return JsonResponse({"error": "state must be CLOSED or MERGED."}, status=400)
     idea = get_object_or_404(Idea.objects.prefetch_related("resources"), pk=pk)
+    try:
+        produced_by_run = _execution_run(payload, idea=idea, workflows=("execute", "critique"))
+        workflow_key = (
+            produced_by_run.trace.workflow_version.workflow.key
+            if produced_by_run else "execute"
+        )
+        enforce_projection_write(workflow_key, produced_by_run)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     removed = []
     for resource in idea.resources.all():
         if resource.url.rstrip("/") == url:
@@ -346,6 +413,23 @@ def idea_reconcile_pr(request, pk):
                 "updated_at",
             ]
         )
+    record_deterministic_job(
+        "repository.pr_reconcile",
+        run=produced_by_run,
+        idempotency_key=f"pr:{url}:{state}",
+        input_value={"idea_id": idea.pk, "url": url, "reported_state": state},
+        output_value={"removed_resource_ids": removed, "advanced": advanced},
+        metadata={"trust": "worker_reported", "provider": "github"},
+    )
+    record_outcome(
+        idea,
+        "repository.pr_merged" if state == "MERGED" else "repository.pr_closed",
+        run=produced_by_run,
+        metadata={"url": url, "advanced_next_action": advanced},
+        idempotency_key=f"pr-outcome:{url}:{state}",
+        attribution_method="worker_reported",
+        attribution_confidence=0.9,
+    )
     return JsonResponse(
         {
             "idea_id": idea.pk,
@@ -527,6 +611,10 @@ def idea_podcast_episode(request, pk):
         )
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=409)
+    try:
+        enforce_projection_write("podcast_script", produced_by_run)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
 
     title = (payload.get("title") or "").strip()
     if not title:
@@ -596,11 +684,29 @@ def idea_podcast_episode(request, pk):
         "script": script,
     }
     run = EpisodeRun.objects.create(
-        episode=episode, status=EpisodeRunStatus.AWAITING_AUDIO, manifest=manifest
+        episode=episode,
+        execution_trace=produced_by_run.trace if produced_by_run else None,
+        status=EpisodeRunStatus.AWAITING_AUDIO,
+        manifest=manifest,
     )
+    job, _created = record_deterministic_job(
+        "podcast.audio_render",
+        trace=produced_by_run.trace if produced_by_run else None,
+        run=produced_by_run,
+        idempotency_key=f"episode-run:{run.pk}",
+        input_value=manifest,
+        metadata={"episode_id": episode.pk, "episode_run_id": run.pk},
+        status="queued",
+    )
+    run.deterministic_job = job
     manifest["run_id"] = run.pk
     run.manifest = manifest
-    run.save(update_fields=["manifest"])
+    run.save(update_fields=["manifest", "deterministic_job"])
+    record_outcome(
+        idea, "podcast.script_created", run=produced_by_run,
+        metadata={"episode_id": episode.pk, "episode_run_id": run.pk},
+        idempotency_key=f"podcast-script:{episode.pk}",
+    )
 
     # Mark the source candidates this episode was built from as actioned and
     # tie them to it. They're on whatever idea's repeat backlog produced them
@@ -1120,6 +1226,10 @@ def idea_persona_review(request, pk):
         )
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=409)
+    try:
+        enforce_projection_write("persona_council", produced_by_run)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     if proposal.get("reversible") is not True:
         return JsonResponse(
             {"error": "Persona councils may act only on explicitly reversible proposals."},
@@ -1174,7 +1284,17 @@ def idea_persona_review(request, pk):
         decision = str(raw.get("decision") or "").lower()
         if decision not in PersonaVote.Decision.values or persona_id in parsed:
             return JsonResponse({"error": "Votes must be unique and use approve, reject, or abstain."}, status=400)
-        parsed[persona_id] = (decision, str(raw.get("rationale") or "").strip())
+        try:
+            vote_run = _execution_run(
+                raw, idea=idea, workflows=("persona_council",)
+            ) or produced_by_run
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=409)
+        parsed[persona_id] = {
+            "decision": decision,
+            "rationale": str(raw.get("rationale") or "").strip(),
+            "produced_by_run": vote_run,
+        }
     missing = required_ids - parsed.keys()
     if missing:
         return JsonResponse(
@@ -1182,7 +1302,7 @@ def idea_persona_review(request, pk):
             status=400,
         )
     consensus = bool(required_ids) and all(
-        parsed[persona_id][0] == PersonaVote.Decision.APPROVE
+        parsed[persona_id]["decision"] == PersonaVote.Decision.APPROVE
         for persona_id in required_ids
     )
     context = graph_context(idea, depth=2, task="persona")
@@ -1198,10 +1318,11 @@ def idea_persona_review(request, pk):
             PersonaVote(
                 review=review,
                 persona_id=persona_id,
-                decision=decision,
-                rationale=rationale,
+                decision=vote["decision"],
+                rationale=vote["rationale"],
+                produced_by_run=vote["produced_by_run"],
             )
-            for persona_id, (decision, rationale) in parsed.items()
+            for persona_id, vote in parsed.items()
         ]
     )
     acted = False
@@ -1228,6 +1349,13 @@ def idea_persona_review(request, pk):
     if acted:
         update_fields.extend(["next_action", "next_actions"])
     idea.save(update_fields=update_fields)
+    record_outcome(
+        idea,
+        "persona_council.consensus" if consensus else "persona_council.no_consensus",
+        run=produced_by_run,
+        metadata={"review_id": review.pk, "acted": acted},
+        idempotency_key=f"persona-review:{review.pk}",
+    )
     return JsonResponse(
         {"review_id": review.pk, "status": review.status, "acted": acted, "next_action": idea.next_action},
         status=201,
@@ -1325,6 +1453,10 @@ def relationship_council_submit(request, suggestion_pk):
         )
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=409)
+    try:
+        enforce_projection_write("relationship_council", produced_by_run)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     assignments = {
         assignment.persona_id: assignment
         for assignment in suggestion.source.idea_personas.select_related("persona").filter(
@@ -1393,6 +1525,13 @@ def relationship_council_submit(request, suggestion_pk):
             )
             for persona_id, vote in parsed.items()
         ]
+    )
+    record_outcome(
+        suggestion.source,
+        f"relationship_council.{outcome}",
+        run=produced_by_run,
+        metadata={"review_id": review.pk, "suggestion_id": suggestion.pk},
+        idempotency_key=f"relationship-review:{review.pk}",
     )
     return JsonResponse(
         {

@@ -6,6 +6,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class ApprovalStatus(models.TextChoices):
@@ -35,6 +36,13 @@ class MeasurementStatus(models.TextChoices):
     COMPLETE = "complete", "Complete"
     PARTIAL = "partial", "Partial"
     UNAVAILABLE = "unavailable", "Unavailable"
+
+
+class CutoverMode(models.TextChoices):
+    LEGACY = "legacy", "Legacy authoritative"
+    SHADOW = "shadow", "Shadow"
+    AUTHORITATIVE = "authoritative", "Execution ledger authoritative"
+    FROZEN = "frozen", "Writes frozen"
 
 
 class ImmutableAfterCreateModel(models.Model):
@@ -297,6 +305,112 @@ class LLMRun(AuditRetainedModel):
 
     def __str__(self):
         return f"{self.trace_id} · {self.purpose} attempt {self.attempt_number}"
+
+
+class WorkflowCutover(models.Model):
+    workflow_key = models.SlugField(max_length=80, unique=True)
+    mode = models.CharField(max_length=20, choices=CutoverMode.choices, default=CutoverMode.LEGACY)
+    reason = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        related_name="workflow_cutovers", on_delete=models.SET_NULL,
+    )
+    changed_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.workflow_key}: {self.mode}"
+
+
+class DeterministicJob(AuditRetainedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    trace = models.ForeignKey(
+        ExecutionTrace, null=True, blank=True, related_name="deterministic_jobs",
+        on_delete=models.PROTECT,
+    )
+    run = models.ForeignKey(
+        LLMRun, null=True, blank=True, related_name="deterministic_jobs",
+        on_delete=models.PROTECT,
+    )
+    kind = models.CharField(max_length=60)
+    status = models.CharField(max_length=16, choices=TraceStatus.choices, default=TraceStatus.QUEUED)
+    idempotency_key = models.CharField(max_length=200, blank=True)
+    input_hash = models.CharField(max_length=64, blank=True)
+    output_hash = models.CharField(max_length=64, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    error_detail = models.TextField(blank=True)
+    queued_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="unique_deterministic_job_idempotency",
+            )
+        ]
+
+
+class ArtifactVersion(AuditRetainedModel):
+    artifact = models.ForeignKey(
+        "ideas.Artifact", null=True, blank=True, related_name="versions",
+        on_delete=models.PROTECT,
+    )
+    episode = models.ForeignKey(
+        "ideas.Episode", null=True, blank=True, related_name="media_versions",
+        on_delete=models.PROTECT,
+    )
+    producing_run = models.ForeignKey(
+        LLMRun, null=True, blank=True, related_name="artifact_versions",
+        on_delete=models.PROTECT,
+    )
+    media_type = models.CharField(max_length=120)
+    checksum_sha256 = models.CharField(max_length=64)
+    storage_key = models.CharField(max_length=500)
+    source_citations = models.JSONField(default=list, blank=True)
+    supersedes = models.ForeignKey(
+        "self", null=True, blank=True, related_name="superseded_by",
+        on_delete=models.PROTECT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(artifact__isnull=False, episode__isnull=True)
+                    | models.Q(artifact__isnull=True, episode__isnull=False)
+                ),
+                name="artifact_version_exactly_one_subject",
+            )
+        ]
+
+
+class OutcomeEvent(AuditRetainedModel):
+    idea = models.ForeignKey(
+        "ideas.Idea", related_name="outcome_events", on_delete=models.PROTECT
+    )
+    run = models.ForeignKey(
+        LLMRun, null=True, blank=True, related_name="outcome_events",
+        on_delete=models.PROTECT,
+    )
+    event_type = models.CharField(max_length=80)
+    value = models.FloatField(default=1.0)
+    attribution_method = models.CharField(max_length=40, default="direct")
+    attribution_confidence = models.FloatField(default=1.0)
+    metadata = models.JSONField(default=dict, blank=True)
+    idempotency_key = models.CharField(max_length=200, blank=True)
+    occurred_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event_type", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="unique_outcome_event_idempotency",
+            )
+        ]
 
 
 class ToolInvocation(AuditRetainedModel):

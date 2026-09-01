@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from executions.models import ArtifactVersion, DeterministicJob, OutcomeEvent, TraceStatus
 from ideas.models import EpisodeRun, EpisodeRunStatus
 
 from .helpers import make_episode
@@ -65,6 +66,9 @@ class DisabledWhenNoTokenTests(TestCase):
 class ClaimTests(TestCase):
     def test_claims_the_oldest_awaiting_run(self):
         older = make_run()
+        job = DeterministicJob.objects.create(kind="podcast.audio_render")
+        older.deterministic_job = job
+        older.save(update_fields=["deterministic_job"])
         EpisodeRun.objects.filter(pk=older.pk).update(
             created_at=timezone.now() - timezone.timedelta(hours=1)
         )
@@ -84,6 +88,9 @@ class ClaimTests(TestCase):
         self.assertEqual(older.attempt_count, 1)
         self.assertIsNotNone(older.lease_expires_at)
         self.assertIsNotNone(older.started_at)
+        job.refresh_from_db()
+        self.assertEqual(job.status, TraceStatus.RUNNING)
+        self.assertEqual(job.metadata["worker_id"], "mac-mini-1")
 
     def test_nothing_to_claim_returns_false(self):
         response = self.client.post(
@@ -161,6 +168,11 @@ class HeartbeatTests(TestCase):
 class FailTests(TestCase):
     def test_records_the_failure(self):
         run = make_run(status=EpisodeRunStatus.RENDERING)
+        job = DeterministicJob.objects.create(
+            kind="podcast.audio_render", status=TraceStatus.RUNNING
+        )
+        run.deterministic_job = job
+        run.save(update_fields=["deterministic_job"])
         response = self.client.post(
             f"/api/audio-jobs/{run.pk}/fail/",
             data=json.dumps({"error_class": "render_error", "error_detail": "OOM"}),
@@ -172,6 +184,9 @@ class FailTests(TestCase):
         self.assertEqual(run.error_class, "render_error")
         self.assertEqual(run.error_detail, "OOM")
         self.assertIsNotNone(run.completed_at)
+        job.refresh_from_db()
+        self.assertEqual(job.status, TraceStatus.FAILED)
+        self.assertEqual(job.error_detail, "OOM")
 
     def test_rejects_fail_on_a_non_rendering_run(self):
         run = make_run(status=EpisodeRunStatus.QUEUED)
@@ -211,6 +226,14 @@ class CompleteTests(TestCase):
         self.assertEqual(episode.audio_checksum_sha256, checksum)
         self.assertEqual(episode.audio_size_bytes, len(audio))
         self.assertGreater(episode.audio_duration_seconds, 0)
+        version = ArtifactVersion.objects.get(episode=episode)
+        self.assertEqual(version.checksum_sha256, checksum)
+        self.assertEqual(version.storage_key, episode.audio_file.name)
+        self.assertTrue(
+            OutcomeEvent.objects.filter(
+                idea=episode.show.idea, event_type="podcast.audio_verified"
+            ).exists()
+        )
         # The staged copy is cleaned up; only the promoted file remains.
         with episode.audio_file.open("rb") as fh:
             self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), checksum)

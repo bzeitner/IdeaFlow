@@ -4,6 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from executions.models import ArtifactVersion, CutoverMode, DeterministicJob, OutcomeEvent, WorkflowCutover
 from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
 
 from .helpers import make_idea, make_podcast_show, make_stage, make_user
@@ -161,6 +162,30 @@ class ApiReadTests(TestCase):
         self.assertEqual(idea.next_action, "Deploy the accepted change")
         self.assertEqual(idea.agent_runs_since_feedback, 0)
         self.assertFalse(idea.resources.exists())
+        self.assertTrue(
+            DeterministicJob.objects.filter(kind="repository.pr_reconcile").exists()
+        )
+        self.assertTrue(
+            OutcomeEvent.objects.filter(
+                idea=idea, event_type="repository.pr_merged"
+            ).exists()
+        )
+
+    def test_authoritative_reconcile_requires_execution_run(self):
+        idea = make_idea()
+        WorkflowCutover.objects.update_or_create(
+            workflow_key="execute", defaults={"mode": CutoverMode.AUTHORITATIVE}
+        )
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/reconcile-pr/",
+            data=json.dumps(
+                {"url": "https://github.com/x/y/pull/17", "state": "MERGED"}
+            ),
+            content_type="application/json",
+            **AUTH,
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(DeterministicJob.objects.count(), 0)
 
     def test_reconcile_pr_rejects_open_or_non_github_state(self):
         idea = make_idea(next_action="Keep this")
@@ -712,10 +737,30 @@ class ApiPodcastEpisodeTests(TestCase):
         self.assertEqual(run.manifest["episode_id"], episode.pk)
         self.assertIn("host-primary", run.manifest["voice_profiles"])
         self.assertIn("analyst-primary", run.manifest["voice_profiles"])
+        self.assertIsNotNone(run.deterministic_job_id)
+        self.assertEqual(run.deterministic_job.status, "queued")
+        self.assertTrue(
+            OutcomeEvent.objects.filter(
+                idea=idea, event_type="podcast.script_created"
+            ).exists()
+        )
 
         idea.refresh_from_db()
         self.assertIsNotNone(idea.last_repeat_run_at)
         self.assertFalse(idea.repeat_is_due)
+
+    def test_authoritative_cutover_rejects_unattributed_episode(self):
+        idea = make_idea(repeat_enabled=True)
+        make_podcast_show(idea=idea)
+        WorkflowCutover.objects.update_or_create(
+            workflow_key="podcast_script", defaults={"mode": CutoverMode.AUTHORITATIVE}
+        )
+        response = self._post(
+            idea, {"title": "Ep", "script": _make_podcast_script()}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(Episode.objects.count(), 0)
+        self.assertEqual(DeterministicJob.objects.count(), 0)
 
     def test_repeat_result_ids_are_actioned_and_linked_to_the_episode(self):
         source_idea = make_idea(repeat_enabled=True, title="Source backlog idea")

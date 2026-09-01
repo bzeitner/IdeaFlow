@@ -173,10 +173,14 @@ def cmd_remove_resource(a):
 
 
 def cmd_reconcile_pr(a):
+    body = {"url": a.url, "state": a.state}
+    execution_run_id = a.execution_run_id or os.environ.get("IDEAFLOW_RUN_ID")
+    if execution_run_id:
+        body["execution_run_id"] = execution_run_id
     return _request(
         "POST",
         f"/ideas/{a.idea_id}/reconcile-pr/",
-        body={"url": a.url, "state": a.state},
+        body=body,
     )
 
 
@@ -499,6 +503,7 @@ def build_parser():
     s.add_argument("idea_id", type=int)
     s.add_argument("--url", required=True)
     s.add_argument("--state", required=True, choices=("CLOSED", "MERGED"))
+    s.add_argument("--execution-run-id")
     s.set_defaults(func=cmd_reconcile_pr)
 
     s = sub.add_parser("graph", help="Read the projected knowledge graph.")

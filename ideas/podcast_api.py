@@ -35,6 +35,9 @@ from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 
+from executions.models import TraceStatus
+from executions.services import record_artifact_version, record_outcome
+
 from .models import Episode, EpisodeRun, EpisodeRunStatus
 
 # Runs a worker may claim: freshly queued for audio, or a previous claim whose
@@ -122,6 +125,13 @@ def claim_audio_job(request):
     candidate.save(
         update_fields=["status", "worker_id", "lease_expires_at", "attempt_count", "started_at"]
     )
+    if candidate.deterministic_job_id:
+        job = candidate.deterministic_job
+        job.status = TraceStatus.RUNNING
+        job.started_at = job.started_at or now
+        job.completed_at = None
+        job.metadata = {**job.metadata, "worker_id": worker_id, "attempt_count": candidate.attempt_count}
+        job.save(update_fields=["status", "started_at", "completed_at", "metadata"])
     return JsonResponse({"claimed": True, "run": _run_to_dict(candidate)})
 
 
@@ -174,6 +184,12 @@ def audio_job_fail(request, pk):
     run.error_detail = str(payload.get("error_detail") or "")
     run.completed_at = timezone.now()
     run.save(update_fields=["status", "error_class", "error_detail", "completed_at"])
+    if run.deterministic_job_id:
+        job = run.deterministic_job
+        job.status = TraceStatus.FAILED
+        job.error_detail = run.error_detail
+        job.completed_at = run.completed_at
+        job.save(update_fields=["status", "error_detail", "completed_at"])
     return JsonResponse({"run": _run_to_dict(run)})
 
 
@@ -242,6 +258,12 @@ def audio_job_complete(request, pk):
         run.error_detail = error_detail
         run.completed_at = timezone.now()
         run.save(update_fields=["status", "error_class", "error_detail", "completed_at"])
+        if run.deterministic_job_id:
+            job = run.deterministic_job
+            job.status = TraceStatus.FAILED
+            job.error_detail = error_detail
+            job.completed_at = run.completed_at
+            job.save(update_fields=["status", "error_detail", "completed_at"])
         return JsonResponse({"error": error_detail}, status=status)
 
     # Stage under a path the worker cannot influence beyond the run id it
@@ -292,6 +314,32 @@ def audio_job_complete(request, pk):
         run.render_report = render_report
         run.completed_at = timezone.now()
         run.save(update_fields=["status", "render_report", "completed_at"])
+        record_artifact_version(
+            episode=episode,
+            producing_run=episode.produced_by_run,
+            media_type="audio/mpeg",
+            checksum_sha256=actual_checksum,
+            storage_key=episode.audio_file.name,
+            source_citations=episode.script.get("citations", []),
+        )
+        if run.deterministic_job_id:
+            job = run.deterministic_job
+            job.status = TraceStatus.SUCCEEDED
+            job.output_hash = actual_checksum
+            job.completed_at = run.completed_at
+            job.metadata = {
+                **job.metadata,
+                "duration_seconds": duration,
+                "size_bytes": actual_size,
+            }
+            job.save(update_fields=["status", "output_hash", "completed_at", "metadata"])
+        record_outcome(
+            episode.show.idea,
+            "podcast.audio_verified",
+            run=episode.produced_by_run,
+            metadata={"episode_id": episode.pk, "episode_run_id": run.pk},
+            idempotency_key=f"podcast-audio:{run.pk}:{actual_checksum}",
+        )
         return JsonResponse({"run": _run_to_dict(run), "episode_id": episode.pk})
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)

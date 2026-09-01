@@ -24,6 +24,9 @@ Use incremental changes to the existing Django/PostgreSQL application rather tha
 - Dual-write only where necessary and reconcile continuously.
 - Release behind per-workflow feature flags.
 - Prefer additive, reversible migrations until the final cutover.
+
+Phase 4 implementation and rollout details are in
+[PHASE4_VERTICALS_AND_CUTOVER.md](PHASE4_VERTICALS_AND_CUTOVER.md).
 - Never backfill invented precision. Legacy measurements must be labeled as imported or estimated.
 
 ## 3. Workstreams

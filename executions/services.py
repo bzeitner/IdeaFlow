@@ -9,8 +9,9 @@ from django.db.models import Max
 from django.utils import timezone
 
 from .models import (
-    ExecutionEvent, ExecutionTrace, LLMRun, MeasurementStatus, RunPurpose,
-    ToolInvocation, TraceStatus,
+    ArtifactVersion, CutoverMode, DeterministicJob, ExecutionEvent,
+    ExecutionTrace, LLMRun, MeasurementStatus, OutcomeEvent, RunPurpose,
+    ToolInvocation, TraceStatus, WorkflowCutover,
 )
 
 
@@ -20,6 +21,91 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)((?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s,;]+"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL),
 )
+
+
+def cutover_mode(workflow_key):
+    return (
+        WorkflowCutover.objects.filter(workflow_key=workflow_key)
+        .values_list("mode", flat=True).first()
+        or CutoverMode.LEGACY
+    )
+
+
+def enforce_projection_write(workflow_key, run=None):
+    mode = cutover_mode(workflow_key)
+    if mode == CutoverMode.FROZEN:
+        raise ValidationError(f"{workflow_key} writes are frozen for cutover.")
+    if mode == CutoverMode.AUTHORITATIVE and run is None:
+        raise ValidationError(
+            f"{workflow_key} requires an attributed execution run in authoritative mode."
+        )
+    return mode
+
+
+def record_outcome(
+    idea, event_type, *, run=None, value=1.0, metadata=None,
+    idempotency_key="", attribution_method="direct", attribution_confidence=1.0,
+):
+    outcome, _created = OutcomeEvent.objects.get_or_create(
+        event_type=event_type,
+        idempotency_key=idempotency_key,
+        defaults={
+            "idea": idea,
+            "run": run,
+            "value": value,
+            "metadata": metadata or {},
+            "attribution_method": attribution_method,
+            "attribution_confidence": attribution_confidence,
+        },
+    ) if idempotency_key else (OutcomeEvent.objects.create(
+        idea=idea, run=run, event_type=event_type, value=value,
+        metadata=metadata or {}, attribution_method=attribution_method,
+        attribution_confidence=attribution_confidence,
+    ), True)
+    return outcome, _created
+
+
+def record_deterministic_job(
+    kind, *, trace=None, run=None, idempotency_key="", input_value=None,
+    output_value=None, metadata=None, status=TraceStatus.SUCCEEDED,
+):
+    now = timezone.now()
+    defaults = {
+        "trace": trace or (run.trace if run else None),
+        "run": run,
+        "status": status,
+        "input_hash": canonical_hash(input_value) if input_value is not None else "",
+        "output_hash": canonical_hash(output_value) if output_value is not None else "",
+        "metadata": metadata or {},
+        "started_at": now if status != TraceStatus.QUEUED else None,
+        "completed_at": now if status in TERMINAL_STATUSES else None,
+    }
+    if idempotency_key:
+        return DeterministicJob.objects.get_or_create(
+            kind=kind, idempotency_key=idempotency_key, defaults=defaults
+        )
+    return DeterministicJob.objects.create(kind=kind, **defaults), True
+
+
+def record_artifact_version(
+    *, artifact=None, episode=None, producing_run=None, media_type,
+    checksum_sha256, storage_key, source_citations=None,
+):
+    previous = ArtifactVersion.objects.filter(
+        artifact=artifact, episode=episode
+    ).order_by("-created_at").first()
+    if previous and previous.checksum_sha256 == checksum_sha256:
+        return previous, False
+    return ArtifactVersion.objects.create(
+        artifact=artifact,
+        episode=episode,
+        producing_run=producing_run,
+        media_type=media_type,
+        checksum_sha256=checksum_sha256,
+        storage_key=storage_key,
+        source_citations=source_citations or [],
+        supersedes=previous,
+    ), True
 
 
 def canonical_hash(value):

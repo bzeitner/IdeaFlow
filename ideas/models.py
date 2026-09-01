@@ -452,6 +452,10 @@ class PersonaVote(models.Model):
         ABSTAIN = "abstain", "Abstain"
 
     review = models.ForeignKey(PersonaReview, related_name="votes", on_delete=models.CASCADE)
+    produced_by_run = models.ForeignKey(
+        "executions.LLMRun", null=True, blank=True,
+        related_name="persona_votes", on_delete=models.SET_NULL,
+    )
     persona = models.ForeignKey(Persona, on_delete=models.PROTECT)
     decision = models.CharField(max_length=8, choices=Decision.choices)
     rationale = models.TextField(blank=True)
@@ -1483,6 +1487,17 @@ class Episode(models.Model):
             ]
         )
         self.repeat_results.update(deleted_at=now, deleted_by=by, updated_at=now)
+        from executions.services import record_outcome
+
+        record_outcome(
+            self.show.idea,
+            "podcast.published",
+            run=self.produced_by_run,
+            metadata={"episode_id": self.pk},
+            idempotency_key=f"podcast-published:{self.pk}:{now.isoformat()}",
+            attribution_method="human_approved",
+            attribution_confidence=0.8,
+        )
 
     def unpublish(self):
         """Reversible: clears published_at and flips status, but keeps the row
@@ -1490,6 +1505,16 @@ class Episode(models.Model):
         self.status = EpisodeStatus.UNPUBLISHED
         self.published_at = None
         self.save(update_fields=["status", "published_at", "updated_at"])
+        from executions.services import record_outcome
+
+        record_outcome(
+            self.show.idea,
+            "podcast.unpublished",
+            run=self.produced_by_run,
+            metadata={"episode_id": self.pk},
+            attribution_method="human_action",
+            attribution_confidence=1.0,
+        )
 
 
 class EpisodeRun(models.Model):
@@ -1501,6 +1526,14 @@ class EpisodeRun(models.Model):
     check alone)."""
 
     episode = models.ForeignKey(Episode, related_name="runs", on_delete=models.CASCADE)
+    execution_trace = models.ForeignKey(
+        "executions.ExecutionTrace", null=True, blank=True,
+        related_name="episode_runs", on_delete=models.SET_NULL,
+    )
+    deterministic_job = models.OneToOneField(
+        "executions.DeterministicJob", null=True, blank=True,
+        related_name="episode_run", on_delete=models.SET_NULL,
+    )
     status = models.CharField(
         max_length=20, choices=EpisodeRunStatus.choices, default=EpisodeRunStatus.QUEUED
     )
