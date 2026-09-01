@@ -25,7 +25,7 @@
         <strong>{{ summary.title }}</strong>
         <span class="dim">Run {{ summary.generated_at|date:"M j, Y g:i A T" }} · covering {{ summary.period_start|date:"M j" }}–{{ summary.period_end|date:"M j, Y" }}</span>
       </summary>
-      <div class="weekly-summary-body">{{ summary.content|urlize|linebreaksbr }}</div>
+      <div class="weekly-summary-body artifact-report">{{ summary.presentation.html }}</div>
       {% if summary.metrics.open_prs %}
         <section class="weekly-open-prs">
           <h3>Open pull requests <span class="pill">{{ summary.metrics.open_prs|length }}</span></h3>

@@ -19,7 +19,7 @@ from django.views.decorators.http import require_POST
 
 from .feeds import is_http_url, recent_articles
 from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
-from .artifact_presentation import MAX_RENDER_CHARS, present_artifact, present_research_context
+from .artifact_presentation import MAX_RENDER_CHARS, present_artifact, present_content, present_research_context
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
@@ -243,6 +243,11 @@ def weekly_summaries(request):
         ("Tokens by idea", "tokens_by_idea"),
     )
     for index, summary in enumerate(summaries):
+        summary.presentation = present_content(
+            summary.content,
+            source_format="markdown",
+            report=True,
+        )
         previous = summaries[index + 1].metrics if index + 1 < len(summaries) else {}
         summary.metric_sections = []
         for title, key in section_specs:

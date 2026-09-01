@@ -40,7 +40,12 @@ class WeeklySummaryViewTests(TestCase):
             period_start=date(2026, 8, 9),
             period_end=date(2026, 8, 15),
             title="Latest week",
-            content="Current state\n\n# Blockers\nNone identified",
+            content=(
+                "Current **state**\n\n# Blockers\n\n"
+                "- None identified\n\n"
+                "[Review the work](https://example.com/report)\n\n"
+                "<script>alert('unsafe')</script>"
+            ),
             generated_at=datetime(2026, 8, 17, tzinfo=timezone.utc),
             metrics={
                 "tasks_by_type": {"research": 4, "implementation": 2},
@@ -91,6 +96,15 @@ class WeeklySummaryViewTests(TestCase):
         self.assertContains(response, "Created / reviewed / closed")
         self.assertContains(response, "Open pull requests")
         self.assertContains(response, "Persist feed backfill cutoff")
+        self.assertContains(response, "<strong>state</strong>", html=True)
+        self.assertContains(response, "<h2>Blockers</h2>", html=True)
+        self.assertContains(response, "<li>None identified</li>", html=True)
+        self.assertContains(
+            response,
+            '<a href="https://example.com/report" target="_blank" rel="noopener">Review the work</a>',
+            html=True,
+        )
+        self.assertContains(response, "&lt;script&gt;alert(&#x27;unsafe&#x27;)&lt;/script&gt;")
 
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
