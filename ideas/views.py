@@ -1937,6 +1937,9 @@ def toggle_feed_ingestion_pause(request, pk):
     back = request.POST.get("next", "")
     if not back.startswith("?"):
         back = ""
+    return_to = request.POST.get("return_to", "")
+    if return_to == reverse("ideas:detail", args=[idea.pk]):
+        return redirect(return_to)
     return redirect(f"{reverse('ideas:feeds')}{back}")
 
 

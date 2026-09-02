@@ -167,6 +167,35 @@ class TabAccessTests(TestCase):
 
 
 class DetailViewTests(TestCase):
+    def test_feed_pause_control_is_visible_without_expanding_any_section(self):
+        user = make_user(roles=["role_current"])
+        idea = make_idea(title="Controlled feeds", feed_ingestion_paused=True)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:detail", args=[idea.pk]))
+
+        self.assertContains(response, "data-feed-pause-form")
+        self.assertContains(response, f'data-idea-id="{idea.pk}"')
+        self.assertContains(response, "Feed ingestion paused")
+        self.assertContains(response, "Resume feeds")
+
+    def test_feed_pause_fallback_returns_to_idea_detail(self):
+        user = make_user(roles=["role_current"])
+        idea = make_idea(feed_ingestion_paused=True)
+        self.client.force_login(user, backend=MODEL_BACKEND)
+
+        response = self.client.post(
+            reverse("ideas:toggle_feed_ingestion_pause", args=[idea.pk]),
+            {
+                "paused": "0",
+                "return_to": reverse("ideas:detail", args=[idea.pk]),
+            },
+        )
+
+        self.assertRedirects(response, reverse("ideas:detail", args=[idea.pk]))
+        idea.refresh_from_db()
+        self.assertFalse(idea.feed_ingestion_paused)
+
     def test_app_displays_dates_in_pacific_time(self):
         self.assertEqual(settings.TIME_ZONE, "America/Los_Angeles")
 

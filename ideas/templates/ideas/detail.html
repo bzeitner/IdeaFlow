@@ -5,6 +5,20 @@
     <div class="card-head">
       <h2>{{ idea.title }}</h2>
       <span class="stars">{{ idea.stars }}</span>
+      <div class="detail-feed-control">
+        {% if idea.is_archived %}
+          <span class="dim">Feeds off</span>
+        {% else %}
+          <span class="dim" data-feed-pause-label data-idea-id="{{ idea.id }}">Feed ingestion {% if idea.feed_ingestion_paused %}paused{% else %}active{% endif %}</span>
+          {% if can_manage %}
+            <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' idea.id %}" data-feed-pause-form data-idea-id="{{ idea.id }}">
+              {% csrf_token %}<input type="hidden" name="return_to" value="{% url 'ideas:detail' idea.id %}"><input type="hidden" name="paused" value="{% if idea.feed_ingestion_paused %}0{% else %}1{% endif %}">
+              <button class="btn small{% if idea.feed_ingestion_paused %} is-paused{% endif %}" type="submit" data-feed-pause-button>{% if idea.feed_ingestion_paused %}Resume feeds{% else %}Pause feeds{% endif %}</button>
+              <span class="dim feed-pause-status" data-feed-pause-status aria-live="polite"></span>
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
     </div>
     <div class="meta">
       {% include "ideas/_pill.html" with obj=idea.category %}

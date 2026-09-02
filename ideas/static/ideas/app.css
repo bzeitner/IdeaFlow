@@ -315,6 +315,8 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .feed-pause-button.is-paused { border-color: var(--line); background: var(--panel); color: var(--accent); }
 .feed-pause-button:disabled { cursor: wait; opacity: .65; }
 .feed-pause-status { min-width: 42px; font-size: 11px; }
+.detail-feed-control { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.detail-feed-control form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .feed-summary { margin: 0 0 12px; }
 .feed-ratings { display: flex; flex-wrap: wrap; gap: 8px 28px; border-top: 1px solid var(--line); padding-top: 10px; }
 .rate-form { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 0; }
