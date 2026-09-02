@@ -1,7 +1,8 @@
 # IdeaFlow Measurement-First Implementation Plan
 
-Status: Proposed
-Date: 2026-08-31
+Status: Active — R4 deployed; R5 evaluation work is next
+Original plan date: 2026-08-31
+Status reconciled: 2026-09-01
 Related documents: `FEATURE_INVENTORY.md`, `REWRITE_TECHSPEC.md`
 
 ## 1. Objective
@@ -13,6 +14,39 @@ The governing rule is:
 > No new AI-generated state may become user-visible unless its producing execution can be identified and audited.
 
 This plan deliberately puts observability and evaluation before broad feature restructuring. Category cleanup, feed redesign, and workflow rewrites should use the resulting measurements rather than assumptions.
+
+## 1.1 Current production baseline
+
+R4 is deployed. Releases R0–R4 established the measured-execution foundation
+and moved the durable optional workflows through the Phase 4 vertical and
+cutover work described in `PHASE4_VERTICALS_AND_CUTOVER.md`.
+
+The implementation phase numbers and the original release labels did not remain
+one-to-one. This status table is authoritative when the historical milestone
+descriptions below differ from deployed reality.
+
+| Capability | Current status | Remaining work |
+| --- | --- | --- |
+| LLM call-site inventory and metric registry | Shipped | Keep current as workflows are added or retired. |
+| Execution ledger, protected payload storage, hashes, and provenance links | Shipped | Reconcile production completeness continuously. |
+| Compatibility instrumentation for shell-driven workflows | Shipped | Retire per workflow only after an authoritative replacement is verified. |
+| Scoped execution principals | Shipped | Complete rotation and least-privilege operational procedures. |
+| Workflow cutover controls | Shipped | Record the production mode and rollback owner for every workflow. |
+| Durable artifact/media versions, deterministic jobs, and outcome events | Shipped for the Phase 4 verticals | Extend consistently as remaining workflows move to authoritative mode. |
+| Source/evidence pipeline | Shipped in its initial form | Measure yield and complete the bounded evidence-queue product rollout. |
+| Gateway-based structured job execution | Partial | Continue one workflow at a time; compatibility wrappers remain supported. |
+| Explicit human-feedback records and common feedback UI | Not complete | Deliver with the R5 evaluator foundation. |
+| Versioned evaluator and metric models | Not complete | Deliver in R5 before using model judgments for promotion decisions. |
+| Immutable evaluation datasets and paired offline runner | Not complete | Deliver in R5. |
+| Controlled online experimentation | Not started | Begin only after the R5 offline gate passes. |
+| Portfolio taxonomy and lifecycle migration | Planned | Keep outside the research-context experiment. |
+
+R4 production acceptance is maintained through a reconciliation report that
+records, by workflow: trace completeness, projection attribution, token/cost/
+timing coverage, unavailable-reason coverage, current `WorkflowCutover` mode,
+payload-storage health, unattributed legacy writes, and the tested rollback
+path. A production capability is marked shipped only when that evidence exists;
+deploying schema or code alone is not sufficient.
 
 ## 2. Delivery strategy
 
@@ -44,7 +78,7 @@ The implementation is divided into eight workstreams:
 
 Workstreams 1–3 form the critical path. The others should not change production decision-making until trace completeness is proven.
 
-## 4. Milestone 0 — Baseline and design freeze
+## 4. Milestone 0 — Baseline and design freeze (shipped)
 
 Goal: make current behavior and expected telemetry explicit before changing runtime paths.
 
@@ -87,7 +121,7 @@ Goal: make current behavior and expected telemetry explicit before changing runt
 - Each workflow has one proposed primary outcome and explicit guardrails.
 - No secrets or credentials are included in telemetry payloads.
 
-## 5. Milestone 1 — Execution ledger
+## 5. Milestone 1 — Execution ledger (shipped)
 
 Goal: add the minimum schema required to identify and reconstruct every execution.
 
@@ -217,7 +251,7 @@ All terminal operations must be idempotent and transactionally safe.
 - Retries remain distinguishable.
 - No successful run can reach terminal state without its frozen configuration, timing, and measurement status.
 
-## 6. Milestone 2 — Compatibility instrumentation
+## 6. Milestone 2 — Compatibility instrumentation (shipped)
 
 Goal: instrument current shell-driven workflows without changing their results or scheduling.
 
@@ -289,7 +323,7 @@ Instrumentation failure policy:
 - Existing task-selection and scheduling behavior remains unchanged.
 - Totals reconcile with current `ResearchEntry.tokens_used` reporting and available provider usage.
 
-## 7. Milestone 3 — Gateway and structured workflow execution
+## 7. Milestone 3 — Gateway and structured workflow execution (partial)
 
 Goal: centralize execution semantics while retaining provider-specific adapters.
 
@@ -323,9 +357,15 @@ Goal: centralize execution semantics while retaining provider-specific adapters.
 - Provider adapters pass shared contract tests.
 - Worker crashes and expired leases do not create duplicate projections.
 
-## 8. Milestone 4 — Feedback, outcomes, and evaluations
+## 8. Milestone 4 — Feedback, outcomes, and evaluations (partially shipped)
 
 Goal: measure usefulness rather than only activity, tokens, and self-reported quality.
+
+R4 shipped `OutcomeEvent` support and outcome attribution for the Phase 4
+vertical workflows. The generic human-feedback and versioned-evaluator models
+listed below are not part of the current measured-execution schema and move
+forward as required R5 work. They must not be treated as deployed merely
+because related workflow-specific accept/reject actions already exist.
 
 ### Models
 
@@ -388,9 +428,15 @@ Implement before model graders:
 - At least one deterministic evaluator operates for every structured workflow.
 - Evaluator costs appear in total workflow cost.
 
-## 9. Milestone 5 — Evaluation datasets and offline comparison
+## 9. Milestone 5 — Evaluator foundation, research checkpoints, and offline comparison
 
-Goal: safely compare candidate changes before exposing them to production users.
+Goal: complete the generic evaluation foundation and safely compare candidate
+changes before exposing them to production users.
+
+This is the next production milestone after R4. It includes the unfinished
+generic evaluator work from Milestone 4; offline experiments may not use
+ad-hoc, unversioned judge prompts or write scores into an existing field whose
+meaning differs from the metric being measured.
 
 ### Models and services
 
@@ -398,6 +444,46 @@ Goal: safely compare candidate changes before exposing them to production users.
 - `DatasetCase`
 - `DatasetSnapshot`
 - `OfflineEvaluationRun`
+
+Also implement the Milestone 4 records required by the runner:
+
+- `MetricDefinition`
+- `EvaluatorDefinition`
+- `EvaluatorVersion`
+- `EvaluationResult`
+
+Every model-graded evaluation is a child `LLMRun`. Its evaluator version,
+rubric, model configuration, rendered input, output, tokens, cost, and treatment
+blinding are retained like any other measured execution.
+
+### Research checkpoints
+
+Add an immutable `ResearchCheckpoint` rather than using mutable
+`Idea.exec_summary` as an experimental input:
+
+- idea and producing run;
+- schema version and structured state;
+- source manifest and evidence cutoff timestamp;
+- content hash and validation status;
+- creation timestamp.
+
+The structured state contains the scoped research objective, supported
+conclusions, evidence references, rejected approaches and reasons,
+contradictions, unresolved questions, current decision, and recommended next
+action. `Idea.exec_summary` remains the concise human-readable projection of
+the latest state; it is not the experiment's source of truth.
+
+Define context selection as immutable workflow configuration. The initial
+policies are:
+
+- `full_history_v1`: the current complete research context;
+- `checkpoint_delta_v1`: the latest validated checkpoint plus changes after its
+  evidence cutoff and explicitly targeted retrieval.
+
+For either policy, `LLMRun.context_manifest` records the policy version,
+checkpoint ID/hash when applicable, included research entries, artifacts and
+evidence, delta boundary, token count by context section, retrievals, and any
+fallback reason.
 
 Dataset cases reference immutable/redacted input snapshots, expected properties, prior human outcomes, and cohort metadata.
 
@@ -408,6 +494,8 @@ Dataset cases reference immutable/redacted input snapshots, expected properties,
 - Relationship suggestions accepted and rejected.
 - Repeat results actioned and dismissed.
 - Podcast scripts approved and regenerated.
+- Scheduled research continuations with short, long, conflicting, stale, and
+  multi-hop histories.
 
 ### Tooling
 
@@ -417,11 +505,89 @@ Dataset cases reference immutable/redacted input snapshots, expected properties,
 - Blinded comparison UI.
 - Report covering quality, cost, latency, validation, and cohort differences.
 
+### First research context evaluation
+
+Compare `full_history_v1` with `checkpoint_delta_v1` on identical immutable
+snapshots. Each case freezes the idea state, explicit research objective,
+available evidence, model configuration, tools, output limit, and workflow
+version. Generate both answers independently; neither answer sees the other.
+
+Evaluate each answer on a common 1–5 progress scale, using an immutable rubric
+selected for the idea type. The shared anchors make scores aggregatable while
+the type-specific rubric defines what evidence, progress, and completion mean
+for that kind of idea.
+
+The initial research rubric is versioned as `research.answer_progress`:
+
+| Score | Definition |
+| --- | --- |
+| 1 — No progress | Repeats known information, misses the objective, or adds no supported conclusion. |
+| 2 — Minor progress | Adds a potentially useful observation but does not close a meaningful gap or change a decision. |
+| 3 — Material progress | Resolves part of the objective or materially narrows the alternatives with usable evidence. |
+| 4 — Nearly answered | Supports a defensible decision with only a small, explicitly identified uncertainty remaining. |
+| 5 — Completely answered | Fully answers the scoped objective with sufficient evidence, addresses material counterarguments, and leaves no decision-relevant gap. |
+
+Do not reuse `ResearchEntry.quality`: it measures confidence in an effort, not
+progress toward answering the objective.
+
+### Type-specific scoring rubrics
+
+Each `EvaluatorVersion` declares its applicable idea type, metric key, rubric
+version, required evidence, non-applicable conditions, and completion criteria.
+The initial family is:
+
+| Idea type | Metric | What a 5 requires |
+| --- | --- | --- |
+| Research | `research.answer_progress` | The scoped question is completely answered with sufficient evidence and no decision-relevant gap. |
+| Product | `product.validation_progress` | The named product assumption or decision is resolved with relevant user, market, feasibility, or experiment evidence and a defensible product decision. |
+| Project | `project.delivery_progress` | The scoped deliverable meets its acceptance criteria, is verified, and has no unresolved blocker within scope. |
+| Content | `content.completion_progress` | The scoped content outcome is complete for its audience and format, factually supported where applicable, and ready for its defined review or publication gate. |
+
+Every type retains the shared ordinal anchors: 1 means no progress, 2 minor
+progress, 3 material progress, 4 nearly complete, and 5 complete for the scoped
+objective. Rubrics may add dimensions and evidence requirements but may not
+reverse or redefine those anchors. Cross-type portfolio reporting may compare
+the normalized 1–5 progress distribution, but must also show results by rubric;
+a product 4 and research 4 are not assumed to represent identical work.
+
+Until `Idea.type` becomes authoritative in Milestone 8, dataset construction
+and experiment enrollment must store an explicit `rubric_key`. It may come
+from an approved temporary category-to-rubric mapping or a human selection,
+but never from an evaluator's silent inference. Ambiguous cases are excluded or
+queued for classification. Once taxonomy migration is complete, new cases use
+the frozen idea type at snapshot/enqueue time while historical cases retain
+their original rubric assignment.
+
+Use at least three independent, blinded evaluation roles: evidence auditor,
+type-specific progress evaluator, and skeptic. Each receives the same frozen
+rubric version and records a 1–5 progress score, rationale, and evidence
+references before aggregation. Randomize answer order, reverse the order for a
+prespecified sample, aggregate with the median, preserve all votes, and send
+cases with a score range greater than two points to human review.
+
+Measure deterministic citation validity, source coverage, contradiction with
+validated prior facts, duplicate claims, schema validity, and unsupported
+claims alongside the council score. The comparison report includes paired
+score differences, treatment wins/ties/losses, score distribution, evaluator
+agreement, missing results, input/output tokens, total generation and grader
+cost, latency, tool calls, fallback rate, and cohorts by history length and
+evidence complexity.
+
 ### Exit criteria
 
 - Dataset snapshots cannot change after use.
 - Control runs are reproducible within provider limitations.
 - Comparison reports include evaluator disagreement and missing-result rates.
+- Every type-specific progress rubric and council evaluator used in a decision
+  is immutable and calibrated against a human-scored seed set for that rubric;
+  calibration from one idea type cannot be assumed to transfer to another.
+- Research checkpoints are reproducible from their source manifests and never
+  silently change after use.
+- `checkpoint_delta_v1` is eligible for scheduled shadow testing only if its
+  mean paired progress difference is within a prespecified 0.25-point
+  non-inferiority margin, its 4–5 score rate is no more than five percentage
+  points below control, contradiction and unsupported-claim rates do not
+  increase materially, and input tokens fall by at least 40%.
 
 ## 10. Milestone 6 — Controlled experimentation
 
@@ -472,11 +638,52 @@ Use feed/evidence ranking because it provides relatively high volume and low-ris
 - Secondary: cost per accepted item and time to feedback.
 - Guardrails: invalid-output rate, latency, total daily cost, and exposure imbalance.
 
+### Scheduled research context experiment
+
+After the Milestone 5 offline gate passes, run a separate scheduled shadow
+experiment for research continuations:
+
+- Control: `full_history_v1`; it remains the only authoritative writer.
+- Treatment: `checkpoint_delta_v1`; it is read-only during shadow operation.
+- Randomization unit: idea ID, with sticky assignment within an experiment.
+- Enrollment unit: one scheduled research objective frozen when the job is
+  enqueued.
+- Primary metric: median `research.answer_progress` and the paired treatment
+  minus control difference.
+- Secondary metrics: 4–5 rate, input-token reduction, total cost including
+  graders, latency, and useful novelty.
+- Guardrails: contradiction rate, unsupported claims, invalid citations,
+  missing output, evaluator disagreement, fallback rate, and duplicate
+  mutations.
+
+Freeze the idea type or temporary rubric assignment, rubric version, research
+objective, checkpoint ID/hash, evidence cutoff, delta boundary, context policy,
+workflow version, model configuration, and experiment assignment at enqueue
+time. New evidence arriving after enqueue belongs to a later job; it must not
+make the paired inputs diverge.
+
+All candidate and evaluator runs share one trace tree but cannot read one
+another's hidden treatment identity. A missing, stale, invalid, or disputed
+checkpoint routes the treatment to full context and records the fallback. The
+shadow run does not create a `ResearchEntry`, alter an idea, or advance the
+schedule. Exactly one authoritative completion advances the schedule.
+
+After a successful shadow gate, a limited-authority experiment may allow the
+treatment to become the single writer for a small eligible cohort. Exclude
+ideas without a validated checkpoint, with unresolved source contradictions,
+with material human edits after the checkpoint, or whose scheduled action is
+irreversible. A guardrail breach pauses new treatment enrollment; it does not
+rewrite history or automatically promote/roll back a workflow version.
+
 ### Exit criteria
 
 - Assignment is stable across retries and repeat views.
 - One shadow and one limited online experiment complete end to end.
 - A decision can promote a winner through the existing approval model without rewriting history.
+- Scheduled research never advances its clock twice, and no shadow candidate
+  creates a user-visible projection.
+- Promotion of `checkpoint_delta_v1` requires the prespecified progress,
+  correctness, cost, and cohort gates; token savings alone cannot win.
 
 ## 11. Milestone 7 — Sources and evidence redesign
 
@@ -586,16 +793,17 @@ Do not classify deterministic feed fetches, media rendering, or repository comma
 
 | Release | Production behavior | Rollback |
 | --- | --- | --- |
-| R0 | Schema only; instrumentation disabled | Reverse additive migration if unused |
-| R1 | Shadow trace creation for feed scoring | Disable feature flag |
-| R2 | Trace all shell workflows; legacy outputs authoritative | Disable wrapper; retain records |
-| R3 | Gateway authoritative for feed scoring and research | Route those workflows back to compatibility wrapper |
-| R4 | Feedback UI and deterministic evaluators | Hide controls; events remain valid |
-| R5 | Offline evaluation and shadow experiments | Pause runners |
-| R6 | Limited online feed-ranking experiment | Pause enrollment; control remains active |
-| R7 | Evidence queue replaces feed inbox | Restore old UI read path |
-| R8 | New taxonomy/lifecycle becomes authoritative | Use compatibility mapping/read adapter |
-| R9 | Remaining workflows migrated | Per-workflow rollback flags |
+| R0–R4 (deployed) | Execution ledger, compatibility instrumentation, initial source pipeline, Phase 4 vertical provenance, outcome events, and reversible workflow cutovers | Use the recorded per-workflow cutover mode; retain audit history |
+| R4.1 | Reconcile production trace completeness, attribution, measurements, payload health, cutover modes, and rollback tests | No behavior change; correct records and configuration without rerunning LLM work |
+| R5A | Generic metrics/evaluators/results, human-feedback foundation, and immutable dataset snapshots | Disable evaluator and feedback projection flags; retain records |
+| R5B | Immutable research checkpoints and versioned full-history/checkpoint-delta context policies | Disable checkpoint construction/use; retain checkpoints for audit |
+| R5C | Offline paired research-context evaluation with blinded council scoring | Pause offline runners; no production projections are affected |
+| R6A | Limited online feed-ranking experiment | Pause enrollment; control remains active |
+| R6B | Scheduled research context shadow experiment; full context remains authoritative | Disable shadow execution; scheduling and control writes continue unchanged |
+| R7 | Limited checkpoint-context authority for an eligible idea cohort | Pause enrollment and route all new work to `full_history_v1` |
+| R8 | Evidence-queue completion and broader context-policy rollout if approved | Restore previous read path and context workflow version |
+| R9 | New taxonomy/lifecycle becomes authoritative | Use compatibility mapping/read adapter |
+| R10 | Remaining workflows migrated | Per-workflow rollback flags |
 
 Database rollback should normally mean disabling new writers and restoring prior read paths, not deleting execution history.
 
@@ -604,6 +812,9 @@ Database rollback should normally mean disabling new writers and restoring prior
 ### Unit tests
 
 - Model invariants, assignment hashing, pricing, metrics, redaction, schema validation, and attribution.
+- Research-checkpoint immutability, source-manifest hashing, cutoff handling,
+  context-policy rendering, stale-checkpoint fallback, rubric applicability,
+  migration mapping, and 1–5 progress-score validation.
 
 ### Contract tests
 
@@ -615,6 +826,13 @@ Database rollback should normally mean disabling new writers and restoring prior
 
 - Job lifecycle, retry, lease expiry, projection, evaluator child runs, feedback, and observations.
 - Current shell workflows with fake provider binaries.
+- Paired context runs share the frozen case but not generated answers or hidden
+  treatment labels.
+- Shadow treatment cannot create a research entry, change an idea, or advance a
+  repeat/research schedule.
+- The authoritative completion advances a schedule exactly once across retries.
+- Council votes remain independent, retain order-randomization metadata, and
+  escalate when the score range exceeds two points.
 
 ### Migration tests
 
@@ -628,6 +846,11 @@ Database rollback should normally mean disabling new writers and restoring prior
 - Scheduled feed item through ranking, exposure, and useful/irrelevant action.
 - Relationship suggestion through council and human decision.
 - Experiment assignment through observation and approved promotion.
+- Frozen scheduled research case through full-context and checkpoint-delta
+  generation, blinded council scoring, paired analysis, and a non-mutating
+  shadow decision.
+- Limited-authority checkpoint run through projection attribution and immediate
+  feature-flag fallback to full context.
 
 ### Production verification
 
@@ -635,6 +858,9 @@ Database rollback should normally mean disabling new writers and restoring prior
 - Provider usage and invoice reconciliation.
 - Canary workflow cohort.
 - Synthetic scheduled job and stuck-lease alert.
+- Sampled reconstruction of checkpoint inputs from stored manifests and hashes.
+- Sample-ratio, treatment leakage, order-bias, evaluator disagreement, fallback,
+  and double-schedule-advance monitoring for the research experiment.
 
 ## 17. Definition of done
 
@@ -646,23 +872,38 @@ The program is complete when:
 - Prompt, model, context, workflow, and evaluator versions used by a run are reproducible.
 - Users can provide explicit feedback, and outcome attribution works across the primary workflows.
 - Offline evaluation and controlled online experiments operate with stable assignment and guardrails.
+- Scheduled research can use a reproducible checkpoint-plus-delta context policy
+  without losing progress quality, increasing factual guardrail failures, or
+  advancing a job twice.
 - The feed backlog has been replaced by a bounded, measurable evidence funnel.
 - Category and lifecycle migration is reconciled and reversible during the support window.
 - Security, backup/restore, budget, and incident runbooks have been exercised.
 - The previous execution paths can be retired without losing historical auditability.
 
-## 18. Recommended first development slice
+## 18. Recommended next development slice after R4
 
-The first mergeable slice should be deliberately narrow:
+The next mergeable slice should complete measurement prerequisites without
+changing authoritative research behavior:
 
-1. Create the `executions` app.
-2. Add `WorkflowDefinition`, `WorkflowVersion`, `ExecutionTrace`, `ModelConfiguration`, `LLMRun`, `ExecutionEvent`, and `PricingVersion`.
-3. Add protected local payload storage and hashing.
-4. Add trace/run service functions and operator admin pages.
-5. Add nullable `produced_by_run` to `FeedItemAssessment`.
-6. Instrument `score_items.sh` using fake-provider-compatible wrapper commands.
-7. Add run inspection for feed scoring.
-8. Deploy behind `IDEAFLOW_EXECUTION_INSTRUMENTATION=false`.
-9. Enable for one scheduled feed-scoring batch, reconcile, then expand.
+1. Produce the R4.1 reconciliation report and resolve any unattributed or
+   incomplete production workflow population.
+2. Add immutable `MetricDefinition`, `EvaluatorDefinition`,
+   `EvaluatorVersion`, and `EvaluationResult` records.
+3. Implement the shared 1–5 anchors, the initial type-specific rubric family,
+   explicit rubric applicability, and deterministic score validation; start
+   with `research.answer_progress` for the context experiment.
+4. Add `ResearchCheckpoint`, structured-state validation, source manifests,
+   evidence cutoffs, and stable content hashes.
+5. Add `full_history_v1` and `checkpoint_delta_v1` to the context builder and
+   record their complete manifests without changing production selection.
+6. Build a small human-scored seed dataset spanning short, long, conflicting,
+   stale, and multi-hop research histories, with an explicit frozen rubric key
+   on every case.
+7. Run paired offline generation and three independent blinded evaluator roles,
+   including answer-order reversal for a prespecified sample.
+8. Publish the paired quality/cost report and make an explicit proceed, revise,
+   or stop decision against the R5 exit thresholds.
 
-This slice exercises prompt provenance, tokens, cost, failure handling, a user-visible projection, and high-volume production behavior without risking the core research workflow first.
+Only after this slice passes should scheduled shadow execution be enabled. The
+first shadow release keeps full context authoritative, makes the treatment
+strictly read-only, and proves that scheduling advances exactly once.

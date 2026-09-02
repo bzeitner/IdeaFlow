@@ -8,7 +8,6 @@ from django.db import IntegrityError, transaction
 
 from ideas.models import (
     AGENT_RUNS_BEFORE_FEEDBACK,
-    STANDING_ADMIN_EMAIL,
     Episode,
     EpisodeRun,
     EpisodeRunStatus,
@@ -168,30 +167,17 @@ class ProfileAdminSyncTests(TestCase):
 
 
 class ProvisionProfileSignalTests(TestCase):
-    def test_standing_admin_email_gets_every_role(self):
-        user = User.objects.create_user(username="brad", email=STANDING_ADMIN_EMAIL)
-        profile = user.profile
-        self.assertTrue(profile.role_admin)
-        self.assertTrue(profile.role_current)
-        self.assertTrue(profile.role_tracking)
-        self.assertTrue(profile.role_archive)
-        self.assertTrue(profile.role_add_ideas)
-        user.refresh_from_db()
-        self.assertTrue(user.is_staff)
-        self.assertTrue(user.is_superuser)
-
-    def test_standing_admin_match_is_case_insensitive(self):
-        user = User.objects.create_user(username="brad2", email="BZeitner@Gmail.com")
-        self.assertTrue(user.profile.role_admin)
-
-    def test_other_emails_get_no_roles(self):
-        user = User.objects.create_user(username="other", email="other@example.com")
+    def test_ordinary_user_gets_no_roles(self):
+        user = User.objects.create_user(username="ordinary", email="ordinary@example.com")
         profile = user.profile
         self.assertFalse(profile.role_admin)
         self.assertFalse(profile.role_current)
         self.assertFalse(profile.role_tracking)
         self.assertFalse(profile.role_archive)
         self.assertFalse(profile.role_add_ideas)
+        user.refresh_from_db()
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
 
     def test_createsuperuser_style_creation_is_not_immediately_undone(self):
         # manage.py createsuperuser sets is_superuser=True before the first
@@ -209,7 +195,7 @@ class ProvisionProfileSignalTests(TestCase):
         profile = user.profile
         self.assertFalse(profile.role_admin)
 
-        user.email = STANDING_ADMIN_EMAIL
+        user.email = "updated@example.com"
         user.save()
 
         profile.refresh_from_db()
