@@ -20,9 +20,6 @@ from .podcast_policy import PODCAST_MAX_DURATION_SECONDS
 
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
 
-# The one email that's always fully provisioned — everyone else starts with no roles.
-STANDING_ADMIN_EMAIL = "bzeitner@gmail.com"
-
 # Feed caps per idea, and how many agent runs an idea gets before it pauses for
 # a human (adding a next action or clicking "Continue work").
 FEED_CAP = 5
@@ -1770,10 +1767,7 @@ def provision_profile(sender, instance, created, **kwargs):
         return
     # `manage.py createsuperuser` already set is_superuser — respect that as
     # admin intent too, so Profile.save()'s sync doesn't immediately undo it.
-    is_admin = (
-        instance.is_superuser
-        or instance.email.strip().lower() == STANDING_ADMIN_EMAIL
-    )
+    is_admin = instance.is_superuser
     Profile.objects.get_or_create(
         user=instance,
         defaults={

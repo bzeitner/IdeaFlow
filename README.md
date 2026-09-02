@@ -89,9 +89,11 @@ Every signed-in user gets a `Profile` with six independent role flags:
 | Knowledge Graph | Inspect relationships and launch the read-only Graph Lab |
 
 New users start with **no roles** — an admin has to grant access at `/users/` (linked from
-the top bar as "Users" for admins). The one exception: `bzeitner@gmail.com` always gets every
-role automatically on first sign-in. Moving an idea between tabs only requires the role for
-the tab it's currently in, not the destination tab.
+the top bar as "Users" for admins). Administrative access is stored in the database through
+the profile's **Admin** role; no email address receives implicit privileges. Bootstrap the
+first administrator with `manage.py createsuperuser`, then manage subsequent access through
+User Management. Moving an idea between tabs only requires the role for the tab it's
+currently in, not the destination tab.
 
 An idea marked **Public** (`is_public`) is listed on the home page and readable by *any*
 signed-in user, including those with no tab roles — but editing it still requires the tab's

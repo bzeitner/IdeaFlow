@@ -401,8 +401,17 @@ nano ~/IdeaFlow/.env         # GOOGLE_OAUTH_CLIENT_ID / _SECRET
 sudo systemctl restart ideaflow
 ```
 
-Sign in at https://ideaflow.bitesoftheweek.com/ — `bzeitner@gmail.com` is auto-granted
-every role on first sign-in.
+Administrative access is stored in the database and no email address receives
+implicit privileges. Bootstrap the first administrator on the server if one
+does not already exist:
+
+```bash
+cd /home/ideaflow/IdeaFlow
+.venv/bin/python manage.py createsuperuser
+```
+
+After signing in as that administrator, grant or revoke subsequent access from
+User Management at `/users/`.
 
 ---
 
