@@ -1838,6 +1838,11 @@ def feeds(request):
         Prefetch("assessments", queryset=accessible_assessments, to_attr="accessible_assessments"),
     )
     page = Paginator(items, 25).get_page(request.GET.get("page"))
+    for item in page:
+        for link in item.feed.accessible_links:
+            link.idea.can_manage_feed_ingestion = profile.can_manage_status(
+                link.idea.status
+            )
     rows = [
         {
             "item": item,
@@ -1894,13 +1899,24 @@ def toggle_feed_ingestion_pause(request, pk):
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_status_role(request, idea.status)
     if denied:
+        if request.headers.get("Accept") == "application/json":
+            return JsonResponse(
+                {"ok": False, "error": "You cannot manage feeds for this Idea."},
+                status=403,
+            )
         return denied
     if idea.is_archived:
-        messages.error(request, "Archived ideas cannot resume feed ingestion.")
+        error = "Archived ideas cannot resume feed ingestion."
+        if request.headers.get("Accept") == "application/json":
+            return JsonResponse({"ok": False, "error": error}, status=400)
+        messages.error(request, error)
     else:
         desired = request.POST.get("paused")
         if desired not in {"0", "1"}:
-            messages.error(request, "Choose whether feed ingestion should be paused.")
+            error = "Choose whether feed ingestion should be paused."
+            if request.headers.get("Accept") == "application/json":
+                return JsonResponse({"ok": False, "error": error}, status=400)
+            messages.error(request, error)
             back = request.POST.get("next", "")
             if not back.startswith("?"):
                 back = ""
@@ -1908,6 +1924,15 @@ def toggle_feed_ingestion_pause(request, pk):
         idea.feed_ingestion_paused = desired == "1"
         idea.save(update_fields=["feed_ingestion_paused", "updated_at"])
         state = "paused" if idea.feed_ingestion_paused else "resumed"
+        if request.headers.get("Accept") == "application/json":
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "idea_id": idea.pk,
+                    "paused": idea.feed_ingestion_paused,
+                    "state": state,
+                }
+            )
         messages.success(request, f"Feed ingestion {state} for “{idea.title}”.")
     back = request.POST.get("next", "")
     if not back.startswith("?"):

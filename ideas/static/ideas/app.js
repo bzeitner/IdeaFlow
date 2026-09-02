@@ -202,6 +202,59 @@
     });
   });
 
+  document.querySelectorAll("[data-feed-pause-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const ideaId = form.dataset.ideaId;
+      const forms = Array.from(document.querySelectorAll(`[data-feed-pause-form][data-idea-id='${ideaId}']`));
+      const status = form.querySelector("[data-feed-pause-status]");
+      const formData = new FormData(form);
+      forms.forEach((instance) => {
+        const button = instance.querySelector("[data-feed-pause-button]");
+        if (button) button.disabled = true;
+      });
+      if (status) status.textContent = "Saving…";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: formData,
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not save");
+        forms.forEach((instance) => {
+          const input = instance.querySelector("input[name='paused']");
+          const button = instance.querySelector("[data-feed-pause-button]");
+          const instanceStatus = instance.querySelector("[data-feed-pause-status]");
+          if (input) input.value = payload.paused ? "0" : "1";
+          if (button) {
+            button.textContent = payload.paused ? "Resume feeds" : "Pause feeds";
+            button.classList.toggle("is-paused", payload.paused);
+          }
+          if (instanceStatus) instanceStatus.textContent = "Saved";
+        });
+        document.querySelectorAll(`[data-feed-pause-label][data-idea-id='${ideaId}']`).forEach((label) => {
+          label.textContent = payload.paused ? "Feed ingestion paused" : "Feed ingestion active";
+        });
+        window.setTimeout(() => {
+          forms.forEach((instance) => {
+            const instanceStatus = instance.querySelector("[data-feed-pause-status]");
+            if (instanceStatus?.textContent === "Saved") instanceStatus.textContent = "";
+          });
+        }, 1800);
+      } catch (error) {
+        if (status) status.textContent = error.message;
+      } finally {
+        forms.forEach((instance) => {
+          const button = instance.querySelector("[data-feed-pause-button]");
+          if (button) button.disabled = false;
+        });
+        actionStarted = false;
+      }
+    });
+  });
+
   document.querySelectorAll("[data-repeat-result-form]").forEach((form) => {
     const select = form.querySelector("select[name='status']");
     const saveStatus = form.querySelector("[data-save-status]");

@@ -13,6 +13,7 @@ from ideas.models import (
     EpisodeRun,
     EpisodeRunStatus,
     EpisodeStatus,
+    Idea,
     IdeaPersona,
     Persona,
     PodcastShow,
@@ -52,6 +53,10 @@ class LookupBaseSlugTests(TestCase):
 
 
 class IdeaStarsTests(TestCase):
+    def test_new_ideas_default_to_paused_feed_ingestion(self):
+        idea = Idea.objects.create(title="Paused by default", category=make_category())
+        self.assertTrue(idea.feed_ingestion_paused)
+
     def test_stars_reflects_interest_level(self):
         idea = make_idea(interest_level=3)
         self.assertEqual(idea.stars, "★★★☆☆")

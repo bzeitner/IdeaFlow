@@ -26,6 +26,9 @@ def make_ai_model(**kwargs):
 
 def make_idea(category=None, status=Status.CURRENT, **kwargs):
     kwargs.setdefault("title", f"Idea {next(_counter)}")
+    # Most fixtures exercise active feed behavior; default-specific tests
+    # create an Idea directly.
+    kwargs.setdefault("feed_ingestion_paused", False)
     return Idea.objects.create(
         category=category or make_category(), status=status, **kwargs
     )

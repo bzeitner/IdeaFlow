@@ -49,19 +49,21 @@
       {% if selected_idea.is_archived %}
         <span class="dim">Archived — feed ingestion disabled</span>
       {% elif selected_idea.feed_ingestion_paused %}
-        <span class="dim">Feed ingestion paused</span>
+        <span class="dim" data-feed-pause-label data-idea-id="{{ selected_idea.id }}">Feed ingestion paused</span>
         {% if can_manage_selected_idea %}
-        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}">
+        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}" data-feed-pause-form data-idea-id="{{ selected_idea.id }}">
           {% csrf_token %}<input type="hidden" name="next" value="{{ querystring }}"><input type="hidden" name="paused" value="0">
-          <button class="btn small" type="submit">Resume feeds</button>
+          <button class="btn small" type="submit" data-feed-pause-button>Resume feeds</button>
+          <span class="dim feed-pause-status" data-feed-pause-status aria-live="polite"></span>
         </form>
         {% endif %}
       {% else %}
-        <span class="dim">Feed ingestion active</span>
+        <span class="dim" data-feed-pause-label data-idea-id="{{ selected_idea.id }}">Feed ingestion active</span>
         {% if can_manage_selected_idea %}
-        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}">
+        <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' selected_idea.id %}" data-feed-pause-form data-idea-id="{{ selected_idea.id }}">
           {% csrf_token %}<input type="hidden" name="next" value="{{ querystring }}"><input type="hidden" name="paused" value="1">
-          <button class="btn small" type="submit">Pause feeds</button>
+          <button class="btn small" type="submit" data-feed-pause-button>Pause feeds</button>
+          <span class="dim feed-pause-status" data-feed-pause-status aria-live="polite"></span>
         </form>
         {% endif %}
       {% endif %}
@@ -83,8 +85,19 @@
         <p class="feed-associations">
           <span class="dim">Associated Ideas:</span>
           {% for idea in row.ideas %}
-            <a href="{% url 'ideas:detail' idea.id %}">{{ idea.title }}</a>
-            {% include "ideas/_pill.html" with obj=idea.category %}{% if not forloop.last %}, {% endif %}
+            <span class="feed-associated-idea">
+              <a href="{% url 'ideas:detail' idea.id %}">{{ idea.title }}</a>
+              {% include "ideas/_pill.html" with obj=idea.category %}
+              {% if idea.is_archived %}
+                <span class="dim">Feeds off</span>
+              {% elif idea.can_manage_feed_ingestion %}
+                <form method="post" action="{% url 'ideas:toggle_feed_ingestion_pause' idea.id %}" data-feed-pause-form data-idea-id="{{ idea.id }}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ querystring }}"><input type="hidden" name="paused" value="{% if idea.feed_ingestion_paused %}0{% else %}1{% endif %}">
+                  <button class="feed-pause-button{% if idea.feed_ingestion_paused %} is-paused{% endif %}" type="submit" data-feed-pause-button>{% if idea.feed_ingestion_paused %}Resume feeds{% else %}Pause feeds{% endif %}</button>
+                  <span class="sr-only" data-feed-pause-status aria-live="polite"></span>
+                </form>
+              {% elif idea.feed_ingestion_paused %}<span class="dim">Feeds paused</span>{% endif %}
+            </span>
           {% empty %}<span class="dim">None visible</span>{% endfor %}
         </p>
 

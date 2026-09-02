@@ -681,6 +681,22 @@ class FeedPageTests(TestCase):
         self.assertContains(response, "data-feed-rating-form")
         self.assertContains(response, "data-feed-rating-status")
 
+    def test_feed_items_show_always_visible_pause_controls_for_associated_ideas(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        idea = make_idea(title="Pauseable Idea")
+        feed = make_feed()
+        link_feed(idea, feed)
+        make_feed_item(feed=feed)
+
+        response = self.client.get(reverse("ideas:feeds"))
+
+        self.assertContains(response, "Pauseable Idea")
+        self.assertContains(response, f'data-idea-id="{idea.pk}"')
+        self.assertContains(response, "data-feed-pause-form")
+        self.assertContains(response, "Pause feeds")
+
     def test_rate_sets_info_value(self):
         self._login()
         item = make_feed_item()
@@ -762,6 +778,24 @@ class FeedPageTests(TestCase):
         self.client.post(url, {"paused": "0"})
         idea.refresh_from_db()
         self.assertFalse(idea.feed_ingestion_paused)
+
+    def test_pause_returns_json_for_in_place_save(self):
+        self._login()
+        idea = make_idea()
+
+        response = self.client.post(
+            reverse("ideas:toggle_feed_ingestion_pause", args=[idea.pk]),
+            {"paused": "1"},
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"ok": True, "idea_id": idea.pk, "paused": True, "state": "paused"},
+        )
+        idea.refresh_from_db()
+        self.assertTrue(idea.feed_ingestion_paused)
 
     def test_archived_idea_cannot_resume_ingestion(self):
         self._login(("role_archive",))
