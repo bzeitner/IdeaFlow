@@ -1755,6 +1755,9 @@ def feeds(request):
     total_count = items.count()
 
     idea_value = request.GET.get("idea", "")
+    idea_lookup = request.GET.get("idea_lookup", "").strip().removeprefix("#")
+    if not idea_value and idea_lookup.isdigit():
+        idea_value = idea_lookup
     selected_idea = None
     if idea_value.isdigit():
         selected_idea = accessible_ideas.filter(pk=int(idea_value)).first()

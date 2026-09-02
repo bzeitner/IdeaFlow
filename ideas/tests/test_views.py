@@ -783,6 +783,45 @@ class FeedPageTests(TestCase):
         self.assertContains(response, "Robotics")
         self.assertNotContains(response, "Garden item")
 
+    def test_idea_number_search_filters_feeds_and_selects_the_idea_name(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        wanted = make_idea(pk=77, title="Idea Seventy Seven")
+        other = make_idea(title="Another Idea")
+        wanted_feed, other_feed = make_feed(), make_feed()
+        link_feed(wanted, wanted_feed)
+        link_feed(other, other_feed)
+        make_feed_item(feed=wanted_feed, title="Wanted item")
+        make_feed_item(feed=other_feed, title="Other item")
+
+        response = self.client.get(reverse("ideas:feeds"), {"idea_lookup": "#77"})
+
+        self.assertContains(response, "Wanted item")
+        self.assertNotContains(response, "Other item")
+        self.assertContains(response, '<option value="77" selected>Idea Seventy Seven</option>')
+        self.assertContains(response, 'name="idea_lookup"')
+
+    def test_explicit_idea_selector_takes_precedence_over_number_search(self):
+        from ideas.feeds import link_feed
+
+        self._login()
+        searched = make_idea(pk=77, title="Searched Idea")
+        selected = make_idea(title="Selected Idea")
+        searched_feed, selected_feed = make_feed(), make_feed()
+        link_feed(searched, searched_feed)
+        link_feed(selected, selected_feed)
+        make_feed_item(feed=searched_feed, title="Search result")
+        make_feed_item(feed=selected_feed, title="Selected result")
+
+        response = self.client.get(
+            reverse("ideas:feeds"),
+            {"idea": selected.pk, "idea_lookup": "77"},
+        )
+
+        self.assertContains(response, "Selected result")
+        self.assertNotContains(response, "Search result")
+
     def test_pause_is_post_only_and_requires_idea_role(self):
         idea = make_idea(status=Status.TRACKING)
         user = self._login(("role_current",))
