@@ -53,6 +53,7 @@ REVIEW=0
 REFLECT=0
 DRY_RUN=0
 DELAY=0
+JOB_LEASE_SECONDS="${IDEAFLOW_JOB_LEASE_SECONDS:-3600}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -78,6 +79,7 @@ case "$AGENT" in
 esac
 [[ "$MIN" =~ ^[0-9]+$ ]] || { echo "error: --min must be a whole number." >&2; exit 2; }
 [[ "$DELAY" =~ ^[0-9]+$ ]] || { echo "error: --delay must be a whole number of seconds." >&2; exit 2; }
+[[ "$JOB_LEASE_SECONDS" =~ ^[0-9]+$ ]] || { echo "error: IDEAFLOW_JOB_LEASE_SECONDS must be a whole number of seconds." >&2; exit 2; }
 
 STATE_FILE="$(mktemp -t ideaflow-selection.json.XXXXXX)"
 RUN_METRICS_FILE="$(mktemp -t ideaflow-run-metrics.tsv.XXXXXX)"
@@ -290,7 +292,15 @@ for i in "${!IDS[@]}"; do
   "$IFCLI" dump-idea "$id" > "$before_file" 2>/dev/null || printf '{}\n' > "$before_file"
   echo
   echo "=== [$((i + 1))/${#IDS[@]}] ${mode}: ${title} (#${id}) ==="
-  if ./research_idea.sh "$id" "$mode"; then
+  claim_file="$(mktemp -t ideaflow-claim.json.XXXXXX)"
+  if ! "$IFCLI" claim-job "$id" --workflow "$mode" --lease-seconds "$JOB_LEASE_SECONDS" > "$claim_file"; then
+    echo "=== ${title} (#${id}) skipped: already claimed ===" >&2
+    rm -f "$before_file" "$after_file" "$claim_file"
+    continue
+  fi
+  job_token="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["job_token"])' "$claim_file")"
+  rm -f "$claim_file"
+  if IDEAFLOW_JOB_TOKEN="$job_token" ./research_idea.sh "$id" "$mode"; then
     echo "=== ${title} (#${id}) done ==="
   else
     echo "!!! ${title} (#${id}) failed (continuing) !!!" >&2

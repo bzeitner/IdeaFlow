@@ -1,11 +1,13 @@
 import json
+import hashlib
+from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from executions.models import ArtifactVersion, CutoverMode, DeterministicJob, OutcomeEvent, WorkflowCutover
-from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
+from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, Idea, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
 
 from .helpers import make_idea, make_podcast_show, make_stage, make_user
 
@@ -31,6 +33,63 @@ class ApiAuthTests(TestCase):
         idea = make_idea()
         response = self.client.get(f"/api/ideas/{idea.pk}/", HTTP_X_API_TOKEN=TOKEN)
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(IDEAFLOW_API_TOKEN=TOKEN)
+class ApiIdeaJobLeaseTests(TestCase):
+    def claim(self, idea, workflow="research", lease_seconds=3600):
+        return self.client.post(
+            f"/api/ideas/{idea.pk}/claim/",
+            data=json.dumps({"workflow": workflow, "lease_seconds": lease_seconds}),
+            content_type="application/json",
+            **AUTH,
+        )
+
+    def test_claim_returns_token_and_blocks_a_second_claim(self):
+        idea = make_idea()
+        first = self.claim(idea)
+        self.assertEqual(first.status_code, 201)
+        token = first.json()["job_token"]
+        idea.refresh_from_db()
+        self.assertEqual(idea.job_lease_token_hash, hashlib.sha256(token.encode()).hexdigest())
+        self.assertNotEqual(idea.job_lease_token_hash, token)
+        self.assertEqual(self.claim(idea).status_code, 409)
+
+    def test_lease_duration_is_configurable_per_claim(self):
+        idea = make_idea()
+        before = timezone.now()
+        response = self.claim(idea, lease_seconds=7200)
+        self.assertEqual(response.status_code, 201)
+        idea.refresh_from_db()
+        self.assertGreaterEqual(idea.job_lease_expires_at, before + timedelta(seconds=7199))
+
+    def test_claimed_effort_requires_matching_unexpired_token_and_releases_lease(self):
+        idea = make_idea()
+        token = self.claim(idea).json()["job_token"]
+        path = f"/api/ideas/{idea.pk}/effort/"
+        payload = {"topic": "finished", "model": "other"}
+        rejected = self.client.post(path, data=json.dumps(payload), content_type="application/json", **AUTH)
+        self.assertEqual(rejected.status_code, 409)
+        payload["job_token"] = token
+        accepted = self.client.post(path, data=json.dumps(payload), content_type="application/json", **AUTH)
+        self.assertEqual(accepted.status_code, 201)
+        idea.refresh_from_db()
+        self.assertEqual(idea.job_lease_token_hash, "")
+        self.assertIsNone(idea.job_lease_expires_at)
+
+    def test_expired_token_is_rejected_and_job_can_be_reclaimed(self):
+        idea = make_idea()
+        old_token = self.claim(idea).json()["job_token"]
+        Idea.objects.filter(pk=idea.pk).update(job_lease_expires_at=timezone.now() - timedelta(seconds=1))
+        payload = {"topic": "late", "model": "other", "job_token": old_token}
+        response = self.client.post(
+            f"/api/ideas/{idea.pk}/effort/", data=json.dumps(payload),
+            content_type="application/json", **AUTH,
+        )
+        self.assertEqual(response.status_code, 409)
+        reclaimed = self.claim(idea, workflow="review")
+        self.assertEqual(reclaimed.status_code, 201)
+        self.assertNotEqual(reclaimed.json()["job_token"], old_token)
 
 
 @override_settings(IDEAFLOW_API_TOKEN="")
