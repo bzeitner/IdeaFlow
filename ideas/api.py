@@ -792,15 +792,10 @@ def idea_effort(request, pk):
             {"error": "Idea is archived — agents don't work archived ideas."},
             status=409,
         )
-    if idea.is_paused:
-        return JsonResponse(
-            {
-                "error": "Idea is paused for human feedback — add a next action or "
-                "click Continue work before agents work it again.",
-                "agent_runs_since_feedback": idea.agent_runs_since_feedback,
-            },
-            status=409,
-        )
+    # The feedback pause prevents the scheduler from starting more work; it must
+    # not reject write-back from a run that was already in flight when another
+    # concurrent run crossed the threshold. Feed ingestion has its own separate
+    # pause flag and likewise never blocks effort reporting.
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
