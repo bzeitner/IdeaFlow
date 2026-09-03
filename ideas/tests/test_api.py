@@ -1099,14 +1099,23 @@ class ApiPauseAndRatingTests(TestCase):
             path, data=json.dumps(payload), content_type="application/json", **AUTH
         )
 
-    def test_effort_blocked_when_paused(self):
+    def test_effort_from_in_flight_run_is_accepted_when_feedback_paused(self):
         from .helpers import make_idea as mk
 
         idea = mk()
         idea.agent_runs_since_feedback = 2
         idea.save()
         r = self._post(f"/api/ideas/{idea.pk}/effort/", {"topic": "t", "model": "other"})
-        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(ResearchEntry.objects.filter(idea=idea).count(), 1)
+
+    def test_feed_ingestion_pause_does_not_block_effort(self):
+        from .helpers import make_idea as mk
+
+        idea = mk(feed_ingestion_paused=True)
+        r = self._post(f"/api/ideas/{idea.pk}/effort/", {"topic": "t", "model": "other"})
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(ResearchEntry.objects.filter(idea=idea).count(), 1)
 
     def test_add_feed_stores_rating_on_link(self):
         from .helpers import make_idea as mk

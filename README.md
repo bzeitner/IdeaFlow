@@ -483,9 +483,11 @@ lowest-rated links when new ones are added. `dump-idea` returns an idea's curate
 `feeds` plus its recent summarized `recent_articles`, and the review agent folds
 those into its synthesis; the detail page shows both.
 
-**Pause for feedback.** An idea pauses after **3 agent runs** without human
-feedback: the effort API returns `409` and `research_all.sh` skips it until you
-add a next action or click **Continue work** on its detail page.
+**Pause for feedback.** An idea pauses after **2 agent runs** without human
+feedback: `research_all.sh` skips starting new work until you add a next action
+or click **Continue work** on its detail page. The effort API still accepts
+write-back from work already in flight, so concurrent runs do not lose completed
+research. Pausing feed ingestion is independent and never pauses idea work.
 
 ## Deploying
 
