@@ -15,7 +15,9 @@ Unset token disables the whole API, so it stays off until you opt in.
 import hashlib
 import json
 import re
+import secrets
 from collections import defaultdict
+from datetime import timedelta
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -69,6 +71,35 @@ _DETAIL_PREFETCH = (
 # ?content=1 on /api/feed-items/ pulls full stored bodies; without an
 # explicit ?limit that would return the whole (megabytes-large) corpus.
 DEFAULT_CONTENT_LIMIT = 100
+DEFAULT_JOB_LEASE_SECONDS = 3600
+MAX_JOB_LEASE_SECONDS = 86400
+JOB_WORKFLOWS = {"research", "review", "execute", "critique", "repeat", "persona", "summary"}
+
+
+def _job_token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _verify_job_lease(idea, payload, workflows):
+    """Verify a claimed job. Unclaimed writes remain valid for manual/API use."""
+    if not idea.job_lease_token_hash:
+        return None
+    token = str((payload or {}).get("job_token") or "")
+    if not token:
+        return JsonResponse({"error": "This idea is leased; job_token is required."}, status=409)
+    if idea.job_lease_expires_at is None or idea.job_lease_expires_at <= timezone.now():
+        return JsonResponse({"error": "The job lease has expired."}, status=409)
+    if idea.job_lease_workflow not in workflows:
+        return JsonResponse({"error": "The job token is for a different workflow."}, status=409)
+    if not constant_time_compare(_job_token_hash(token), idea.job_lease_token_hash):
+        return JsonResponse({"error": "Invalid job token."}, status=409)
+    return None
+
+
+def _release_job_lease(idea):
+    idea.job_lease_token_hash = ""
+    idea.job_lease_workflow = ""
+    idea.job_lease_expires_at = None
 
 
 def _execution_run(payload, *, idea=None, workflows=()):
@@ -123,6 +154,39 @@ def require_api_token(view):
         return view(request, *args, **kwargs)
 
     return wrapped
+
+
+@require_api_token
+@transaction.atomic
+def idea_job_claim(request, pk):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    try:
+        payload = json.loads(request.body or b"{}")
+        workflow = str(payload.get("workflow") or "")
+        lease_seconds = int(payload.get("lease_seconds", DEFAULT_JOB_LEASE_SECONDS))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return JsonResponse({"error": "workflow and an integer lease_seconds are required."}, status=400)
+    if workflow not in JOB_WORKFLOWS:
+        return JsonResponse({"error": "Unknown workflow.", "allowed": sorted(JOB_WORKFLOWS)}, status=400)
+    if not 60 <= lease_seconds <= MAX_JOB_LEASE_SECONDS:
+        return JsonResponse({"error": f"lease_seconds must be between 60 and {MAX_JOB_LEASE_SECONDS}."}, status=400)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk)
+    now = timezone.now()
+    if idea.is_archived:
+        return JsonResponse({"error": "Idea is archived."}, status=409)
+    if idea.job_lease_token_hash and idea.job_lease_expires_at and idea.job_lease_expires_at > now:
+        return JsonResponse(
+            {"error": "Idea already has an active job lease.", "workflow": idea.job_lease_workflow,
+             "expires_at": idea.job_lease_expires_at.isoformat()}, status=409
+        )
+    token = secrets.token_urlsafe(32)
+    idea.job_lease_token_hash = _job_token_hash(token)
+    idea.job_lease_workflow = workflow
+    idea.job_lease_expires_at = now + timedelta(seconds=lease_seconds)
+    idea.save(update_fields=["job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
+    return JsonResponse({"idea_id": idea.pk, "workflow": workflow, "job_token": token,
+                         "expires_at": idea.job_lease_expires_at.isoformat(), "lease_seconds": lease_seconds}, status=201)
 
 
 @require_api_token
@@ -267,11 +331,12 @@ def idea_resource(request, pk, resource_pk):
 
 
 @require_api_token
+@transaction.atomic
 def idea_artifact(request, pk, artifact_pk=None):
     """Create or update a durable agent deliverable using multipart form data."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    idea = get_object_or_404(Idea, pk=pk)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk)
     artifact = (
         get_object_or_404(Artifact, pk=artifact_pk, idea=idea)
         if artifact_pk else None
@@ -306,6 +371,10 @@ def idea_artifact(request, pk, artifact_pk=None):
         produced_by_run.trace.workflow_version.workflow.key
         if produced_by_run else "summary" if kind == Artifact.Kind.SUMMARY else "research"
     )
+    if idea.job_lease_workflow == "summary":
+        lease_error = _verify_job_lease(idea, request.POST, {"summary"})
+        if lease_error:
+            return lease_error
     try:
         enforce_projection_write(workflow_key, produced_by_run)
     except Exception as exc:
@@ -351,7 +420,9 @@ def idea_artifact(request, pk, artifact_pk=None):
         )
     if kind == Artifact.Kind.SUMMARY and idea.summary_requested_at:
         idea.summary_requested_at = None
-        idea.save(update_fields=["summary_requested_at", "updated_at"])
+    if idea.job_lease_workflow == "summary":
+        _release_job_lease(idea)
+    idea.save(update_fields=["summary_requested_at", "job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
     return JsonResponse(
         {
             "artifact": {
@@ -447,7 +518,7 @@ def idea_reconcile_pr(request, pk):
 def idea_repeat_results(request, pk):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    idea = get_object_or_404(Idea, pk=pk, repeat_enabled=True)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk, repeat_enabled=True)
     if idea.is_archived:
         return JsonResponse({"error": "Idea is archived."}, status=409)
     if idea.repeat_paused:
@@ -456,6 +527,9 @@ def idea_repeat_results(request, pk):
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    lease_error = _verify_job_lease(idea, payload, {"repeat"})
+    if lease_error:
+        return lease_error
     results = payload.get("results")
     if not isinstance(results, list) or len(results) > 100:
         return JsonResponse({"error": "results must be a list of at most 100 items."}, status=400)
@@ -487,7 +561,8 @@ def idea_repeat_results(request, pk):
         if was_created:
             created.append(result.pk)
     idea.last_repeat_run_at = timezone.now()
-    idea.save(update_fields=["last_repeat_run_at", "updated_at"])
+    _release_job_lease(idea)
+    idea.save(update_fields=["last_repeat_run_at", "job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
     return JsonResponse({"created": created, "received": len(results), "completed_at": idea.last_repeat_run_at.isoformat()}, status=201)
 
 
@@ -589,7 +664,7 @@ def idea_podcast_episode(request, pk):
     gets its own completion path rather than overloading that one)."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    idea = get_object_or_404(Idea, pk=pk, repeat_enabled=True)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk, repeat_enabled=True)
     if idea.is_archived:
         return JsonResponse({"error": "Idea is archived."}, status=409)
     if idea.repeat_paused:
@@ -604,6 +679,9 @@ def idea_podcast_episode(request, pk):
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
+    lease_error = _verify_job_lease(idea, payload, {"repeat"})
+    if lease_error:
+        return lease_error
 
     try:
         produced_by_run = _execution_run(
@@ -721,7 +799,8 @@ def idea_podcast_episode(request, pk):
             actioned_ids.append(result.pk)
 
     idea.last_repeat_run_at = timezone.now()
-    idea.save(update_fields=["last_repeat_run_at", "updated_at"])
+    _release_job_lease(idea)
+    idea.save(update_fields=["last_repeat_run_at", "job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
     return JsonResponse(
         {
             "episode_id": episode.pk,
@@ -783,10 +862,11 @@ def idea_graph_context(request, pk):
 
 
 @require_api_token
+@transaction.atomic
 def idea_effort(request, pk):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    idea = get_object_or_404(Idea, pk=pk)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk)
     if idea.is_archived:
         return JsonResponse(
             {"error": "Idea is archived — agents don't work archived ideas."},
@@ -802,6 +882,9 @@ def idea_effort(request, pk):
         return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
+    lease_error = _verify_job_lease(idea, payload, {"research", "review", "execute", "critique"})
+    if lease_error:
+        return lease_error
 
     occurred_at = payload.get("occurred_at")
     if occurred_at:
@@ -846,6 +929,9 @@ def idea_effort(request, pk):
         )
     except (ValueError, LookupError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+
+    _release_job_lease(idea)
+    idea.save(update_fields=["job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
 
     idea = (
         Idea.objects.select_related("category", "stage", "created_by")
@@ -1204,7 +1290,7 @@ def idea_persona_review(request, pk):
     """Record one required-persona vote each and act only on unanimous approval."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    idea = get_object_or_404(Idea, pk=pk, persona_review_enabled=True)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk, persona_review_enabled=True)
     if idea.is_archived:
         return JsonResponse({"error": "Idea is archived."}, status=409)
     try:
@@ -1215,6 +1301,9 @@ def idea_persona_review(request, pk):
     votes = payload.get("votes") if isinstance(payload, dict) else None
     if not isinstance(proposal, dict) or not isinstance(votes, list):
         return JsonResponse({"error": "proposal must be an object and votes a list."}, status=400)
+    lease_error = _verify_job_lease(idea, payload, {"persona"})
+    if lease_error:
+        return lease_error
     try:
         produced_by_run = _execution_run(
             payload, idea=idea, workflows=("persona_council",)
@@ -1343,6 +1432,8 @@ def idea_persona_review(request, pk):
     update_fields = ["last_persona_review_at", "updated_at"]
     if acted:
         update_fields.extend(["next_action", "next_actions"])
+    _release_job_lease(idea)
+    update_fields.extend(["job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at"])
     idea.save(update_fields=update_fields)
     record_outcome(
         idea,
@@ -1548,6 +1639,7 @@ urlpatterns = [
     path("ideas/", idea_list, name="api_idea_list"),
     path("weekly-summaries/", weekly_summary_list, name="api_weekly_summary_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
+    path("ideas/<int:pk>/claim/", idea_job_claim, name="api_idea_job_claim"),
     path("ideas/<int:pk>/artifacts/", idea_artifact, name="api_idea_artifact_create"),
     path("ideas/<int:pk>/artifacts/<int:artifact_pk>/", idea_artifact, name="api_idea_artifact_update"),
     path("ideas/<int:pk>/reconcile-pr/", idea_reconcile_pr, name="api_idea_reconcile_pr"),

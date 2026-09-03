@@ -489,6 +489,14 @@ or click **Continue work** on its detail page. The effort API still accepts
 write-back from work already in flight, so concurrent runs do not lose completed
 research. Pausing feed ingestion is independent and never pauses idea work.
 
+**Atomic job leases.** Before launching each selected idea job,
+`research_all.sh` atomically calls `ideaflow claim-job`. A successful claim
+returns a secret token and leases that idea for one hour by default; set
+`IDEAFLOW_JOB_LEASE_SECONDS` to choose a different duration for that batch.
+Concurrent schedulers receive `409` and skip an actively leased idea. Completion
+requests automatically return the token, which the API verifies before clearing
+the lease. Expired or replaced tokens cannot upload results.
+
 ## Deploying
 
 To put IdeaFlow on a DigitalOcean droplet (gunicorn + nginx + Postgres, fronted

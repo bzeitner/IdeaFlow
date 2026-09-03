@@ -205,6 +205,9 @@ class Idea(models.Model):
         help_text="Agent runs logged since the last human feedback; the idea "
         "pauses once it reaches the limit.",
     )
+    job_lease_token_hash = models.CharField(max_length=64, blank=True)
+    job_lease_workflow = models.CharField(max_length=32, blank=True)
+    job_lease_expires_at = models.DateTimeField(null=True, blank=True)
     feed_limit_override = models.PositiveSmallIntegerField(
         null=True,
         blank=True,

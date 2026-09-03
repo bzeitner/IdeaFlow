@@ -61,6 +61,8 @@ def _request(method, path, *, params=None, body=None, execution=False):
         if query:
             url = f"{url}?{query}"
 
+    if isinstance(body, dict) and os.environ.get("IDEAFLOW_JOB_TOKEN"):
+        body.setdefault("job_token", os.environ["IDEAFLOW_JOB_TOKEN"])
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", f"Bearer {token}")
@@ -82,6 +84,8 @@ def _request(method, path, *, params=None, body=None, execution=False):
 
 
 def _multipart_request(path, fields, file_path):
+    if os.environ.get("IDEAFLOW_JOB_TOKEN"):
+        fields.setdefault("job_token", os.environ["IDEAFLOW_JOB_TOKEN"])
     boundary = f"----IdeaFlow{uuid.uuid4().hex}"
     chunks = []
     for name, value in fields.items():
@@ -140,6 +144,13 @@ def cmd_list_ideas(a):
 
 def cmd_dump_idea(a):
     return _request("GET", f"/ideas/{a.id}/")
+
+
+def cmd_claim_job(a):
+    return _request(
+        "POST", f"/ideas/{a.id}/claim/",
+        body={"workflow": a.workflow, "lease_seconds": a.lease_seconds},
+    )
 
 
 def cmd_weekly_summaries(a):
@@ -522,6 +533,12 @@ def build_parser():
         "Omit to use the server default.",
     )
     s.set_defaults(func=cmd_graph_context)
+
+    s = sub.add_parser("claim-job", help="Atomically lease one idea job.")
+    s.add_argument("id", type=int)
+    s.add_argument("--workflow", required=True, choices=("research", "review", "execute", "critique", "repeat", "persona", "summary"))
+    s.add_argument("--lease-seconds", type=int, default=3600)
+    s.set_defaults(func=cmd_claim_job)
 
     s = sub.add_parser("graph-search", help="Search ideas exposed by the graph.")
     s.add_argument("query")
