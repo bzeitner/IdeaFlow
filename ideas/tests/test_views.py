@@ -1829,6 +1829,13 @@ class EpisodeViewTests(TestCase):
         self.assertContains(response, "Hello there.")
         self.assertContains(response, run.engine)
 
+    def test_review_page_progressively_enhances_in_place_actions(self):
+        response = self.client.get(reverse("ideas:episode_review", args=[self.idea.pk, self.episode.pk]))
+
+        self.assertContains(response, "data-podcast-review")
+        self.assertContains(response, "data-podcast-action>", count=5)
+        self.assertContains(response, "data-podcast-action-status")
+
     def test_approve_and_publish_requires_audio(self):
         response = self.client.post(
             reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk])

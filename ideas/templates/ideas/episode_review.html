@@ -1,7 +1,7 @@
 {% extends "ideas/base.html" %}
 {% block title %}{{ episode.title }} · IdeaFlow{% endblock %}
 {% block content %}
-  <article class="detail">
+  <article class="detail" data-podcast-review>
     <div class="card-head">
       <h2><a href="{% url 'ideas:detail' idea.pk %}">{{ idea.title }}</a> — Ep {{ episode.episode_number }}: {{ episode.title }}</h2>
       <span class="pill">{{ episode.get_status_display }}</span>
@@ -22,7 +22,7 @@
 
     {% if can_manage %}
       <div class="card-head research-heading"><h4>Edit</h4></div>
-      <form method="post" action="{% url 'ideas:update_episode' idea.pk episode.pk %}">
+      <form method="post" action="{% url 'ideas:update_episode' idea.pk episode.pk %}" data-podcast-action>
         {% csrf_token %}
         <label>Title <input type="text" name="title" value="{{ episode.title }}" maxlength="300"></label>
         <label>Description <textarea name="description" rows="2">{{ episode.description }}</textarea></label>
@@ -32,20 +32,20 @@
 
       <div class="card-head research-heading"><h4>Actions</h4></div>
       <div class="meta">
-        <form class="inline-form" method="post" action="{% url 'ideas:approve_and_publish_episode' idea.pk episode.pk %}">
+        <form class="inline-form" method="post" action="{% url 'ideas:approve_and_publish_episode' idea.pk episode.pk %}" data-podcast-action>
           {% csrf_token %}<button class="btn small primary" type="submit" {% if not episode.audio_file %}disabled{% endif %}>Approve and publish</button>
         </form>
-        <form class="inline-form" method="post" action="{% url 'ideas:reject_episode' idea.pk episode.pk %}">
+        <form class="inline-form" method="post" action="{% url 'ideas:reject_episode' idea.pk episode.pk %}" data-podcast-action>
           {% csrf_token %}<button class="btn small" type="submit">Reject</button>
         </form>
-        <form class="inline-form" method="post" action="{% url 'ideas:cancel_episode_run' idea.pk episode.pk %}">
+        <form class="inline-form" method="post" action="{% url 'ideas:cancel_episode_run' idea.pk episode.pk %}" data-podcast-action>
           {% csrf_token %}<button class="btn small" type="submit">Cancel run</button>
         </form>
-        <form class="inline-form" method="post" action="{% url 'ideas:regenerate_episode' idea.pk episode.pk %}">
+        <form class="inline-form" method="post" action="{% url 'ideas:regenerate_episode' idea.pk episode.pk %}" data-podcast-action>
           {% csrf_token %}<button class="btn small" type="submit">Regenerate (full re-render)</button>
         </form>
         {% if episode.is_published %}
-          <form class="inline-form" method="post" action="{% url 'ideas:unpublish_episode' idea.pk episode.pk %}">
+          <form class="inline-form" method="post" action="{% url 'ideas:unpublish_episode' idea.pk episode.pk %}" data-podcast-action>
             {% csrf_token %}<button class="btn small" type="submit">Unpublish</button>
           </form>
         {% endif %}
@@ -53,6 +53,7 @@
           {% csrf_token %}<button class="btn small" type="submit">Delete</button>
         </form>
       </div>
+      <p class="dim" data-podcast-action-status role="status" aria-live="polite"></p>
     {% endif %}
 
     {% if latest_run %}

@@ -148,6 +148,56 @@
     if (event.target.form) actionStarted = true;
   }, true);
 
+  document.addEventListener("submit", async (event) => {
+    const form = event.target.closest?.("form[data-podcast-action]");
+    if (!form) return;
+    event.preventDefault();
+
+    const review = form.closest("[data-podcast-review]");
+    const status = review?.querySelector("[data-podcast-action-status]");
+    const buttons = Array.from(review?.querySelectorAll("button[type='submit']") || []);
+    const disabledStates = buttons.map((button) => button.disabled);
+    const submittedButton = event.submitter;
+    const pendingLabel = submittedButton?.textContent?.trim() || "Saving";
+    buttons.forEach((button) => { button.disabled = true; });
+    if (status) status.textContent = `${pendingLabel}…`;
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        headers: { Accept: "text/html" },
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
+
+      const responseDocument = new DOMParser().parseFromString(await response.text(), "text/html");
+      let updatedReview = responseDocument.querySelector("[data-podcast-review]");
+      if (!updatedReview) {
+        const refresh = await fetch(window.location.href, {
+          headers: { Accept: "text/html" },
+          credentials: "same-origin",
+        });
+        if (!refresh.ok) throw new Error(`Could not refresh episode (HTTP ${refresh.status})`);
+        const refreshDocument = new DOMParser().parseFromString(await refresh.text(), "text/html");
+        updatedReview = refreshDocument.querySelector("[data-podcast-review]");
+      }
+      if (!updatedReview || !review) throw new Error("The updated episode could not be displayed");
+
+      const oldMessages = document.querySelector(".messages");
+      const newMessages = responseDocument.querySelector(".messages");
+      oldMessages?.remove();
+      if (newMessages) document.querySelector("#main-content")?.before(newMessages);
+      review.replaceWith(updatedReview);
+      document.title = responseDocument.title || document.title;
+    } catch (error) {
+      buttons.forEach((button, index) => { button.disabled = disabledStates[index]; });
+      if (status) status.textContent = error.message;
+    } finally {
+      actionStarted = false;
+    }
+  });
+
   window.addEventListener("pagehide", () => {
     if (!actionStarted) return;
     try {
