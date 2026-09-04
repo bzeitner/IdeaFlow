@@ -1,5 +1,6 @@
 from functools import wraps
 from datetime import datetime, timedelta, timezone as dt_timezone
+import json
 import re
 
 from django.contrib import messages
@@ -16,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import Truncator
 from django.views.decorators.http import require_POST
+from executions.models import LLMRun, WorkflowDefinition
 
 from .feeds import is_http_url, recent_articles
 from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
@@ -2024,15 +2026,212 @@ def idea_ownership(request):
 
 @role_required()
 def research_history(request):
-    """Admin-only history of recorded Idea research, newest first."""
-    entries = ResearchEntry.objects.select_related("idea").order_by(
-        "-occurred_at", "-pk"
+    """Admin-only unified execution history, newest first."""
+    selected_type = request.GET.get("type", "").strip()
+    runs = LLMRun.objects.select_related(
+        "trace__workflow_version__workflow", "model_configuration",
+        "trace__subject_content_type",
+    ).prefetch_related(
+        "research_entries__idea",
+        "feed_item_assessments",
+        "relation_suggestions",
+        "persona_reviews__votes",
+        "relationship_council_reviews__votes",
+        "tool_invocations",
+        "deterministic_jobs",
+        "artifact_versions",
+        "outcome_events",
+        "child_runs",
+        "trace__events",
     )
-    page = Paginator(entries, 50).get_page(request.GET.get("page"))
+    if selected_type and selected_type != "legacy_research":
+        runs = runs.filter(trace__workflow_version__workflow__key=selected_type)
+    elif selected_type == "legacy_research":
+        runs = runs.none()
+
+    idea_ids = set(
+        runs.filter(trace__subject_content_type__model="idea")
+        .values_list("trace__subject_object_id", flat=True)
+    )
+    ideas_by_id = Idea.objects.in_bulk(idea_ids)
+    rows = []
+    for run in runs:
+        workflow = run.trace.workflow_version.workflow
+        research_entry = next(iter(run.research_entries.all()), None)
+        idea = research_entry.idea if research_entry else (
+            ideas_by_id.get(run.trace.subject_object_id)
+            if run.trace.subject_content_type_id
+            and run.trace.subject_content_type.model == "idea"
+            else None
+        )
+        scores = []
+        if research_entry:
+            scores.extend([
+                f"Effort {research_entry.effort}/5",
+                f"Quality {research_entry.quality}/5",
+            ])
+        assessments = list(run.feed_item_assessments.all())
+        if assessments:
+            values = [assessment.usefulness for assessment in assessments]
+            distribution = ", ".join(
+                f"{score}★:{values.count(score)}" for score in range(1, 6)
+                if values.count(score)
+            )
+            scores.append(
+                f"Usefulness {sum(values) / len(values):.1f}/5 across {len(values)} item(s) ({distribution})"
+            )
+        suggestions = list(run.relation_suggestions.all())
+        if suggestions:
+            scores.append(
+                f"Relations: {len(suggestions)}; confidence "
+                f"{sum(item.confidence for item in suggestions) / len(suggestions):.0%}; "
+                f"similarity {sum(item.similarity for item in suggestions) / len(suggestions):.0%}"
+            )
+        persona_reviews = list(run.persona_reviews.all())
+        if persona_reviews:
+            decisions = [vote.decision for review in persona_reviews for vote in review.votes.all()]
+            scores.append(
+                "Persona votes: " + ", ".join(
+                    f"{decision} {decisions.count(decision)}"
+                    for decision in ("approve", "reject", "abstain")
+                    if decisions.count(decision)
+                )
+            )
+        relationship_reviews = list(run.relationship_council_reviews.all())
+        if relationship_reviews:
+            decisions = [vote.decision for review in relationship_reviews for vote in review.votes.all()]
+            scores.append(
+                "Council votes: " + ", ".join(
+                    f"{decision} {decisions.count(decision)}"
+                    for decision in ("accept", "reject", "abstain")
+                    if decisions.count(decision)
+                )
+            )
+        if run.schema_valid is not None:
+            scores.append(f"Schema {'valid' if run.schema_valid else 'invalid'}")
+
+        def instrumentation_value(value):
+            if value is None or value == "":
+                return "—"
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, indent=2, sort_keys=True, default=str)
+            return str(value)
+
+        def instrumentation_fields(instance):
+            return [
+                {
+                    "label": field.verbose_name,
+                    "value": instrumentation_value(getattr(instance, field.attname)),
+                }
+                for field in instance._meta.concrete_fields
+            ]
+
+        instrumentation = [
+            {"title": "LLM run", "records": [instrumentation_fields(run)]},
+            {"title": "Execution trace", "records": [instrumentation_fields(run.trace)]},
+            {
+                "title": "Workflow version",
+                "records": [instrumentation_fields(run.trace.workflow_version)],
+            },
+            {
+                "title": "Model configuration",
+                "records": [instrumentation_fields(run.model_configuration)],
+            },
+        ]
+        related_instrumentation = (
+            ("Execution events", run.trace.events.all()),
+            ("Tool invocations", run.tool_invocations.all()),
+            ("Deterministic jobs", run.deterministic_jobs.all()),
+            ("Artifact versions", run.artifact_versions.all()),
+            ("Outcome events", run.outcome_events.all()),
+            ("Child runs", run.child_runs.all()),
+        )
+        for title, records in related_instrumentation:
+            records = list(records)
+            if records:
+                instrumentation.append({
+                    "title": title,
+                    "records": [instrumentation_fields(record) for record in records],
+                })
+        rows.append({
+            "occurred_at": run.created_at,
+            "type": workflow.key,
+            "type_label": workflow.name,
+            "status": run.get_status_display(),
+            "status_value": run.status,
+            "idea": idea,
+            "title": research_entry.topic if research_entry else run.trace.subject_label or workflow.name,
+            "detail_url": (
+                reverse("ideas:view_research_entry", args=[idea.pk, research_entry.pk])
+                if idea and research_entry else ""
+            ),
+            "model": str(run.model_configuration),
+            "tokens": {
+                "total": run.total_tokens,
+                "input": run.input_tokens,
+                "output": run.output_tokens,
+                "cached": run.cached_tokens,
+                "reasoning": run.reasoning_tokens,
+                "measurement": run.get_measurement_status_display(),
+            },
+            "scores": scores,
+            "instrumentation": instrumentation,
+        })
+
+    if not selected_type or selected_type == "legacy_research":
+        for entry in ResearchEntry.objects.filter(produced_by_run=None).select_related("idea", "model"):
+            rows.append({
+                "occurred_at": entry.occurred_at,
+                "type": "legacy_research",
+                "type_label": "Legacy research",
+                "status": "Succeeded",
+                "status_value": "succeeded",
+                "idea": entry.idea,
+                "title": entry.topic or "Untitled work",
+                "detail_url": reverse("ideas:view_research_entry", args=[entry.idea_id, entry.pk]),
+                "model": entry.execution_model or entry.model.name,
+                "tokens": {
+                    "total": entry.tokens_used,
+                    "input": None,
+                    "output": None,
+                    "cached": None,
+                    "reasoning": None,
+                    "measurement": "Legacy estimate" if entry.tokens_used is not None else "Unavailable",
+                },
+                "scores": [f"Effort {entry.effort}/5", f"Quality {entry.quality}/5"],
+                "instrumentation": [{
+                    "title": "Legacy research record",
+                    "records": [[
+                        {
+                            "label": field.verbose_name,
+                            "value": (
+                                json.dumps(value, indent=2, sort_keys=True, default=str)
+                                if isinstance(value, (dict, list))
+                                else "—" if value is None or value == "" else str(value)
+                            ),
+                        }
+                        for field in entry._meta.concrete_fields
+                        for value in [getattr(entry, field.attname)]
+                    ]],
+                }],
+            })
+
+    rows.sort(key=lambda row: row["occurred_at"], reverse=True)
+    page = Paginator(rows, 50).get_page(request.GET.get("page"))
+    type_options = list(
+        WorkflowDefinition.objects.order_by("name").values("key", "name")
+    )
+    if ResearchEntry.objects.filter(produced_by_run=None).exists():
+        type_options.append({"key": "legacy_research", "name": "Legacy research"})
     return render(
         request,
         "ideas/research_history.html",
-        {"page": page, "tabs": _tabs(request.user.profile)},
+        {
+            "page": page,
+            "type_options": type_options,
+            "selected_type": selected_type,
+            "tabs": _tabs(request.user.profile),
+        },
     )
 
 

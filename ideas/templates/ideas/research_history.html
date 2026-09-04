@@ -1,29 +1,76 @@
 {% extends "ideas/base.html" %}
-{% block title %}Research History · IdeaFlow{% endblock %}
+{% block title %}Job History · IdeaFlow{% endblock %}
 {% block content %}
-  <h2>Research History</h2>
-  <p class="lede">Recorded Idea research, newest first.</p>
+  <h2>Job History</h2>
+  <p class="lede">All recorded jobs in newest-first chronological order.</p>
+  <form method="get" class="filter-row">
+    <label for="job-type">Type</label>
+    <select id="job-type" name="type">
+      <option value="">All types</option>
+      {% for option in type_options %}
+        <option value="{{ option.key }}"{% if selected_type == option.key %} selected{% endif %}>{{ option.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn small" type="submit">Filter</button>
+  </form>
   <div class="table-wrap">
     <table class="tracking">
-      <thead><tr><th>Occurred at</th><th>Idea</th><th>Work title</th></tr></thead>
+      <thead><tr><th>Started</th><th>Type</th><th>Status</th><th>Idea</th><th>Job</th><th>Model</th><th>Token usage</th><th>Scoring</th></tr></thead>
       <tbody>
-        {% for entry in page %}
+        {% for row in page %}
           <tr>
-            <td>{{ entry.occurred_at|date:"M j, Y g:i A T" }}</td>
-            <td><a href="{{ entry.idea.get_absolute_url }}">#{{ entry.idea_id }} — {{ entry.idea.title }}</a></td>
-            <td><a href="{% url 'ideas:view_research_entry' entry.idea_id entry.pk %}">{{ entry.topic|default:"Untitled work" }}</a></td>
+            <td>{{ row.occurred_at|date:"M j, Y g:i A T" }}</td>
+            <td>{{ row.type_label }}</td>
+            <td>{{ row.status }}</td>
+            <td>{% if row.idea %}<a href="{{ row.idea.get_absolute_url }}">#{{ row.idea.pk }} — {{ row.idea.title }}</a>{% else %}<span class="dim">Portfolio</span>{% endif %}</td>
+            <td>{% if row.detail_url %}<a href="{{ row.detail_url }}">{{ row.title }}</a>{% else %}{{ row.title }}{% endif %}</td>
+            <td>{{ row.model }}</td>
+            <td>
+              {% if row.tokens.total is not None %}
+                <strong>{{ row.tokens.total }}</strong> total
+                <div class="dim">Input {{ row.tokens.input|default_if_none:"—" }} · Output {{ row.tokens.output|default_if_none:"—" }}</div>
+                {% if row.tokens.cached is not None or row.tokens.reasoning is not None %}<div class="dim">Cached {{ row.tokens.cached|default_if_none:"—" }} · Reasoning {{ row.tokens.reasoning|default_if_none:"—" }}</div>{% endif %}
+              {% else %}
+                <span class="dim">Unknown</span>
+              {% endif %}
+              <div class="dim">{{ row.tokens.measurement }}</div>
+            </td>
+            <td>
+              {% for score in row.scores %}<div>{{ score }}</div>{% empty %}<span class="dim">—</span>{% endfor %}
+            </td>
+          </tr>
+          <tr class="job-instrumentation-row">
+            <td colspan="8">
+              <details class="job-instrumentation">
+                <summary>All instrumentation data</summary>
+                {% for section in row.instrumentation %}
+                  <section>
+                    <h3>{{ section.title }}</h3>
+                    {% for record in section.records %}
+                      {% if not forloop.first %}<hr>{% endif %}
+                      <dl>
+                        {% for field in record %}
+                          <dt>{{ field.label|capfirst }}</dt>
+                          <dd><pre>{{ field.value }}</pre></dd>
+                        {% endfor %}
+                      </dl>
+                    {% endfor %}
+                  </section>
+                {% endfor %}
+              </details>
+            </td>
           </tr>
         {% empty %}
-          <tr><td colspan="3">No research has been recorded yet.</td></tr>
+          <tr><td colspan="8">No jobs match this filter.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if page.paginator.num_pages > 1 %}
     <nav class="help-pagination" aria-label="Research history pages">
-      {% if page.has_previous %}<a class="btn small" href="?page={{ page.previous_page_number }}">← Newer</a>{% endif %}
+      {% if page.has_previous %}<a class="btn small" href="?page={{ page.previous_page_number }}{% if selected_type %}&amp;type={{ selected_type|urlencode }}{% endif %}">← Newer</a>{% endif %}
       <span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-      {% if page.has_next %}<a class="btn small" href="?page={{ page.next_page_number }}">Older →</a>{% endif %}
+      {% if page.has_next %}<a class="btn small" href="?page={{ page.next_page_number }}{% if selected_type %}&amp;type={{ selected_type|urlencode }}{% endif %}">Older →</a>{% endif %}
     </nav>
   {% endif %}
 {% endblock %}
