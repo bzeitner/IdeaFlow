@@ -423,6 +423,15 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .queue-actions form { margin: 0; }
 .queue-next-action-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .table-wrap { overflow-x: auto; }
+.job-instrumentation-row > td { padding: 0 12px 10px; background: #fafbfc; }
+.job-instrumentation summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.job-instrumentation section { margin: 14px 0; }
+.job-instrumentation h3 { margin: 0 0 8px; font-size: 14px; }
+.job-instrumentation dl { display: grid; grid-template-columns: minmax(150px, 220px) minmax(320px, 1fr); margin: 0; }
+.job-instrumentation dt, .job-instrumentation dd { padding: 6px 8px; border-top: 1px solid var(--line); }
+.job-instrumentation dt { color: var(--dim); font-weight: 600; }
+.job-instrumentation dd { margin: 0; min-width: 0; }
+.job-instrumentation pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .repeat-results-panel { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
 .repeat-results-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .repeat-results-controls label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }

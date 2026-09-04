@@ -7,6 +7,8 @@ from django.test import TestCase
 from django.template.defaultfilters import date
 from django.urls import reverse
 from django.utils import timezone
+from executions.services import start_run, start_trace
+from executions.tests.helpers import make_configuration, make_workflow_version
 
 from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, RepeatResult, RepeatResultStatus, Status
 
@@ -522,7 +524,7 @@ class UserManagementViewTests(TestCase):
         self.assertFalse(other_profile.role_admin)
 
 
-class ResearchHistoryViewTests(TestCase):
+class JobHistoryViewTests(TestCase):
     def test_non_admin_is_denied(self):
         user = make_user(roles=["role_current"])
         self.client.force_login(user, backend=MODEL_BACKEND)
@@ -533,7 +535,7 @@ class ResearchHistoryViewTests(TestCase):
             response, reverse("ideas:home"), fetch_redirect_response=False
         )
 
-    def test_admin_sees_entries_with_linked_idea_and_work_title(self):
+    def test_admin_sees_legacy_entries_with_linked_idea_and_work_title(self):
         admin = make_user(email="admin@example.com", roles=["role_admin"])
         idea = make_idea(title="Launch planning")
         entry = idea.research_entries.create(
@@ -554,7 +556,7 @@ class ResearchHistoryViewTests(TestCase):
             reverse("ideas:view_research_entry", args=[idea.pk, entry.pk]),
         )
 
-    def test_entries_are_newest_first(self):
+    def test_jobs_are_newest_first(self):
         admin = make_user(email="admin@example.com", roles=["role_admin"])
         idea = make_idea()
         model = make_ai_model()
@@ -570,10 +572,70 @@ class ResearchHistoryViewTests(TestCase):
 
         response = self.client.get(reverse("ideas:research_history"))
 
-        entries = list(response.context["page"].object_list)
+        rows = list(response.context["page"].object_list)
         self.assertEqual(
-            [entry.topic for entry in entries], ["Newer work", "Older work"]
+            [row["title"] for row in rows], ["Newer work", "Older work"]
         )
+
+    def test_instrumented_job_appears_once_and_can_be_filtered_by_type(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        idea = make_idea(title="Measured idea")
+        workflow = make_workflow_version(key="feed_score")
+        trace, _ = start_trace(workflow, trigger="scheduler", subject=idea)
+        run, _ = start_run(
+            trace, make_configuration(), rendered_input_hash="a" * 64,
+        )
+        run.input_tokens = 120
+        run.output_tokens = 30
+        run.cached_tokens = 20
+        run.reasoning_tokens = 10
+        run.total_tokens = 160
+        run.save(update_fields=["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "total_tokens"])
+        entry = idea.research_entries.create(
+            topic="Linked result", model=make_ai_model(), produced_by_run=run,
+            effort=4, quality=5,
+        )
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_history"), {"type": "feed_score"})
+
+        self.assertEqual(response.status_code, 200)
+        rows = list(response.context["page"].object_list)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["type"], "feed_score")
+        self.assertEqual(rows[0]["title"], "Linked result")
+        self.assertEqual(rows[0]["tokens"]["total"], 160)
+        self.assertEqual(rows[0]["tokens"]["cached"], 20)
+        self.assertEqual(rows[0]["scores"], ["Effort 4/5", "Quality 5/5"])
+        self.assertContains(response, "160</strong> total")
+        self.assertContains(response, "Input 120 · Output 30")
+        self.assertContains(response, "Cached 20 · Reasoning 10")
+        self.assertContains(response, "Effort 4/5")
+        self.assertContains(response, "Quality 5/5")
+        self.assertContains(response, "All instrumentation data")
+        self.assertContains(response, "LLM run")
+        self.assertContains(response, "Execution trace")
+        self.assertContains(response, "Model configuration")
+        self.assertContains(response, str(run.id))
+        self.assertEqual(
+            rows[0]["detail_url"],
+            reverse("ideas:view_research_entry", args=[idea.pk, entry.pk]),
+        )
+
+    def test_type_filter_excludes_other_workflows_and_legacy_entries(self):
+        admin = make_user(email="admin@example.com", roles=["role_admin"])
+        idea = make_idea()
+        idea.research_entries.create(topic="Legacy", model=make_ai_model())
+        configuration = make_configuration()
+        for key in ("research", "repeat"):
+            trace, _ = start_trace(make_workflow_version(key=key), trigger="scheduler", subject=idea)
+            start_run(trace, configuration, rendered_input_hash=(key * 64)[:64])
+        self.client.force_login(admin, backend=MODEL_BACKEND)
+
+        response = self.client.get(reverse("ideas:research_history"), {"type": "repeat"})
+
+        rows = list(response.context["page"].object_list)
+        self.assertEqual([row["type"] for row in rows], ["repeat"])
 
 
 class ResearchQueueViewTests(TestCase):
