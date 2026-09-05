@@ -33,6 +33,7 @@ urlpatterns = [
     path("archive/", views.archive, name="archive"),
     path("graph/", views.graph, name="graph"),
     path("weekly-summaries/", views.weekly_summaries, name="weekly_summaries"),
+    path("daily-report/", views.daily_report, name="daily_report"),
     path("graph-lab/", views.graph_lab, name="graph_lab"),
     path("graph-lab/capability/", views.graph_lab_capability, name="graph_lab_capability"),
     path("graph-lab/export.graphml", views.graph_lab_export, name="graph_lab_export"),

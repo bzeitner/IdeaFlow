@@ -42,6 +42,109 @@ def missing_weekly_periods(activity_datetimes, existing_periods, today=None):
     ]
 
 
+def execution_metrics_for_periods(periods):
+    """Authoritative execution and unattributed-token totals, batched by period."""
+    from executions.models import LLMRun
+    from ideas.models import ResearchEntry
+
+    periods = list(periods)
+    if not periods:
+        return {}
+    earliest = min(start for start, _end in periods)
+    latest = max(end for _start, end in periods)
+    result = {
+        (start, end): {
+            "execution_runs_by_workflow": {},
+            "execution_tokens_by_workflow": {},
+            "execution_ledger": {
+                "runs": 0,
+                "succeeded": 0,
+                "failed": 0,
+                "token_measured_runs": 0,
+                "token_unmeasured_runs": 0,
+                "tokens": 0,
+                "cost_micros": 0,
+                "token_measured_runs_by_workflow": {},
+                "unattributed_research_tasks": 0,
+                "unattributed_research_tokens": 0,
+                "all_tracked_tokens": 0,
+            },
+        }
+        for start, end in periods
+    }
+    day_to_period = {
+        start + timedelta(days=offset): (start, end)
+        for start, end in periods
+        for offset in range((end - start).days + 1)
+    }
+
+    def period_for(value):
+        return day_to_period.get(timezone.localtime(value).date())
+
+    runs = LLMRun.objects.filter(
+        completed_at__date__gte=earliest,
+        completed_at__date__lte=latest,
+    ).select_related("trace__workflow_version__workflow")
+    for run in runs:
+        period = period_for(run.completed_at)
+        if period is None:
+            continue
+        metrics = result[period]
+        ledger = metrics["execution_ledger"]
+        workflow = run.trace.workflow_version.workflow
+        label = workflow.name or workflow.key
+        runs_by_workflow = metrics["execution_runs_by_workflow"]
+        tokens_by_workflow = metrics["execution_tokens_by_workflow"]
+        measured_runs_by_workflow = ledger["token_measured_runs_by_workflow"]
+        runs_by_workflow[label] = runs_by_workflow.get(label, 0) + 1
+        ledger["runs"] += 1
+        if run.status == "succeeded":
+            ledger["succeeded"] += 1
+        elif run.status == "failed":
+            ledger["failed"] += 1
+        ledger["cost_micros"] += run.cost_micros or 0
+        if run.total_tokens is not None:
+            tokens_by_workflow[label] = tokens_by_workflow.get(label, 0) + run.total_tokens
+            measured_runs_by_workflow[label] = measured_runs_by_workflow.get(label, 0) + 1
+            ledger["token_measured_runs"] += 1
+            ledger["tokens"] += run.total_tokens
+        else:
+            # A zero makes unmeasured workflows visible instead of silently omitting them.
+            tokens_by_workflow.setdefault(label, 0)
+            measured_runs_by_workflow.setdefault(label, 0)
+            ledger["token_unmeasured_runs"] += 1
+
+    legacy_entries = ResearchEntry.objects.filter(
+        occurred_at__date__gte=earliest,
+        occurred_at__date__lte=latest,
+        produced_by_run=None,
+        tokens_used__isnull=False,
+    )
+    for entry in legacy_entries:
+        period = period_for(entry.occurred_at)
+        if period is None:
+            continue
+        ledger = result[period]["execution_ledger"]
+        ledger["unattributed_research_tasks"] += 1
+        ledger["unattributed_research_tokens"] += entry.tokens_used
+    for metrics in result.values():
+        ledger = metrics["execution_ledger"]
+        if ledger["unattributed_research_tokens"]:
+            metrics["execution_tokens_by_workflow"][
+                "Legacy / unattributed research"
+            ] = ledger["unattributed_research_tokens"]
+        ledger["all_tracked_tokens"] = (
+            ledger["tokens"] + ledger["unattributed_research_tokens"]
+        )
+    return result
+
+
+def execution_metrics_for_period(period_start, period_end):
+    return execution_metrics_for_periods([(period_start, period_end)])[
+        (period_start, period_end)
+    ]
+
+
 def normalize_weekly_metrics(value):
     """Return the stable, non-negative integer metrics schema accepted by the API."""
     if not isinstance(value, dict):
