@@ -603,6 +603,7 @@ class JobHistoryViewTests(TestCase):
         rows = list(response.context["page"].object_list)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["type"], "feed_score")
+        self.assertContains(response, "data-auto-submit-filters")
         self.assertEqual(rows[0]["title"], "Linked result")
         self.assertEqual(rows[0]["tokens"]["total"], 160)
         self.assertEqual(rows[0]["tokens"]["cached"], 20)
