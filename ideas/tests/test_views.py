@@ -10,7 +10,7 @@ from django.utils import timezone
 from executions.services import start_run, start_trace
 from executions.tests.helpers import make_configuration, make_workflow_version
 
-from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastShow, Profile, RelationType, RepeatResult, RepeatResultStatus, Status
+from ideas.models import EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, Idea, IdeaRelation, PersonaReview, PodcastDownload, PodcastShow, Profile, RelationType, RepeatResult, RepeatResultStatus, Status
 
 from .helpers import (
     MODEL_BACKEND,
@@ -1849,6 +1849,9 @@ class EpisodeViewTests(TestCase):
 
     def test_approve_and_publish_with_audio_publishes(self):
         self.episode.audio_file.save("episode.mp3", SimpleUploadedFile("episode.mp3", b"fake-audio"), save=True)
+        run = EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW
+        )
 
         response = self.client.post(
             reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk])
@@ -1861,6 +1864,30 @@ class EpisodeViewTests(TestCase):
         self.assertEqual(self.episode.status, EpisodeStatus.PUBLISHED)
         self.assertIsNotNone(self.episode.published_at)
         self.assertEqual(self.episode.published_by, self.user)
+        run.refresh_from_db()
+        self.assertEqual(run.status, EpisodeRunStatus.PUBLISHED)
+        self.episode.audio_file.delete(save=False)
+
+    def test_publish_revalidates_latest_run_state(self):
+        self.episode.audio_file.save(
+            "episode.mp3", SimpleUploadedFile("episode.mp3", b"fake-audio"), save=True
+        )
+        EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW
+        )
+        EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.FAILED,
+            error_detail="A later render failed.",
+        )
+
+        response = self.client.post(
+            reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk]),
+            follow=True,
+        )
+
+        self.assertContains(response, "latest production run is no longer ready")
+        self.episode.refresh_from_db()
+        self.assertNotEqual(self.episode.status, EpisodeStatus.PUBLISHED)
         self.episode.audio_file.delete(save=False)
 
     def test_publish_soft_deletes_actioned_repeat_results_from_their_source_idea(self):
@@ -1873,6 +1900,9 @@ class EpisodeViewTests(TestCase):
             idea=source_idea, title="Still pending", status=RepeatResultStatus.INTERESTED,
         )
         self.episode.audio_file.save("episode.mp3", SimpleUploadedFile("episode.mp3", b"fake-audio"), save=True)
+        EpisodeRun.objects.create(
+            episode=self.episode, status=EpisodeRunStatus.READY_FOR_REVIEW
+        )
 
         self.client.post(reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, self.episode.pk]))
 
@@ -1983,6 +2013,96 @@ class EpisodeViewTests(TestCase):
             reverse("ideas:episode_audio_preview", args=[self.idea.pk, self.episode.pk])
         )
         self.assertEqual(response.status_code, 404)
+
+
+class PodcastManagementTests(TestCase):
+    def setUp(self):
+        self.user = make_user(
+            "podcast-manager@example.com",
+            roles=["role_current", "role_podcast"],
+        )
+        self.client.force_login(self.user, backend=MODEL_BACKEND)
+        self.idea = make_idea(title="Managed podcast")
+        self.show = make_podcast_show(
+            idea=self.idea, title="The Managed Show", is_publicly_listed=True
+        )
+
+    def test_podcast_role_is_required(self):
+        other = make_user("current-only@example.com", roles=["role_current"])
+        self.client.force_login(other, backend=MODEL_BACKEND)
+        response = self.client.get(reverse("ideas:podcast_management"))
+        self.assertRedirects(
+            response, reverse("ideas:home"), fetch_redirect_response=False
+        )
+
+    def test_lists_publishable_audio_failures_and_feed_links(self):
+        ready = make_episode(show=self.show, title="Ready episode")
+        ready.audio_file.save(
+            "ready.mp3", SimpleUploadedFile("ready.mp3", b"audio"), save=True
+        )
+        PodcastDownload.objects.bulk_create([
+            PodcastDownload(
+                episode=ready,
+                listener_hash=f"listener-{index}",
+                download_day=timezone.localdate(),
+            )
+            for index in range(12)
+        ])
+        EpisodeRun.objects.create(
+            episode=ready, status=EpisodeRunStatus.READY_FOR_REVIEW
+        )
+        failed = make_episode(show=self.show, title="Failed episode")
+        EpisodeRun.objects.create(
+            episode=failed, status=EpisodeRunStatus.FAILED,
+            error_class="render_error", error_detail="Segment 2 failed.",
+        )
+
+        response = self.client.get(reverse("ideas:podcast_management"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ready to publish")
+        self.assertContains(response, "Ready episode")
+        self.assertContains(response, "Approve and publish")
+        self.assertContains(response, "Failed jobs requiring review")
+        self.assertContains(response, "Segment 2 failed")
+        self.assertContains(response, "Downloads")
+        self.assertEqual(response.context["shows"][0]["download_count"], 12)
+        self.assertContains(response, reverse("ideas:podcast_show", args=[self.show.slug]))
+        self.assertContains(response, reverse("ideas:podcast_feed", args=[self.show.slug]))
+        ready.audio_file.delete(save=False)
+
+    def test_dashboard_publish_returns_to_management_page(self):
+        episode = make_episode(show=self.show, title="Publish me")
+        episode.audio_file.save(
+            "publish.mp3", SimpleUploadedFile("publish.mp3", b"audio"), save=True
+        )
+        EpisodeRun.objects.create(
+            episode=episode, status=EpisodeRunStatus.READY_FOR_REVIEW
+        )
+
+        response = self.client.post(
+            reverse("ideas:approve_and_publish_episode", args=[self.idea.pk, episode.pk]),
+            {"next": "podcast_management"},
+        )
+
+        self.assertRedirects(response, reverse("ideas:podcast_management"))
+        episode.refresh_from_db()
+        self.assertEqual(episode.status, EpisodeStatus.PUBLISHED)
+        episode.audio_file.delete(save=False)
+
+    def test_only_latest_failure_is_actionable(self):
+        recovered = make_episode(show=self.show, title="Recovered episode")
+        EpisodeRun.objects.create(
+            episode=recovered, status=EpisodeRunStatus.FAILED,
+            error_detail="Old failure",
+        )
+        EpisodeRun.objects.create(
+            episode=recovered, status=EpisodeRunStatus.READY_FOR_REVIEW,
+        )
+
+        response = self.client.get(reverse("ideas:podcast_management"))
+
+        self.assertNotContains(response, "Old failure")
 
 
 class PodcastShowFormTests(TestCase):

@@ -411,6 +411,79 @@ def daily_report(request):
     })
 
 
+@role_required("role_podcast")
+def podcast_management(request):
+    """One operational queue for podcast publishing, failures, and feeds."""
+    shows = list(PodcastShow.objects.select_related("idea"))
+    publishable = []
+    failed = []
+    visible_shows = []
+    profile = request.user.profile
+    shows = [
+        show for show in shows
+        if show.idea.is_public or profile.can_manage_status(show.idea.status)
+    ]
+    latest_run_id = EpisodeRun.objects.filter(episode_id=OuterRef("pk")).order_by(
+        "-created_at"
+    ).values("pk")[:1]
+    episodes = list(
+        Episode.objects.filter(show_id__in=[show.pk for show in shows])
+        .select_related("show__idea")
+        .annotate(
+            latest_run_id=Subquery(latest_run_id, output_field=IntegerField()),
+            download_count=Count("downloads"),
+        )
+    )
+    latest_runs = EpisodeRun.objects.in_bulk(
+        episode.latest_run_id for episode in episodes if episode.latest_run_id
+    )
+    episodes_by_show = {}
+    for episode in episodes:
+        episodes_by_show.setdefault(episode.show_id, []).append(episode)
+    for show in shows:
+        show_episodes = episodes_by_show.get(show.pk, [])
+        visible_shows.append({
+            "show": show,
+            "episode_count": len(show_episodes),
+            "published_count": sum(
+                episode.status == EpisodeStatus.PUBLISHED for episode in show_episodes
+            ),
+            "download_count": sum(
+                episode.download_count for episode in show_episodes
+            ),
+        })
+        for episode in show_episodes:
+            latest_run = latest_runs.get(episode.latest_run_id)
+            can_manage = profile.can_manage_status(show.idea.status)
+            row = {
+                "show": show,
+                "idea": show.idea,
+                "episode": episode,
+                "run": latest_run,
+                "can_manage": can_manage,
+            }
+            if (
+                episode.audio_file
+                and episode.status != EpisodeStatus.PUBLISHED
+                and latest_run
+                and latest_run.status == EpisodeRunStatus.READY_FOR_REVIEW
+            ):
+                publishable.append(row)
+            if (
+                latest_run
+                and latest_run.status == EpisodeRunStatus.FAILED
+                and latest_run.error_class != "rejected_by_reviewer"
+            ):
+                failed.append(row)
+    return render(request, "ideas/podcast_management.html", {
+        "publishable": publishable,
+        "failed": failed,
+        "shows": visible_shows,
+        "tabs": _tabs(profile),
+        "active": "podcast-management",
+    })
+
+
 @role_required("role_graph")
 def graph(request):
     include_archived = request.GET.get("archived") == "1"
@@ -1544,17 +1617,41 @@ def update_episode(request, pk, episode_pk):
 
 @login_required
 @require_POST
+@transaction.atomic
 def approve_and_publish_episode(request, pk, episode_pk):
     idea = get_object_or_404(Idea, pk=pk)
     denied = _require_podcast_access(request, idea.status)
     if denied:
         return denied
-    episode = _get_episode(idea, episode_pk)
+    episode = get_object_or_404(
+        Episode.objects.select_for_update().select_related("show"),
+        pk=episode_pk,
+        show__idea=idea,
+    )
+    latest_run = EpisodeRun.objects.select_for_update().filter(
+        episode=episode
+    ).order_by("-created_at").first()
+    return_to_management = request.POST.get("next") == "podcast_management"
     if not episode.audio_file:
         messages.error(request, "This episode has no rendered audio yet.")
+        if return_to_management:
+            return redirect("ideas:podcast_management")
+        return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
+    if latest_run is None or latest_run.status != EpisodeRunStatus.READY_FOR_REVIEW:
+        messages.error(
+            request,
+            "This episode’s latest production run is no longer ready for review.",
+        )
+        if return_to_management:
+            return redirect("ideas:podcast_management")
         return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
     episode.publish(by=request.user)
+    latest_run.status = EpisodeRunStatus.PUBLISHED
+    latest_run.completed_at = latest_run.completed_at or timezone.now()
+    latest_run.save(update_fields=["status", "completed_at"])
     messages.success(request, f"Published “{episode.title}”.")
+    if return_to_management:
+        return redirect("ideas:podcast_management")
     return redirect("ideas:episode_review", pk=pk, episode_pk=episode_pk)
 
 
