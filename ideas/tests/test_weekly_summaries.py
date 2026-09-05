@@ -178,6 +178,7 @@ class DailyReportViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "no AI generation")
+        self.assertContains(response, "data-auto-submit-filters")
         self.assertContains(response, "Feed scoring")
         self.assertContains(response, "275")
         self.assertContains(response, "Tasks requiring review")

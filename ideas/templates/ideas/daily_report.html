@@ -3,9 +3,9 @@
 {% block content %}
   <h2>Daily operations report</h2>
   <p class="lede">A deterministic report generated directly from IdeaFlow records—no AI generation.</p>
-  <form method="get" class="filter-bar">
+  <form method="get" class="filter-bar" data-auto-submit-filters>
     <label>Date <input type="date" name="date" value="{{ report_date|date:'Y-m-d' }}"></label>
-    <button class="btn" type="submit">View</button>
+    <button class="btn" type="submit" data-filter-apply>View</button>
   </form>
 
   <section class="weekly-metrics">

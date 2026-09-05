@@ -41,7 +41,7 @@
       if (page) page.value = "1";
       form.requestSubmit();
     };
-    form.querySelectorAll("select, input[type='checkbox'], input[type='radio']").forEach((control) => {
+    form.querySelectorAll("select, input[type='checkbox'], input[type='radio'], input[type='date']").forEach((control) => {
       control.addEventListener("change", apply);
     });
     form.querySelectorAll("input[type='search']").forEach((search) => {

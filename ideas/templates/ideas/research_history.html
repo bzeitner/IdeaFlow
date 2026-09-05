@@ -3,7 +3,7 @@
 {% block content %}
   <h2>Job History</h2>
   <p class="lede">All recorded jobs in newest-first chronological order.</p>
-  <form method="get" class="filter-row">
+  <form method="get" class="filter-row" data-auto-submit-filters>
     <label for="job-type">Type</label>
     <select id="job-type" name="type">
       <option value="">All types</option>
@@ -11,7 +11,7 @@
         <option value="{{ option.key }}"{% if selected_type == option.key %} selected{% endif %}>{{ option.name }}</option>
       {% endfor %}
     </select>
-    <button class="btn small" type="submit">Filter</button>
+    <button class="btn small" type="submit" data-filter-apply>Filter</button>
   </form>
   <div class="table-wrap">
     <table class="tracking">
