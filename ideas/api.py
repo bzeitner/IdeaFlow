@@ -53,7 +53,9 @@ from .serialize import (
     idea_to_dict,
     research_entry_to_dict,
 )
-from .weekly_metrics import missing_weekly_periods, normalize_weekly_metrics
+from .weekly_metrics import (
+    execution_metrics_for_period, missing_weekly_periods, normalize_weekly_metrics,
+)
 
 _DETAIL_PREFETCH = (
     "resources",
@@ -268,21 +270,7 @@ def weekly_summary_list(request):
         enforce_projection_write("weekly_summary", produced_by_run)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=409)
-    completed_runs = LLMRun.objects.filter(
-        completed_at__date__gte=period_start,
-        completed_at__date__lte=period_end,
-    )
-    execution_totals = completed_runs.aggregate(
-        tokens=models.Sum("total_tokens", default=0),
-        cost_micros=models.Sum("cost_micros", default=0),
-    )
-    metrics["execution_ledger"] = {
-        "runs": completed_runs.count(),
-        "succeeded": completed_runs.filter(status="succeeded").count(),
-        "failed": completed_runs.filter(status="failed").count(),
-        "tokens": execution_totals["tokens"],
-        "cost_micros": execution_totals["cost_micros"],
-    }
+    metrics.update(execution_metrics_for_period(period_start, period_end))
     defaults = {
         "title": (payload.get("title") or f"Weekly summary: {period_start}–{period_end}")[:200],
         "content": content,

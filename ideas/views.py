@@ -25,10 +25,13 @@ from .artifact_presentation import MAX_RENDER_CHARS, present_artifact, present_c
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
 from .graph.export import graphml_export
-from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, FeedItemAssessment, GraphAccessCapability, HelpMessage, Idea, IdeaFeed, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Stage, Status, SuggestionStatus, WeeklySummary
+from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, EpisodeRun, EpisodeRunStatus, EpisodeStatus, FeedItem, FeedItemAssessment, GraphAccessCapability, HelpMessage, Idea, IdeaFeed, IdeaRelation, IdeaRelationSuggestion, PersonaReview, PodcastShow, Profile, RelationProvenance, RelationType, RepeatResult, RepeatResultStatus, ResearchEntry, Resource, Stage, Status, SuggestionStatus, WeeklySummary
 from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
-from .weekly_metrics import metric_comparison_rows
+from .weekly_metrics import (
+    execution_metrics_for_period, execution_metrics_for_periods,
+    metric_comparison_rows,
+)
 from tools.task_selection import select_work
 
 STAR_RANGE = [1, 2, 3, 4, 5]
@@ -235,6 +238,9 @@ def _tabs(profile):
 def weekly_summaries(request):
     summaries = list(WeeklySummary.objects.all())
     ideas_by_id = Idea.objects.in_bulk()
+    execution_by_period = execution_metrics_for_periods(
+        (summary.period_start, summary.period_end) for summary in summaries
+    )
     section_specs = (
         ("Tasks by type", "tasks_by_type"),
         ("Tasks by idea", "tasks_by_idea"),
@@ -243,7 +249,15 @@ def weekly_summaries(request):
         ("Tokens by model", "tokens_by_model"),
         ("Tokens by category", "tokens_by_category"),
         ("Tokens by idea", "tokens_by_idea"),
+        ("Execution runs by workflow", "execution_runs_by_workflow"),
+        ("All tracked tokens by workflow/source", "execution_tokens_by_workflow"),
     )
+    for summary in summaries:
+        metrics = dict(summary.metrics or {})
+        execution_metrics = execution_by_period[(summary.period_start, summary.period_end)]
+        for key, value in execution_metrics.items():
+            metrics[key] = value
+        summary.metrics = metrics
     for index, summary in enumerate(summaries):
         summary.presentation = present_content(
             summary.content,
@@ -259,19 +273,20 @@ def weekly_summaries(request):
             rows = _link_idea_metric_rows(rows, ideas_by_id)
             summary.metric_sections.append({"title": title, "rows": rows})
     chronological = list(reversed(summaries))
-    max_tokens = max(
-        [1, *[(summary.metrics or {}).get("total_tokens", 0) for summary in chronological]]
-    )
+    def all_tracked_tokens(summary):
+        return ((summary.metrics or {}).get("execution_ledger") or {}).get(
+            "all_tracked_tokens", (summary.metrics or {}).get("total_tokens", 0)
+        )
+
+    max_tokens = max([1, *[all_tracked_tokens(summary) for summary in chronological]])
     max_prs = max(
         [1, *[sum(((summary.metrics or {}).get("prs") or {}).values()) for summary in chronological]]
     )
     trends = [
         {
             "summary": summary,
-            "tokens": (summary.metrics or {}).get("total_tokens", 0),
-            "token_width": round(
-                (summary.metrics or {}).get("total_tokens", 0) * 100 / max_tokens
-            ),
+            "tokens": all_tracked_tokens(summary),
+            "token_width": round(all_tracked_tokens(summary) * 100 / max_tokens),
             "prs": (summary.metrics or {}).get("prs") or {},
             "pr_width": round(
                 sum(((summary.metrics or {}).get("prs") or {}).values()) * 100 / max_prs
@@ -289,6 +304,111 @@ def weekly_summaries(request):
             "active": "weekly-summary",
         },
     )
+
+
+@role_required("role_weekly_summary")
+def daily_report(request):
+    """Live, deterministic operations report; no model call or persisted summary."""
+    try:
+        report_date = datetime.strptime(request.GET.get("date", ""), "%Y-%m-%d").date()
+    except ValueError:
+        report_date = timezone.localdate()
+    execution = execution_metrics_for_period(report_date, report_date)
+    ledger = execution["execution_ledger"]
+
+    review_items = []
+    failed_runs = LLMRun.objects.filter(
+        completed_at__date=report_date, status="failed"
+    ).select_related("trace__workflow_version__workflow")
+    for run in failed_runs:
+        review_items.append({
+            "kind": "Failed job",
+            "title": run.trace.workflow_version.workflow.name,
+            "detail": run.error_detail or run.error_class or "Execution failed.",
+            "url": reverse("ideas:research_history") + f"?type={run.trace.workflow_version.workflow.key}",
+        })
+    for suggestion in IdeaRelationSuggestion.objects.filter(
+        status=SuggestionStatus.PENDING,
+        relationship_council_review__outcome="no_decision",
+    ).select_related("source", "target"):
+        review_items.append({
+            "kind": "Relationship review",
+            "title": f"{suggestion.source.title} → {suggestion.target.title}",
+            "detail": suggestion.get_relation_type_display(),
+            "url": reverse("ideas:graph"),
+        })
+    latest_review = PersonaReview.objects.filter(idea_id=OuterRef("pk")).order_by(
+        "-created_at"
+    ).values("status")[:1]
+    council_ideas = Idea.objects.annotate(
+        latest_review_status=Subquery(latest_review, output_field=CharField())
+    ).filter(
+        latest_review_status=PersonaReview.Status.NO_CONSENSUS,
+        last_persona_review_at__gte=F("last_meaningful_progress_at"),
+    )
+    for idea in council_ideas:
+        review_items.append({
+            "kind": "Council review",
+            "title": idea.title,
+            "detail": "The latest persona council did not reach consensus.",
+            "url": idea.get_absolute_url() + "#persona-council",
+        })
+    automation_items = [
+        {
+            "kind": "Relationship council",
+            "title": f"{suggestion.source.title} → {suggestion.target.title}",
+            "detail": suggestion.get_relation_type_display(),
+            "url": reverse("ideas:graph"),
+        }
+        for suggestion in IdeaRelationSuggestion.objects.filter(
+            status=SuggestionStatus.PENDING,
+            relationship_council_review__isnull=True,
+        ).select_related("source", "target")
+    ]
+    for entry in ResearchEntry.objects.exclude(open_questions=[]).select_related("idea"):
+        unanswered = entry.unanswered_question_items
+        if unanswered:
+            review_items.append({
+                "kind": "Human input",
+                "title": entry.idea.title,
+                "detail": f"{len(unanswered)} unanswered research question(s).",
+                "url": reverse("ideas:view_research_entry", args=[entry.idea_id, entry.pk]),
+            })
+    for episode_run in EpisodeRun.objects.filter(
+        status=EpisodeRunStatus.READY_FOR_REVIEW
+    ).select_related("episode__show__idea"):
+        review_items.append({
+            "kind": "Podcast review",
+            "title": episode_run.episode.title,
+            "detail": "Audio is ready for review.",
+            "url": reverse("ideas:episode_review", args=[episode_run.episode.show.idea_id, episode_run.episode_id]),
+        })
+
+    verified_prs = {}
+    for summary in WeeklySummary.objects.all():
+        for pr in (summary.metrics or {}).get("open_prs", []):
+            verified_prs.setdefault(pr.get("url"), summary.period_end)
+    prs = []
+    for resource in Resource.objects.filter(url__contains="/pull/").select_related("idea"):
+        prs.append({
+            "url": resource.url,
+            "title": resource.label or resource.url,
+            "idea": resource.idea,
+            "verified_on": verified_prs.get(resource.url),
+        })
+
+    return render(request, "ideas/daily_report.html", {
+        "report_date": report_date,
+        "execution": execution,
+        "ledger": ledger,
+        "run_rows": metric_comparison_rows(execution["execution_runs_by_workflow"]),
+        "token_rows": metric_comparison_rows(execution["execution_tokens_by_workflow"]),
+        "review_items": review_items,
+        "automation_items": automation_items,
+        "prs": prs,
+        "tabs": _tabs(request.user.profile),
+        "active": "daily-report",
+    })
 
 
 @role_required("role_graph")

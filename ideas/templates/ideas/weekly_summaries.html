@@ -42,7 +42,14 @@
       {% if summary.metrics %}
         <div class="weekly-metrics">
           <h3>Metrics <span class="dim">(solid: this week; outline: previous week)</span></h3>
-          <p><strong>{{ summary.metrics.total_tasks|default:0 }}</strong> tasks · <strong>{{ summary.metrics.total_tokens|default:0 }}</strong> tokens total</p>
+          <p><strong>{{ summary.metrics.total_tasks|default:0 }}</strong> recorded tasks · <strong>{{ summary.metrics.total_tokens|default:0 }}</strong> research-entry tokens</p>
+          {% if summary.metrics.execution_ledger %}
+            <p>
+              <strong>{{ summary.metrics.execution_ledger.runs|default:0 }}</strong> instrumented LLM runs ·
+              <strong>{{ summary.metrics.execution_ledger.all_tracked_tokens|default:0 }}</strong> all tracked tokens ·
+              <strong>{{ summary.metrics.execution_ledger.token_unmeasured_runs|default:0 }}</strong> runs without provider token usage
+            </p>
+          {% endif %}
           <div class="metric-section-grid">
             {% for section in summary.metric_sections %}
               <section>

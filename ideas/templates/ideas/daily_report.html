@@ -1,0 +1,24 @@
+{% extends "ideas/base.html" %}
+{% block title %}Daily Report · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Daily operations report</h2>
+  <p class="lede">A deterministic report generated directly from IdeaFlow records—no AI generation.</p>
+  <form method="get" class="filter-bar">
+    <label>Date <input type="date" name="date" value="{{ report_date|date:'Y-m-d' }}"></label>
+    <button class="btn" type="submit">View</button>
+  </form>
+
+  <section class="weekly-metrics">
+    <h3>{{ report_date|date:"F j, Y" }}</h3>
+    <p><strong>{{ ledger.runs }}</strong> jobs run · <strong>{{ ledger.succeeded }}</strong> succeeded · <strong>{{ ledger.failed }}</strong> failed · <strong>{{ ledger.all_tracked_tokens }}</strong> all tracked tokens · <strong>{{ ledger.token_unmeasured_runs }}</strong> runs without token usage</p>
+    {% if ledger.unattributed_research_tasks %}<p class="dim">Includes {{ ledger.unattributed_research_tokens }} tokens from {{ ledger.unattributed_research_tasks }} legacy/unattributed research task{{ ledger.unattributed_research_tasks|pluralize }}. These are added only when no execution run is linked.</p>{% endif %}
+    <div class="metric-section-grid">
+      <section><h4>Tasks run by workflow</h4>{% for row in run_rows %}<div class="metric-row"><span>{{ row.label }}</span><div class="metric-track"><i style="width: {{ row.width }}%"></i></div><strong>{{ row.value }}</strong></div>{% empty %}<p class="dim">No instrumented jobs completed.</p>{% endfor %}</section>
+      <section><h4>Tokens by workflow</h4>{% for row in token_rows %}<div class="metric-row"><span>{{ row.label }}</span><div class="metric-track"><i style="width: {{ row.width }}%"></i></div><strong>{{ row.value }}</strong></div>{% empty %}<p class="dim">No tracked token usage.</p>{% endfor %}</section>
+    </div>
+  </section>
+
+  <section><h3>Tasks requiring review <span class="pill">{{ review_items|length }}</span></h3><ul>{% for item in review_items %}<li><a href="{{ item.url }}"><strong>{{ item.kind }} · {{ item.title }}</strong></a><br>{{ item.detail }}</li>{% empty %}<li>No review tasks currently queued.</li>{% endfor %}</ul></section>
+  <section><h3>Automation backlog <span class="pill">{{ automation_items|length }}</span></h3><ul>{% for item in automation_items %}<li><a href="{{ item.url }}"><strong>{{ item.kind }} · {{ item.title }}</strong></a><br>{{ item.detail }}</li>{% empty %}<li>No automation work queued.</li>{% endfor %}</ul></section>
+  <section><h3>Pull requests requiring review or verification <span class="pill">{{ prs|length }}</span></h3><ul>{% for pr in prs %}<li><a href="{{ pr.url }}" target="_blank" rel="noopener"><strong>{{ pr.title }}</strong> ↗</a> · <a href="{{ pr.idea.get_absolute_url }}">Idea #{{ pr.idea.pk }} — {{ pr.idea.title }}</a><br>{% if pr.verified_on %}Last verified open in the week ending {{ pr.verified_on }}.{% else %}<span class="dim">Current GitHub state has not been verified by a stored report.</span>{% endif %}</li>{% empty %}<li>No linked pull requests.</li>{% endfor %}</ul></section>
+{% endblock %}
