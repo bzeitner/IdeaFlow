@@ -9,15 +9,19 @@ ever links to or prints the feed.xml URL — it exists for one-time manual
 submission to podcast directories, not for on-site discovery.
 """
 
+import hashlib
+import hmac
 import re
 
 from django.contrib.syndication.views import Feed
+from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.feedgenerator import Enclosure, Rss201rev2Feed
 
-from .models import Episode, EpisodeStatus, PodcastShow
+from .models import Episode, EpisodeStatus, PodcastDownload, PodcastShow
 
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
@@ -219,6 +223,32 @@ def podcast_episode_audio(request, show_slug, episode_slug):
     episode = _public_episode_or_404(show_slug, episode_slug)
     if not episode.audio_file:
         raise Http404
-    return serve_range_aware_file(
+    range_header = request.headers.get("Range", "")
+    range_match = _RANGE_RE.match(range_header)
+    response = serve_range_aware_file(
         request, episode.audio_file, episode.audio_mime_type or "audio/mpeg"
     )
+    starts_delivery = (
+        request.method == "GET"
+        and response.status_code in {200, 206}
+        and (
+            response.status_code == 200
+            or bool(range_match and range_match.group(1) == "0")
+        )
+    )
+    if starts_delivery:
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",", 1)[0]
+        listener = "\n".join([
+            request.headers.get("CF-Connecting-IP") or forwarded.strip()
+            or request.META.get("REMOTE_ADDR", "unknown"),
+            request.headers.get("User-Agent", "unknown"),
+        ])
+        listener_hash = hmac.new(
+            settings.SECRET_KEY.encode(), listener.encode(), hashlib.sha256
+        ).hexdigest()
+        PodcastDownload.objects.get_or_create(
+            episode=episode,
+            listener_hash=listener_hash,
+            download_day=timezone.localdate(),
+        )
+    return response

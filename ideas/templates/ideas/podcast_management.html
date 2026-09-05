@@ -1,0 +1,32 @@
+{% extends "ideas/base.html" %}
+{% block title %}Podcast Management · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Podcast management</h2>
+  <p class="lede">Publish completed audio, investigate failed production jobs, and open podcast feeds.</p>
+
+  <section>
+    <h3>Ready to publish <span class="pill">{{ publishable|length }}</span></h3>
+    <ul class="research-list">
+      {% for row in publishable %}
+        <li>
+          <div class="card-head"><div><strong>{{ row.show.title }}</strong> · Episode {{ row.episode.episode_number }}: <a href="{% url 'ideas:episode_review' row.idea.pk row.episode.pk %}">{{ row.episode.title }}</a></div>{% if row.episode.audio_duration_seconds %}<span class="dim">{{ row.episode.audio_duration_seconds|floatformat:0 }}s</span>{% endif %}</div>
+          {% if row.can_manage %}<form method="post" action="{% url 'ideas:approve_and_publish_episode' row.idea.pk row.episode.pk %}">{% csrf_token %}<input type="hidden" name="next" value="podcast_management"><button class="btn small primary" type="submit">Approve and publish</button></form>{% else %}<p class="dim">You can review this episode but do not manage its workspace status.</p>{% endif %}
+        </li>
+      {% empty %}<li class="dim">No completed audio is waiting to be published.</li>{% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h3>Failed jobs requiring review <span class="pill">{{ failed|length }}</span></h3>
+    <ul class="research-list">
+      {% for row in failed %}<li><div class="card-head"><div><strong>{{ row.show.title }}</strong> · <a href="{% url 'ideas:episode_review' row.idea.pk row.episode.pk %}">{{ row.episode.title }}</a></div><span class="pill">Failed</span></div><p>{{ row.run.error_class|default:"Production error" }}{% if row.run.error_detail %}: {{ row.run.error_detail }}{% endif %}</p><a class="btn small" href="{% url 'ideas:episode_review' row.idea.pk row.episode.pk %}">Review job</a></li>{% empty %}<li class="dim">No failed podcast jobs require review.</li>{% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h3>Podcast feeds <span class="pill">{{ shows|length }}</span></h3>
+    <div class="table-wrap"><table class="tracking"><thead><tr><th>Podcast</th><th>Episodes</th><th>Downloads</th><th>Workspace</th><th>Public links</th></tr></thead><tbody>
+      {% for row in shows %}<tr><td><strong>{{ row.show.title }}</strong></td><td>{{ row.published_count }} published / {{ row.episode_count }} total</td><td><strong>{{ row.download_count }}</strong></td><td><a href="{{ row.show.idea.get_absolute_url }}">Idea #{{ row.show.idea.pk }} — {{ row.show.idea.title }}</a></td><td>{% if row.show.is_publicly_listed %}<a href="{% url 'ideas:podcast_show' row.show.slug %}" target="_blank" rel="noopener">Podcast ↗</a> · <a href="{% url 'ideas:podcast_feed' row.show.slug %}" target="_blank" rel="noopener">RSS feed ↗</a>{% else %}<span class="dim">Not publicly listed</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No podcasts configured.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+{% endblock %}

@@ -26,6 +26,7 @@
             <a href="{% url 'ideas:artifacts' %}">Artifacts</a>
             {% if user.profile.role_graph %}<a href="{% url 'ideas:graph' %}">Knowledge Graph</a>{% endif %}
             {% if user.profile.role_weekly_summary %}<a href="{% url 'ideas:daily_report' %}">Daily report</a><a href="{% url 'ideas:weekly_summaries' %}">Weekly summaries</a>{% endif %}
+            {% if user.profile.role_admin or user.profile.role_podcast %}<a href="{% url 'ideas:podcast_management' %}">Podcast management</a>{% endif %}
             <a href="{% url 'ideas:guide' %}">Guide</a>
           </div>
         </details>

@@ -171,6 +171,21 @@ class PodcastAudioTests(TestCase):
         self.assertEqual(response["Content-Range"], "bytes 0-99/1000")
         self.assertEqual(b"".join(response.streaming_content), b"x" * 100)
 
+    def test_download_count_tracks_starts_not_range_continuations(self):
+        self.client.head(self._url()).close()
+        self.client.get(self._url(), HTTP_RANGE="bytes=100-199").close()
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.downloads.count(), 0)
+
+        self.client.get(self._url(), HTTP_RANGE="bytes=0-99").close()
+        self.client.get(self._url()).close()
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.downloads.count(), 1)
+
+        self.client.get(self._url(), HTTP_USER_AGENT="another-player").close()
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.downloads.count(), 2)
+
     def test_unpublished_episode_audio_404s(self):
         self.episode.unpublish()
         response = self.client.get(self._url())

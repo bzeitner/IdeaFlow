@@ -1517,6 +1517,26 @@ class Episode(models.Model):
         )
 
 
+class PodcastDownload(models.Model):
+    """One deduplicated public audio delivery per listener, episode, and day."""
+
+    episode = models.ForeignKey(
+        Episode, related_name="downloads", on_delete=models.CASCADE
+    )
+    listener_hash = models.CharField(max_length=64)
+    download_day = models.DateField()
+    requested_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["episode", "listener_hash", "download_day"],
+                name="unique_daily_podcast_download",
+            )
+        ]
+        indexes = [models.Index(fields=["download_day"])]
+
+
 class EpisodeRun(models.Model):
     """One audio-production attempt for an episode. Phase 1 only — no
     claim_generation or lease_token_hash yet (see "Phased rollout of machine
