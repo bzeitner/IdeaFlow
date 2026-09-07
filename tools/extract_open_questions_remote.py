@@ -8,10 +8,18 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import subprocess
+import tempfile
 from pathlib import Path
+
+try:
+    from tools.llm_pricing import estimate_openai_cost_micros
+except ModuleNotFoundError:
+    from llm_pricing import estimate_openai_cost_micros
 
 DEFAULT_BASE = "https://ideaflow.bitesoftheweek.com"
 MAX_REPORT_CHARS = 4000
+CLIENT = Path(__file__).resolve().parents[1] / "tools" / "ideaflow"
 
 
 def load_dotenv(path):
@@ -46,6 +54,10 @@ def request_json(url, *, token, method="GET", body=None):
         raise RuntimeError(f"Could not reach {url}: {exc.reason}") from exc
 
 
+def client_json(*args):
+    return json.loads(subprocess.check_output([str(CLIENT), *args], text=True))
+
+
 def markdown_questions(context):
     questions = []
     in_section = False
@@ -66,16 +78,14 @@ def markdown_questions(context):
 
 
 def ai_questions(entries, *, api_key, api_base, model, prompt_template):
+    # Validate policy before incurring provider cost.
+    estimate_openai_cost_micros(model, {})
     reports = "\n\n".join(
         f"ENTRY {entry['id']}\nTopic: {entry['topic']}\n{entry['context'][:MAX_REPORT_CHARS]}"
         for entry in entries
     )
     prompt = prompt_template.format(reports=reports)
-    data = request_json(
-        f"{api_base.rstrip('/')}/chat/completions",
-        token=api_key,
-        method="POST",
-        body={
+    body = {
             "model": model,
             "temperature": 0,
             "response_format": {"type": "json_object"},
@@ -83,9 +93,60 @@ def ai_questions(entries, *, api_key, api_base, model, prompt_template):
                 {"role": "system", "content": "You conservatively extract questions requiring human input."},
                 {"role": "user", "content": prompt},
             ],
-        },
-    )
-    content = json.loads(data["choices"][0]["message"]["content"])
+        }
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as prompt_file:
+        json.dump(body, prompt_file)
+        prompt_file.flush()
+        trace = client_json(
+            "trace-start", "--workflow", "open_question_extraction",
+            "--trigger", "management_command",
+        )
+        run = client_json(
+            "run-start", "--trace-id", trace["id"], "--provider", "openai-compatible",
+            "--model", model, "--purpose", "extraction",
+            "--prompt-key", "open-question-batch", "--input-file", prompt_file.name,
+        )
+    try:
+        data = request_json(
+            f"{api_base.rstrip('/')}/chat/completions", token=api_key,
+            method="POST", body=body,
+        )
+    except Exception as exc:
+        client_json(
+            "run-fail", "--run-id", run["id"], "--error-class", type(exc).__name__,
+            "--error-detail", str(exc), "--measurement-unavailable-reason", "provider_request_failed",
+        )
+        client_json("trace-fail", "--trace-id", trace["id"], "--reason", str(exc))
+        raise
+    usage_data = data.get("usage") or {}
+    usage = {
+        "input_tokens": usage_data.get("prompt_tokens"),
+        "output_tokens": usage_data.get("completion_tokens"),
+    }
+    parse_error = None
+    try:
+        content = json.loads(data["choices"][0]["message"]["content"])
+    except Exception as exc:
+        content = None
+        parse_error = exc
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as output_file:
+        json.dump(data, output_file)
+        output_file.flush()
+        complete_args = [
+            "run-complete", "--run-id", run["id"], "--output-file", output_file.name,
+            "--measurement-status", "complete", "--cost-micros", str(estimate_openai_cost_micros(model, usage)),
+            "--cost-source", "price_table",
+        ]
+        for key, flag in (("prompt_tokens", "--input-tokens"), ("completion_tokens", "--output-tokens"), ("total_tokens", "--total-tokens")):
+            if usage_data.get(key) is not None:
+                complete_args.extend([flag, str(usage_data[key])])
+        if data.get("id"):
+            complete_args.extend(["--provider-request-id", str(data["id"])])
+        client_json(*complete_args)
+    if parse_error is not None:
+        client_json("trace-fail", "--trace-id", trace["id"], "--reason", str(parse_error))
+        raise parse_error
+    client_json("trace-complete", "--trace-id", trace["id"])
     result = {}
     for item in content.get("entries", []):
         questions = []
@@ -150,6 +211,8 @@ def main():
         api_key = os.environ.get("IDEAFLOW_SEMANTIC_API_KEY", "").strip()
         if not api_key:
             sys.exit("error: IDEAFLOW_SEMANTIC_API_KEY is required with --use-ai.")
+        if not os.environ.get("IDEAFLOW_EXECUTION_API_TOKEN", "").strip():
+            sys.exit("error: IDEAFLOW_EXECUTION_API_TOKEN is required with --use-ai.")
         api_base = os.environ.get("IDEAFLOW_SEMANTIC_API_BASE", "https://api.openai.com/v1")
         model = os.environ.get("IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL", "gpt-4.1-mini")
         prompt_template = request_json(

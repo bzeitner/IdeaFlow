@@ -143,10 +143,12 @@ fi
 
 PROMPT_FILE="$(mktemp -t "weekly-summary-prompt.XXXXXX.txt")"
 OUTPUT_FILE="$(mktemp -t "weekly-summary-output.XXXXXX.txt")"
-chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+RAW_FILE="$(mktemp -t "weekly-summary-raw.XXXXXX.jsonl")"
+MEASUREMENT_FILE="$(mktemp -t "weekly-summary-measurement.XXXXXX.json")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"
 cleanup_execution_files() {
-  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 }
 trap cleanup_execution_files EXIT
 execution_start \
@@ -155,20 +157,24 @@ execution_start \
 
 set +e
 if [[ "$AGENT" == "claude" ]]; then
-  "$AGENT_BIN" -p "$PROMPT" --allowedTools "Bash,Read,Write" | tee "$OUTPUT_FILE"
-  AGENT_STATUS="${PIPESTATUS[0]}"
+  "$AGENT_BIN" -p "$PROMPT" --allowedTools "Bash,Read,Write" --output-format json > "$RAW_FILE"
+  AGENT_STATUS="$?"
 elif [[ "$AGENT" == "codex" ]]; then
   args=(-C "$SCRIPT_DIR" --sandbox danger-full-access --ask-for-approval never)
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && args+=(--model "$IDEAFLOW_CODEX_MODEL")
-  "$AGENT_BIN" "${args[@]}" exec --ephemeral "$PROMPT" | tee "$OUTPUT_FILE"
-  AGENT_STATUS="${PIPESTATUS[0]}"
+  "$AGENT_BIN" "${args[@]}" exec --ephemeral --json "$PROMPT" > "$RAW_FILE"
+  AGENT_STATUS="$?"
 else
   echo "error: IDEAFLOW_AGENT must be claude or codex." >&2
   exit 2
 fi
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  python3 "$SCRIPT_DIR/tools/llm_usage.py" "$AGENT" "$RAW_FILE" "$OUTPUT_FILE" "$MEASUREMENT_FILE" || AGENT_STATUS=$?
+  [[ "$AGENT_STATUS" -eq 0 ]] && cat "$OUTPUT_FILE"
+fi
 set -e
 if [[ "$AGENT_STATUS" -eq 0 ]]; then
-  execution_succeed "$OUTPUT_FILE"
+  execution_succeed "$OUTPUT_FILE" "$MEASUREMENT_FILE"
 else
   execution_fail "$AGENT_STATUS" "${AGENT} weekly summary process exited ${AGENT_STATUS}"
   exit "$AGENT_STATUS"

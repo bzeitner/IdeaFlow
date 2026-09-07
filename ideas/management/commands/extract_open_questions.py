@@ -17,7 +17,7 @@ def extract_with_ai(api, entry):
         topic=entry.topic,
         report=entry.context[:MAX_AI_CONTEXT_CHARS],
     )
-    data = api._post(
+    data, _run = api._measured_post(
         "/chat/completions",
         {
             "model": api.classifier_model,
@@ -30,7 +30,7 @@ def extract_with_ai(api, entry):
                 },
                 {"role": "user", "content": prompt},
             ],
-        },
+        }, purpose="extraction", prompt_keys=("open-question-single",),
     )
     content = data["choices"][0]["message"]["content"]
     candidates = json.loads(content).get("questions", [])
@@ -76,7 +76,10 @@ class Command(BaseCommand):
         api = None
         if options["use_ai"]:
             try:
-                api = SemanticAPI()
+                api = SemanticAPI(
+                    workflow_key="open_question_extraction",
+                    actor_label="extract_open_questions",
+                )
             except ValueError as exc:
                 raise CommandError(str(exc)) from exc
 
@@ -106,6 +109,9 @@ class Command(BaseCommand):
             except Exception as exc:
                 failed += 1
                 self.stderr.write(f"Entry {entry.pk} (idea {entry.idea_id}): {exc}")
+
+        if api is not None:
+            api.finish(CommandError("One or more entries failed.") if failed else None)
 
         mode = "Dry run" if options["dry_run"] else "Complete"
         self.stdout.write(

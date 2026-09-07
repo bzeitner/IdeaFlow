@@ -162,6 +162,8 @@ class DailyReportViewTests(TestCase):
             queued_at=completed_at,
             completed_at=completed_at,
             total_tokens=275,
+            cost_micros=12_345,
+            cost_source="provider_reported",
         )
         idea = make_idea(title="Daily reporting")
         Resource.objects.create(
@@ -181,6 +183,8 @@ class DailyReportViewTests(TestCase):
         self.assertContains(response, "data-auto-submit-filters")
         self.assertContains(response, "Feed scoring")
         self.assertContains(response, "275")
+        self.assertContains(response, "$0.012345")
+        self.assertContains(response, "LLM cost by workflow")
         self.assertContains(response, "Tasks requiring review")
         self.assertContains(response, "Pull requests requiring review or verification")
         self.assertContains(response, "Review daily report PR")

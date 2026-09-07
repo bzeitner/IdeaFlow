@@ -56,6 +56,7 @@ def execution_metrics_for_periods(periods):
         (start, end): {
             "execution_runs_by_workflow": {},
             "execution_tokens_by_workflow": {},
+            "execution_cost_micros_by_workflow": {},
             "execution_ledger": {
                 "runs": 0,
                 "succeeded": 0,
@@ -64,6 +65,8 @@ def execution_metrics_for_periods(periods):
                 "token_unmeasured_runs": 0,
                 "tokens": 0,
                 "cost_micros": 0,
+                "cost_measured_runs": 0,
+                "cost_unmeasured_runs": 0,
                 "token_measured_runs_by_workflow": {},
                 "unattributed_research_tasks": 0,
                 "unattributed_research_tokens": 0,
@@ -95,6 +98,7 @@ def execution_metrics_for_periods(periods):
         label = workflow.name or workflow.key
         runs_by_workflow = metrics["execution_runs_by_workflow"]
         tokens_by_workflow = metrics["execution_tokens_by_workflow"]
+        costs_by_workflow = metrics["execution_cost_micros_by_workflow"]
         measured_runs_by_workflow = ledger["token_measured_runs_by_workflow"]
         runs_by_workflow[label] = runs_by_workflow.get(label, 0) + 1
         ledger["runs"] += 1
@@ -102,7 +106,13 @@ def execution_metrics_for_periods(periods):
             ledger["succeeded"] += 1
         elif run.status == "failed":
             ledger["failed"] += 1
-        ledger["cost_micros"] += run.cost_micros or 0
+        if run.cost_micros is not None:
+            ledger["cost_micros"] += run.cost_micros
+            ledger["cost_measured_runs"] += 1
+            costs_by_workflow[label] = costs_by_workflow.get(label, 0) + run.cost_micros
+        else:
+            ledger["cost_unmeasured_runs"] += 1
+            costs_by_workflow.setdefault(label, 0)
         if run.total_tokens is not None:
             tokens_by_workflow[label] = tokens_by_workflow.get(label, 0) + run.total_tokens
             measured_runs_by_workflow[label] = measured_runs_by_workflow.get(label, 0) + 1
@@ -136,6 +146,7 @@ def execution_metrics_for_periods(periods):
         ledger["all_tracked_tokens"] = (
             ledger["tokens"] + ledger["unattributed_research_tokens"]
         )
+        ledger["cost_usd"] = f"{ledger['cost_micros'] / 1_000_000:.6f}"
     return result
 
 
@@ -217,3 +228,12 @@ def metric_comparison_rows(current, previous=None):
         }
         for key in keys
     ]
+
+
+def cost_comparison_rows(current, previous=None):
+    rows = metric_comparison_rows(current, previous)
+    for row in rows:
+        row["display_value"] = f"${row['value'] / 1_000_000:.6f}"
+        sign = "+" if row["delta"] > 0 else "-" if row["delta"] < 0 else ""
+        row["display_delta"] = f"{sign}${abs(row['delta']) / 1_000_000:.6f}"
+    return rows

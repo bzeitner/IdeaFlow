@@ -155,10 +155,12 @@ fi
 
 PROMPT_FILE="$(mktemp -t "idea-${ID}-feed-prompt.XXXXXX.txt")"
 OUTPUT_FILE="$(mktemp -t "idea-${ID}-feed-output.XXXXXX.txt")"
-chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+RAW_FILE="$(mktemp -t "idea-${ID}-feed-raw.XXXXXX.json")"
+MEASUREMENT_FILE="$(mktemp -t "idea-${ID}-feed-measurement.XXXXXX.json")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"
 cleanup_execution_files() {
-  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 }
 trap cleanup_execution_files EXIT
 
@@ -168,11 +170,15 @@ execution_start \
 
 set +e
 claude -p "$PROMPT" \
-  --allowedTools "Bash,Read,WebFetch,WebSearch" | tee "$OUTPUT_FILE"
-AGENT_STATUS="${PIPESTATUS[0]}"
+  --allowedTools "Bash,Read,WebFetch,WebSearch" --output-format json > "$RAW_FILE"
+AGENT_STATUS="$?"
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  python3 "$SCRIPT_DIR/tools/llm_usage.py" claude "$RAW_FILE" "$OUTPUT_FILE" "$MEASUREMENT_FILE" || AGENT_STATUS=$?
+  [[ "$AGENT_STATUS" -eq 0 ]] && cat "$OUTPUT_FILE"
+fi
 set -e
 if [[ "$AGENT_STATUS" -eq 0 ]]; then
-  execution_succeed "$OUTPUT_FILE"
+  execution_succeed "$OUTPUT_FILE" "$MEASUREMENT_FILE"
 else
   execution_fail "$AGENT_STATUS" "claude feed-scoring process exited ${AGENT_STATUS}"
   exit "$AGENT_STATUS"

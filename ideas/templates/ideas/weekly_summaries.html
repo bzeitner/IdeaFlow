@@ -47,7 +47,9 @@
             <p>
               <strong>{{ summary.metrics.execution_ledger.runs|default:0 }}</strong> instrumented LLM runs ·
               <strong>{{ summary.metrics.execution_ledger.all_tracked_tokens|default:0 }}</strong> all tracked tokens ·
-              <strong>{{ summary.metrics.execution_ledger.token_unmeasured_runs|default:0 }}</strong> runs without provider token usage
+              <strong>${{ summary.metrics.execution_ledger.cost_usd|default:"0.000000" }}</strong> LLM cost ·
+              <strong>{{ summary.metrics.execution_ledger.token_unmeasured_runs|default:0 }}</strong> runs without provider token usage ·
+              <strong>{{ summary.metrics.execution_ledger.cost_unmeasured_runs|default:0 }}</strong> runs without cost
             </p>
           {% endif %}
           <div class="metric-section-grid">
@@ -58,7 +60,7 @@
                   <div class="metric-row">
                     <span title="{{ row.label }}">{% if row.idea_id %}<a href="{% url 'ideas:detail' row.idea_id %}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</span>
                     <div><div class="metric-track previous"><i style="width: {{ row.previous_width }}%"></i></div><div class="metric-track"><i style="width: {{ row.width }}%"></i></div></div>
-                    <strong>{{ row.value }} <small class="{% if row.delta > 0 %}up{% elif row.delta < 0 %}down{% endif %}">{% if row.delta > 0 %}+{% endif %}{{ row.delta }}</small></strong>
+                    <strong>{% if row.display_value %}{{ row.display_value }}{% else %}{{ row.value }}{% endif %} <small class="{% if row.delta > 0 %}up{% elif row.delta < 0 %}down{% endif %}">{% if not row.display_delta and row.delta > 0 %}+{% endif %}{% if row.display_delta %}{{ row.display_delta }}{% else %}{{ row.delta }}{% endif %}</small></strong>
                   </div>
                 {% empty %}<p class="dim">No recorded metrics.</p>{% endfor %}
               </section>

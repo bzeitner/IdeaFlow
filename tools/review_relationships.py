@@ -8,6 +8,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+try:
+    from tools.llm_usage import parse_claude, parse_codex
+except ModuleNotFoundError:  # Direct execution places tools/ itself on sys.path.
+    from llm_usage import parse_claude, parse_codex
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "tools" / "ideaflow"
@@ -58,11 +63,15 @@ def prompt_for(item, persona):
 def run_vote(provider, prompt, model):
     if provider == "claude":
         binary = os.environ.get("IDEAFLOW_CLAUDE_BIN", "claude")
-        command = [binary, "-p", prompt, "--output-format", "text"]
+        command = [binary, "-p", prompt, "--output-format", "json"]
         if model:
             command.extend(["--model", model])
-        output = subprocess.check_output(command, text=True)
-        return parse_vote(output), output
+        raw = subprocess.check_output(command, text=True)
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as raw_file:
+            raw_file.write(raw)
+            raw_file.flush()
+            output, measurement = parse_claude(raw_file.name)
+        return parse_vote(output), output, measurement
 
     binary = os.environ.get("IDEAFLOW_CODEX_BIN", "codex")
     with tempfile.NamedTemporaryFile() as output:
@@ -77,15 +86,20 @@ def run_vote(provider, prompt, model):
                 "never",
                 "exec",
                 "--ephemeral",
+                "--json",
                 "--output-last-message",
                 output.name,
                 prompt,
             ]
         )
-        subprocess.run(command, check=True)
+        completed = subprocess.run(command, check=True, text=True, capture_output=True)
         output.seek(0)
-        raw = output.read().decode()
-        return parse_vote(raw), raw
+        assistant = output.read().decode()
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as raw_file:
+            raw_file.write(completed.stdout)
+            raw_file.flush()
+            _result, measurement = parse_codex(raw_file.name)
+        return parse_vote(assistant), assistant, measurement
 
 
 def main():
@@ -93,6 +107,11 @@ def main():
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if not args.dry_run and not os.environ.get("IDEAFLOW_EXECUTION_API_TOKEN", "").strip():
+        parser.error("IDEAFLOW_EXECUTION_API_TOKEN is required for metered LLM execution")
+    codex_allocation = os.environ.get("IDEAFLOW_CODEX_COST_MICROS_PER_RUN", "")
+    if not args.dry_run and (not codex_allocation.isdigit() or int(codex_allocation) <= 0):
+        parser.error("IDEAFLOW_CODEX_COST_MICROS_PER_RUN must be a positive integer")
     queue = client_json("relationship-council-queue", "--limit", str(args.limit))
     models = {
         "claude": os.environ.get("IDEAFLOW_RELATIONSHIP_CLAUDE_MODEL", ""),
@@ -104,7 +123,7 @@ def main():
         active_run_id = None
         try:
             votes = []
-            measured = bool(os.environ.get("IDEAFLOW_EXECUTION_API_TOKEN", "").strip())
+            measured = True
             if measured and not args.dry_run:
                 trace = client_json(
                     "trace-start", "--workflow", "relationship_council",
@@ -131,18 +150,36 @@ def main():
                             "--input-file", prompt_file.name,
                         )
                         active_run_id = run["id"]
-                    vote, raw_output = run_vote(provider, prompt, models[provider])
+                    vote, raw_output, measurement = run_vote(provider, prompt, models[provider])
                 if measured:
                     with tempfile.NamedTemporaryFile("w", encoding="utf-8") as output_file:
                         output_file.write(raw_output)
                         output_file.flush()
-                        client_json(
+                        complete = measurement.get("total_tokens") is not None and measurement.get("cost_micros") is not None
+                        complete_args = [
                             "run-complete", "--run-id", active_run_id,
                             "--output-file", output_file.name,
-                            "--measurement-status", "partial",
-                            "--measurement-unavailable-reason", "provider_usage_unavailable",
-                            "--measurement-unavailable-reason", "provider_cost_unavailable",
-                        )
+                            "--measurement-status", "complete" if complete else "partial",
+                        ]
+                        if measurement.get("total_tokens") is None:
+                            complete_args.extend(["--measurement-unavailable-reason", "provider_usage_unavailable"])
+                        if measurement.get("cost_micros") is None:
+                            complete_args.extend(["--measurement-unavailable-reason", "provider_cost_unavailable"])
+                        for key, flag in (
+                            ("input_tokens", "--input-tokens"),
+                            ("output_tokens", "--output-tokens"),
+                            ("cached_tokens", "--cached-tokens"),
+                            ("reasoning_tokens", "--reasoning-tokens"),
+                            ("total_tokens", "--total-tokens"),
+                            ("cost_micros", "--cost-micros"),
+                        ):
+                            if measurement.get(key) is not None:
+                                complete_args.extend([flag, str(measurement[key])])
+                        if measurement.get("provider_request_id"):
+                            complete_args.extend(["--provider-request-id", measurement["provider_request_id"]])
+                        if measurement.get("cost_source"):
+                            complete_args.extend(["--cost-source", measurement["cost_source"]])
+                        client_json(*complete_args)
                 votes.append(
                     {
                         "persona_id": persona["id"],
