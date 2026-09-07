@@ -11,14 +11,18 @@ from django.utils import timezone
 from executions.management.commands.phase4_reconcile import PHASE4_WORKFLOWS
 from executions.models import (
     CutoverMode, DeterministicJob, MeasurementStatus, OutcomeEvent,
-    ServicePrincipal, WorkflowCutover,
+    RunPurpose, ServicePrincipal, WorkflowCutover,
 )
 from executions.services import (
     canonical_hash, complete_run, fail_run, fail_trace, start_run, start_trace,
 )
 from executions.storage import ExecutionPayloadStore
 from executions.tests.helpers import make_configuration, make_workflow_version
-from ideas.models import Artifact, Category, Idea
+from ideas.models import (
+    Artifact, Category, Idea, IdeaRelationSuggestion, Persona,
+    RelationshipCouncilReview, RelationshipCouncilVote,
+)
+from ideas.tests.helpers import make_episode
 
 
 class CreateExecutionPrincipalTests(TestCase):
@@ -191,6 +195,102 @@ class Phase4CommandTests(TestCase):
         artifacts = report["projection_attribution"]["by_projection_type"]["artifacts"]
         self.assertEqual(artifacts["attributed"], 0)
         self.assertEqual(artifacts["invalid_producer"], 1)
+
+    def test_relationship_review_is_attributed_through_three_vote_runs(self):
+        idea = self.make_idea()
+        target = self.make_idea()
+        workflow = make_workflow_version("relationship_council")
+        trace, _ = start_trace(workflow, trigger="test", subject=idea)
+        runs = []
+        for attempt in range(1, 4):
+            run, _ = start_run(
+                trace,
+                self.configuration,
+                purpose=RunPurpose.EVALUATION,
+                attempt_number=attempt,
+                rendered_input_hash=canonical_hash(f"vote {attempt}"),
+            )
+            runs.append(run)
+        for index, run in enumerate(runs):
+            complete_run(
+                run,
+                output_hash=canonical_hash(f"answer {index}"),
+                usage={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                cost_micros=1,
+                cost_source="price_table",
+                finalize_trace=index == 2,
+            )
+        suggestion = IdeaRelationSuggestion.objects.create(
+            analyzed_idea=idea,
+            source=idea,
+            target=target,
+            relation_type="related_to",
+            source_content_hash="a" * 64,
+            target_content_hash="b" * 64,
+            classifier_model="test",
+            produced_by_run=runs[0],
+        )
+        review = RelationshipCouncilReview.objects.create(
+            suggestion=suggestion,
+            outcome=RelationshipCouncilReview.Outcome.NO_DECISION,
+        )
+        for index, run in enumerate(runs):
+            persona = Persona.objects.create(
+                name=f"Persona {index}", description="test", goals="test"
+            )
+            RelationshipCouncilVote.objects.create(
+                review=review,
+                persona=persona,
+                provider="codex",
+                decision=RelationshipCouncilVote.Decision.ABSTAIN,
+                rationale="test",
+                produced_by_run=run,
+            )
+
+        report = self.run_reconcile()
+        reviews = report["projection_attribution"]["by_projection_type"][
+            "relationship_reviews"
+        ]
+        self.assertEqual(reviews["attributed"], 1)
+        self.assertEqual(reviews["missing_producer"], 0)
+
+    def test_episode_media_version_is_not_an_llm_projection(self):
+        episode = make_episode()
+        from executions.models import ArtifactVersion
+
+        ArtifactVersion.objects.create(
+            episode=episode,
+            media_type="audio/mpeg",
+            checksum_sha256="a" * 64,
+            storage_key="episode.mp3",
+        )
+        report = self.run_reconcile()
+        versions = report["projection_attribution"]["by_projection_type"][
+            "artifact_versions"
+        ]
+        self.assertEqual(versions["total"], 0)
+
+    def test_attribution_evidence_covers_irrecoverable_legacy_projection(self):
+        artifact = Artifact.objects.create(
+            idea=self.make_idea(), title="Legacy summary", kind=Artifact.Kind.SUMMARY
+        )
+        evidence = {
+            "artifacts": [{
+                "id": artifact.pk,
+                "owner": "ops@example.com",
+                "reviewed_at": timezone.now().isoformat(),
+                "reason": "Legacy output predates execution-ledger caller support.",
+            }]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "attribution.json"
+            filename.write_text(json.dumps(evidence))
+            report = self.run_reconcile("--attribution-evidence", str(filename))
+
+        artifacts = report["projection_attribution"]["by_projection_type"]["artifacts"]
+        self.assertEqual(artifacts["explicit_unavailable"], 1)
+        self.assertEqual(artifacts["covered"], 1)
+        self.assertEqual(artifacts["percent"], 100.0)
 
     def test_payload_report_detects_missing_and_hash_mismatch(self):
         with tempfile.TemporaryDirectory() as payload_root, override_settings(

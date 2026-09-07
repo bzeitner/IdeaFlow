@@ -1,0 +1,82 @@
+{
+  "persona_reviews": [
+    {
+      "id": 50,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window council output predates execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 53,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window council output predates execution-run propagation; no unambiguous producing run exists."
+    }
+  ],
+  "persona_votes": [
+    {
+      "id": 148,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 149,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 150,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 157,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 158,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    },
+    {
+      "id": 159,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window vote predates per-vote execution-run propagation; no unambiguous producing run exists."
+    }
+  ],
+  "research_entries": [
+    {
+      "id": 450,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window Codex output predates execution-run propagation; no matching run exists."
+    },
+    {
+      "id": 451,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window Codex output predates execution-run propagation; no matching run exists."
+    },
+    {
+      "id": 452,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window Codex output predates execution-run propagation; no matching run exists."
+    }
+  ],
+  "weekly_summaries": [
+    {
+      "id": 5,
+      "owner": "bzeitner",
+      "reviewed_at": "2026-09-07T03:59:41Z",
+      "reason": "Compatibility-window summary predates weekly-summary execution-run propagation; no matching run exists."
+    }
+  ]
+}

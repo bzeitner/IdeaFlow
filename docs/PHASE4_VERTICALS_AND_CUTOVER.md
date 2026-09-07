@@ -36,9 +36,34 @@ deployment time and supply independently recorded rollback-test evidence:
 ```sh
 .venv/bin/python manage.py phase4_reconcile \
   --since 2026-09-01T00:00:00Z \
+  --attribution-evidence /path/to/r4.1-attribution-evidence.json \
   --rollback-evidence /path/to/r4.1-rollback-evidence.json \
   --fail-on-issues > /path/to/r4.1-reconciliation.json
 ```
+
+Irrecoverable compatibility-window outputs may be covered by reviewed
+attribution evidence instead of fabricating historical runs. The evidence file
+is keyed by projection type; each entry identifies the record and includes an
+owner, review timestamp inside the audit window, and a specific reason:
+
+```json
+{
+  "research_entries": [
+    {
+      "id": 452,
+      "owner": "operations@example.com",
+      "reviewed_at": "2026-09-07T04:00:00Z",
+      "reason": "Legacy caller wrote the output before execution-run propagation was available."
+    }
+  ]
+}
+```
+
+Evidence may only reference an in-scope record that is still unattributed; stale,
+duplicate, out-of-window, or already-attributed references are rejected. Council
+review outcomes are deterministic aggregates and are attributed through their
+complete set of successful vote runs on one trace. Podcast media versions are
+attributed to deterministic rendering jobs and are not counted as LLM projections.
 
 The rollback evidence file is an object keyed by Phase 4 workflow. Each value
 has `owner`, `tested_at`, `result` (`pass` for a successful test), and optional
