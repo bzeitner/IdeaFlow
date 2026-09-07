@@ -317,6 +317,26 @@ class Phase4CommandTests(TestCase):
         self.assertEqual(report["measurements"]["timing"]["percent"], 100.0)
         self.assertEqual(report["measurements"]["unavailable_reason"]["percent"], 100.0)
 
+    def test_legacy_provider_process_failure_explains_tokens_and_cost(self):
+        workflow = make_workflow_version("review")
+        trace, _ = start_trace(workflow, trigger="test")
+        run, _ = start_run(
+            trace, self.configuration, rendered_input_hash=canonical_hash("prompt")
+        )
+        fail_run(
+            run,
+            error_class="ProviderProcessError",
+            measurement_unavailable_reasons=["provider-process-failed"],
+        )
+        fail_trace(trace, reason="provider process failed")
+
+        report = self.run_reconcile()
+
+        self.assertEqual(report["measurements"]["tokens"]["percent"], 100.0)
+        self.assertEqual(report["measurements"]["cost"]["percent"], 100.0)
+        self.assertEqual(report["measurements"]["tokens"]["explicit_unavailable"], 1)
+        self.assertEqual(report["measurements"]["cost"]["explicit_unavailable"], 1)
+
     def test_reconcile_rejects_invalid_since(self):
         with self.assertRaisesMessage(CommandError, "ISO-8601"):
             call_command("phase4_reconcile", "--since", "not-a-date")

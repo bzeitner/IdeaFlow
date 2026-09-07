@@ -26,6 +26,15 @@ PHASE4_WORKFLOWS = (
 )
 TERMINAL = (TraceStatus.SUCCEEDED, TraceStatus.FAILED, TraceStatus.CANCELLED)
 LAUNCH_THRESHOLD = 99.5
+# These failures occur before a provider returns billable usage, so the same
+# reason explicitly explains both unavailable token and cost measurements.
+# Retain the hyphenated value emitted by deployed legacy CLI clients while new
+# callers use the underscore-delimited API vocabulary.
+PRE_USAGE_PROVIDER_FAILURE_REASONS = (
+    "provider_request_failed",
+    "provider-process-failed",
+    "run_failed_before_usage",
+)
 
 # Durable AI-created projections and the timestamp (or parent timestamp) used
 # to exclude known legacy rows in a bounded audit.
@@ -391,7 +400,7 @@ class Command(BaseCommand):
             model_configuration__model_identifier=""
         )
         request_failed_before_measurement = _reason_query(
-            "provider_request_failed", "run_failed_before_usage"
+            *PRE_USAGE_PROVIDER_FAILURE_REASONS
         ) & Q(status=TraceStatus.FAILED)
         return {
             "terminal_runs": terminal.count(),
