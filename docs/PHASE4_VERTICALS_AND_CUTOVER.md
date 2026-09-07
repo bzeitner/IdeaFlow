@@ -30,6 +30,48 @@ Inspect readiness before every mode change:
 .venv/bin/python manage.py phase4_reconcile
 ```
 
+For the authoritative R4.1 audit, bound the population to the production R4
+deployment time and supply independently recorded rollback-test evidence:
+
+```sh
+.venv/bin/python manage.py phase4_reconcile \
+  --since 2026-09-01T00:00:00Z \
+  --rollback-evidence /path/to/r4.1-rollback-evidence.json \
+  --fail-on-issues > /path/to/r4.1-reconciliation.json
+```
+
+The rollback evidence file is an object keyed by Phase 4 workflow. Each value
+has `owner`, `tested_at`, `result` (`pass` for a successful test), and optional
+`notes`. For example:
+
+```json
+{
+  "podcast_script": {
+    "owner": "operations@example.com",
+    "tested_at": "2026-09-02T18:30:00Z",
+    "result": "pass",
+    "notes": "Moved authoritative to shadow, verified a legacy write, restored authoritative."
+  }
+}
+```
+
+The command is read-only. Its versioned JSON report includes the audit window,
+an overall readiness verdict, per-workflow trace and projection coverage,
+global projection attribution (including legacy unattributed writes), token,
+cost, timing and unavailable-reason coverage, payload existence/hash checks,
+cutover state, and rollback evidence. Projection coverage is limited to known
+AI-output candidates: manual research and manually managed artifacts are not
+expected to have producing runs. A producer is valid only when both its run and
+trace succeeded. The audit counters and readiness inputs use the bounded audit
+window; the backward-compatible `provenance` counters are explicitly labeled
+all-time, and cutovers are a current configuration snapshot.
+
+Rollback evidence is rejected when its owner is blank, its timestamp is invalid,
+in the future, or older than the audit window, or its result is not `pass` or
+`fail`. `--fail-on-issues` returns a non-zero exit after emitting the JSON when
+the result is `warning` or `fail`; omit it while collecting an initial baseline.
+The launch coverage threshold is 99.5%.
+
 Move one workflow to shadow mode:
 
 ```sh
