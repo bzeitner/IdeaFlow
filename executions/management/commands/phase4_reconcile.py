@@ -57,7 +57,8 @@ PROJECTIONS = (
     ("artifacts", Artifact, "produced_by_run", "created_at",
      Q(produced_by_run__isnull=False) | Q(kind=Artifact.Kind.SUMMARY) | Q(versions__isnull=False)),
     ("podcast_episodes", Episode, "produced_by_run", "created_at", None),
-    ("artifact_versions", ArtifactVersion, "producing_run", "created_at", None),
+    ("artifact_versions", ArtifactVersion, "producing_run", "created_at",
+     Q(artifact__isnull=False)),
 )
 
 
@@ -102,6 +103,13 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--attribution-evidence",
+            help=(
+                "JSON file documenting irrecoverable legacy projection attribution "
+                "by projection type and record ID. Evidence is read but never persisted."
+            ),
+        )
+        parser.add_argument(
             "--fail-on-issues", action="store_true",
             help="Exit non-zero after printing a report that is not ready.",
         )
@@ -111,6 +119,9 @@ class Command(BaseCommand):
         generated_at = timezone.now()
         rollback_evidence = self._load_rollback_evidence(
             options.get("rollback_evidence"), since=since, through=generated_at
+        )
+        attribution_evidence = self._load_attribution_evidence(
+            options.get("attribution_evidence"), since=since, through=generated_at
         )
         traces = ExecutionTrace.objects.select_related("workflow_version__workflow")
         runs = LLMRun.objects.select_related(
@@ -122,7 +133,9 @@ class Command(BaseCommand):
             traces = traces.filter(created_at__gte=since)
             runs = runs.filter(created_at__gte=since)
 
-        projections, projection_run_ids = self._projection_report(since, generated_at)
+        projections, projection_run_ids = self._projection_report(
+            since, generated_at, attribution_evidence
+        )
         workflows = self._workflow_report(
             traces, rollback_evidence, projection_run_ids
         )
@@ -251,6 +264,74 @@ class Command(BaseCommand):
         return queryset.filter(**filters).count()
 
     @staticmethod
+    def _load_attribution_evidence(filename, *, since, through):
+        if not filename:
+            return {}
+        try:
+            value = json.loads(Path(filename).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CommandError(f"Cannot read attribution evidence: {exc}") from exc
+        projection_names = {row[0] for row in PROJECTIONS}
+        if not isinstance(value, dict) or set(value) - projection_names:
+            raise CommandError(
+                "Attribution evidence must be an object keyed by known projection type."
+            )
+        normalized = {}
+        for projection_type, entries in value.items():
+            if not isinstance(entries, list):
+                raise CommandError(
+                    f"Attribution evidence for {projection_type} must be a list."
+                )
+            seen = set()
+            normalized_entries = {}
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} contains a non-object."
+                    )
+                record_id = entry.get("id")
+                owner = entry.get("owner")
+                reason = entry.get("reason")
+                reviewed_at = parse_datetime(str(entry.get("reviewed_at") or ""))
+                if not isinstance(record_id, int) or isinstance(record_id, bool):
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} has an invalid id."
+                    )
+                if record_id in seen:
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} repeats id {record_id}."
+                    )
+                if not isinstance(owner, str) or not owner.strip():
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} id {record_id} requires an owner."
+                    )
+                if not isinstance(reason, str) or not reason.strip():
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} id {record_id} requires a reason."
+                    )
+                if reviewed_at is None:
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} id {record_id} has an invalid reviewed_at."
+                    )
+                if timezone.is_naive(reviewed_at):
+                    reviewed_at = timezone.make_aware(
+                        reviewed_at, timezone.get_current_timezone()
+                    )
+                if reviewed_at > through or (since and reviewed_at < since):
+                    raise CommandError(
+                        f"Attribution evidence for {projection_type} id {record_id} is outside the audit window."
+                    )
+                seen.add(record_id)
+                normalized_entries[record_id] = {
+                    **entry,
+                    "owner": owner.strip(),
+                    "reason": reason.strip(),
+                    "reviewed_at": reviewed_at.isoformat(),
+                }
+            normalized[projection_type] = normalized_entries
+        return normalized
+
+    @staticmethod
     def _workflow_report(traces, rollback_evidence, projection_run_ids):
         result = {}
         cutovers = {
@@ -324,9 +405,10 @@ class Command(BaseCommand):
         return result
 
     @staticmethod
-    def _projection_report(since, through):
+    def _projection_report(since, through, attribution_evidence=None):
+        attribution_evidence = attribution_evidence or {}
         types = {}
-        total = attributed = 0
+        total = attributed = explicitly_unavailable = 0
         by_workflow = {}
         projection_run_ids = set()
         for name, model, run_field, timestamp_field, candidate_filter in PROJECTIONS:
@@ -344,19 +426,41 @@ class Command(BaseCommand):
                 f"{run_field}__status": TraceStatus.SUCCEEDED,
                 f"{run_field}__trace__status": TraceStatus.SUCCEEDED,
             }
-            attributed_count = queryset.filter(**valid_producer_filter).count()
-            missing_producer_count = queryset.filter(**{run_field: None}).count()
-            invalid_producer_count = queryset.exclude(**{run_field: None}).exclude(
-                **valid_producer_filter
-            ).count()
+            directly_attributed = queryset.filter(**valid_producer_filter)
+            valid_ids = set(directly_attributed.values_list("pk", flat=True))
+            derived_ids, derived_run_ids = Command._derived_vote_attribution(
+                name, queryset
+            )
+            valid_ids.update(derived_ids)
+            attributed_count = len(valid_ids)
+            evidence = attribution_evidence.get(name, {})
+            evidenced_ids = set(evidence)
+            out_of_scope = evidenced_ids - set(queryset.values_list("pk", flat=True))
+            already_attributed = evidenced_ids & valid_ids
+            if out_of_scope:
+                raise CommandError(
+                    f"Attribution evidence for {name} references out-of-scope IDs: "
+                    + ", ".join(str(pk) for pk in sorted(out_of_scope))
+                )
+            if already_attributed:
+                raise CommandError(
+                    f"Attribution evidence for {name} references already-attributed IDs: "
+                    + ", ".join(str(pk) for pk in sorted(already_attributed))
+                )
+            covered_count = attributed_count + len(evidenced_ids)
+            missing_producer_count = queryset.filter(
+                **{run_field: None}
+            ).exclude(pk__in=derived_ids).count()
+            invalid_producer_count = queryset.exclude(
+                **{run_field: None}
+            ).exclude(pk__in=valid_ids).count()
             run_id_field = f"{run_field}_id"
             projection_run_ids.update(
-                queryset.filter(**valid_producer_filter).values_list(
-                    run_id_field, flat=True
-                )
+                directly_attributed.values_list(run_id_field, flat=True)
             )
+            projection_run_ids.update(derived_run_ids)
             workflow_field = f"{run_field}__trace__workflow_version__workflow__key"
-            for workflow_key in queryset.filter(**valid_producer_filter).values_list(
+            for workflow_key in directly_attributed.values_list(
                 workflow_field, flat=True
             ):
                 row = by_workflow.setdefault(
@@ -364,26 +468,81 @@ class Command(BaseCommand):
                 )
                 row["attributed_projections"] += 1
                 row["by_type"][name] = row["by_type"].get(name, 0) + 1
+            if derived_ids:
+                derived_workflows = LLMRun.objects.filter(
+                    pk__in=derived_run_ids
+                ).values_list("trace__workflow_version__workflow__key", flat=True).distinct()
+                for workflow_key in derived_workflows:
+                    row = by_workflow.setdefault(
+                        workflow_key, {"attributed_projections": 0, "by_type": {}}
+                    )
+                    row["attributed_projections"] += len(derived_ids)
+                    row["by_type"][name] = (
+                        row["by_type"].get(name, 0) + len(derived_ids)
+                    )
             types[name] = {
                 "total": count,
                 "attributed": attributed_count,
-                "unattributed": count - attributed_count,
+                "explicit_unavailable": len(evidenced_ids),
+                "covered": covered_count,
+                "unattributed": count - covered_count,
                 "missing_producer": missing_producer_count,
                 "invalid_producer": invalid_producer_count,
-                "percent": _percentage(attributed_count, count),
+                "percent": _percentage(covered_count, count),
+                "evidence": [evidence[pk] for pk in sorted(evidenced_ids)],
                 "window_limited": True,
             }
             total += count
             attributed += attributed_count
+            explicitly_unavailable += len(evidenced_ids)
+        covered = attributed + explicitly_unavailable
         report = {
             "total": total,
             "attributed": attributed,
-            "unattributed_legacy_writes": total - attributed,
-            "percent": _percentage(attributed, total),
+            "explicit_unavailable": explicitly_unavailable,
+            "covered": covered,
+            "unattributed_legacy_writes": total - covered,
+            "percent": _percentage(covered, total),
             "by_projection_type": types,
             "by_workflow": by_workflow,
         }
         return report, projection_run_ids
+
+    @staticmethod
+    def _derived_vote_attribution(name, queryset):
+        """Validate deterministic council aggregates through their vote runs.
+
+        A review outcome is computed from votes; it is not itself an LLM output.
+        It is attributable when every expected vote has a successful producing
+        run and all vote runs belong to one successful trace.
+        """
+        expected_votes = {"relationship_reviews": 3}
+        if name not in {"persona_reviews", "relationship_reviews"}:
+            return set(), set()
+        valid_ids = set()
+        run_ids = set()
+        reviews = queryset.filter(produced_by_run=None).prefetch_related(
+            "votes__produced_by_run__trace"
+        )
+        for review in reviews:
+            votes = list(review.votes.all())
+            if not votes or (
+                name in expected_votes and len(votes) != expected_votes[name]
+            ):
+                continue
+            vote_runs = [vote.produced_by_run for vote in votes]
+            if any(
+                run is None or run.status != TraceStatus.SUCCEEDED
+                or run.trace.status != TraceStatus.SUCCEEDED
+                for run in vote_runs
+            ):
+                continue
+            trace_ids = {run.trace_id for run in vote_runs}
+            if len(trace_ids) != 1:
+                continue
+            valid_ids.add(review.pk)
+            run_ids.update(run.pk for run in vote_runs)
+        return valid_ids, run_ids
 
     @staticmethod
     def _measurement_report(runs):
