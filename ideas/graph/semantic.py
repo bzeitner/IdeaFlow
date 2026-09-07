@@ -22,6 +22,7 @@ from ideas.models import (
     SuggestionStatus,
 )
 from ideas.prompts import approved_prompt
+from tools.llm_pricing import estimate_openai_cost_micros
 
 EMBEDDING_DIMENSIONS = 1536
 CLASSIFIABLE_TYPES = {choice for choice, _label in RelationType.choices}
@@ -58,11 +59,14 @@ def bounded_semantic_text(text, max_chars=None):
 
 
 class SemanticAPI:
-    def __init__(self, *, api_key=None, api_base=None, embedding_model=None, classifier_model=None):
+    def __init__(self, *, api_key=None, api_base=None, embedding_model=None, classifier_model=None,
+                 workflow_key="relationship_classification", actor_label="process_semantic_graph"):
         self.api_key = api_key if api_key is not None else settings.IDEAFLOW_SEMANTIC_API_KEY
         self.api_base = api_base or settings.IDEAFLOW_SEMANTIC_API_BASE
         self.embedding_model = embedding_model or settings.IDEAFLOW_SEMANTIC_EMBEDDING_MODEL
         self.classifier_model = classifier_model or settings.IDEAFLOW_SEMANTIC_CLASSIFIER_MODEL
+        self.workflow_key = workflow_key
+        self.actor_label = actor_label
         if not self.api_key:
             raise ValueError("IDEAFLOW_SEMANTIC_API_KEY is not configured.")
         self.idea = None
@@ -75,25 +79,28 @@ class SemanticAPI:
         self.last_classification_run = None
 
     def _ensure_trace(self):
-        if self.trace or not settings.IDEAFLOW_EXECUTION_FLAGS.get("instrumentation", False):
+        if self.trace:
             return self.trace
         from executions.models import ApprovalStatus, WorkflowVersion
         from executions.services import start_trace
 
         version = WorkflowVersion.objects.select_related("workflow").filter(
-            workflow__key="relationship_classification",
+            workflow__key=self.workflow_key,
             workflow__is_active=True,
             status=ApprovalStatus.APPROVED,
         ).order_by("-version").first()
         if version is None:
-            raise RuntimeError("No approved relationship_classification workflow exists.")
+            raise RuntimeError(f"No approved {self.workflow_key} workflow exists.")
         self.trace, _created = start_trace(
             version, trigger="management_command", subject=self.idea,
-            actor_label="process_semantic_graph",
+            actor_label=self.actor_label,
         )
         return self.trace
 
     def _measured_post(self, path, payload, *, purpose, prompt_keys=()):
+        model = str(payload["model"])
+        # Reject unknown pricing before creating telemetry or incurring provider cost.
+        estimate_openai_cost_micros(model, {})
         trace = self._ensure_trace()
         if trace is None:
             return self._post(path, payload), None
@@ -101,7 +108,6 @@ class SemanticAPI:
         from executions.services import canonical_hash, complete_run, fail_run, start_run
         from ideas.models import PromptRevisionStatus, PromptTemplate
 
-        model = str(payload["model"])
         frozen = {"provider": "openai-compatible", "model_identifier": model, "settings": {"api_base": self.api_base}}
         configuration = ModelConfiguration.objects.filter(content_hash=canonical_hash(frozen)).first()
         if configuration is None:
@@ -137,13 +143,16 @@ class SemanticAPI:
             "output_tokens": usage_data.get("completion_tokens"),
             "total_tokens": usage_data.get("total_tokens"),
         }
-        reasons = ["provider_cost_unavailable"]
+        cost_micros = estimate_openai_cost_micros(model, usage)
+        reasons = []
         if not any(value is not None for value in usage.values()):
             reasons.append("provider_usage_unavailable")
         complete_run(
             run, output_hash=canonical_hash(data),
             provider_request_id=str(data.get("id") or ""), usage=usage,
-            measurement_status="partial", measurement_unavailable_reasons=reasons,
+            cost_micros=cost_micros, cost_source="price_table" if cost_micros is not None else "",
+            measurement_status="complete" if not reasons else "partial",
+            measurement_unavailable_reasons=reasons,
         )
         return data, run
 

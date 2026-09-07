@@ -198,10 +198,12 @@ PROMPT
     printf '%s\n' "$prompt"
     return 0
   fi
-  local prompt_file output_file execution_model agent_status
+  local prompt_file output_file raw_file measurement_file execution_model agent_status
   prompt_file="$(mktemp -t ideaflow-reflection-prompt.XXXXXX.txt)"
   output_file="$(mktemp -t ideaflow-reflection-output.XXXXXX.txt)"
-  chmod 600 "$prompt_file" "$output_file"
+  raw_file="$(mktemp -t ideaflow-reflection-raw.XXXXXX.jsonl)"
+  measurement_file="$(mktemp -t ideaflow-reflection-measurement.XXXXXX.json)"
+  chmod 600 "$prompt_file" "$output_file" "$raw_file" "$measurement_file"
   printf '%s' "$prompt" > "$prompt_file"
   execution_model="$REQUESTED_MODEL"
   [[ "$execution_model" == "task-routed" ]] && execution_model="claude-cli-default"
@@ -210,8 +212,8 @@ PROMPT
     agent-portfolio-reflection shared-standards
   set +e
   if [[ "$AGENT" == "claude" ]]; then
-    "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch" | tee "$output_file"
-    agent_status="${PIPESTATUS[0]}"
+    "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch" --output-format json > "$raw_file"
+    agent_status="$?"
   else
     local codex_args=(
       --search
@@ -220,17 +222,21 @@ PROMPT
       --ask-for-approval never
     )
     [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && codex_args+=(--model "$IDEAFLOW_CODEX_MODEL")
-    codex_args+=(exec --ephemeral)
-    "$AGENT_BIN" "${codex_args[@]}" "$prompt" | tee "$output_file"
-    agent_status="${PIPESTATUS[0]}"
+    codex_args+=(exec --ephemeral --json)
+    "$AGENT_BIN" "${codex_args[@]}" "$prompt" > "$raw_file"
+    agent_status="$?"
+  fi
+  if [[ "$agent_status" -eq 0 ]]; then
+    python3 "$SCRIPT_DIR/tools/llm_usage.py" "$AGENT" "$raw_file" "$output_file" "$measurement_file" || agent_status=$?
+    [[ "$agent_status" -eq 0 ]] && cat "$output_file"
   fi
   set -e
   if [[ "$agent_status" -eq 0 ]]; then
-    execution_succeed "$output_file"
+    execution_succeed "$output_file" "$measurement_file"
   else
     execution_fail "$agent_status" "${AGENT} reflection process exited ${agent_status}"
   fi
-  rm -f "$prompt_file" "$output_file"
+  rm -f "$prompt_file" "$output_file" "$raw_file" "$measurement_file"
   return "$agent_status"
 }
 

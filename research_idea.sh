@@ -562,10 +562,12 @@ echo "→ ${AGENT}/${MODE}: ${TITLE:-(untitled)} (#${ID}) against ${BASE}; repor
 
 PROMPT_FILE="$(mktemp -t "idea-${ID}-${MODE}-prompt.XXXXXX.txt")"
 OUTPUT_FILE="$(mktemp -t "idea-${ID}-${MODE}-output.XXXXXX.txt")"
-chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE"
+RAW_FILE="$(mktemp -t "idea-${ID}-${MODE}-raw.XXXXXX.jsonl")"
+MEASUREMENT_FILE="$(mktemp -t "idea-${ID}-${MODE}-measurement.XXXXXX.json")"
+chmod 600 "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"
 cleanup_execution_files() {
-  rm -f "$PROMPT_FILE" "$OUTPUT_FILE"
+  rm -f "$PROMPT_FILE" "$OUTPUT_FILE" "$RAW_FILE" "$MEASUREMENT_FILE"
 }
 trap cleanup_execution_files EXIT
 
@@ -581,8 +583,8 @@ execution_start \
 set +e
 if [[ "$AGENT" == "claude" ]]; then
   "$AGENT_BIN" -p "$PROMPT" \
-    --allowedTools "Bash,Read,Write,WebSearch,WebFetch" | tee "$OUTPUT_FILE"
-  AGENT_STATUS="${PIPESTATUS[0]}"
+    --allowedTools "Bash,Read,Write,WebSearch,WebFetch" --output-format json > "$RAW_FILE"
+  AGENT_STATUS="$?"
 else
   CODEX_ARGS=(
     --search
@@ -591,13 +593,17 @@ else
     --ask-for-approval never
   )
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && CODEX_ARGS+=(--model "$IDEAFLOW_CODEX_MODEL")
-  CODEX_ARGS+=(exec --ephemeral)
-  "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT" | tee "$OUTPUT_FILE"
-  AGENT_STATUS="${PIPESTATUS[0]}"
+  CODEX_ARGS+=(exec --ephemeral --json)
+  "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT" > "$RAW_FILE"
+  AGENT_STATUS="$?"
+fi
+if [[ "$AGENT_STATUS" -eq 0 ]]; then
+  python3 "$SCRIPT_DIR/tools/llm_usage.py" "$AGENT" "$RAW_FILE" "$OUTPUT_FILE" "$MEASUREMENT_FILE" || AGENT_STATUS=$?
+  [[ "$AGENT_STATUS" -eq 0 ]] && cat "$OUTPUT_FILE"
 fi
 set -e
 if [[ "$AGENT_STATUS" -eq 0 ]]; then
-  execution_succeed "$OUTPUT_FILE"
+  execution_succeed "$OUTPUT_FILE" "$MEASUREMENT_FILE"
 else
   execution_fail "$AGENT_STATUS" "${AGENT} ${MODE} process exited ${AGENT_STATUS}"
   exit "$AGENT_STATUS"

@@ -29,6 +29,7 @@ from .models import AGENT_RUNS_BEFORE_FEEDBACK, Artifact, Category, Episode, Epi
 from .podcast_views import serve_range_aware_file
 from .presentation import render_research_context
 from .weekly_metrics import (
+    cost_comparison_rows,
     execution_metrics_for_period, execution_metrics_for_periods,
     metric_comparison_rows,
 )
@@ -251,6 +252,7 @@ def weekly_summaries(request):
         ("Tokens by idea", "tokens_by_idea"),
         ("Execution runs by workflow", "execution_runs_by_workflow"),
         ("All tracked tokens by workflow/source", "execution_tokens_by_workflow"),
+        ("LLM cost by workflow", "execution_cost_micros_by_workflow"),
     )
     for summary in summaries:
         metrics = dict(summary.metrics or {})
@@ -267,7 +269,8 @@ def weekly_summaries(request):
         previous = summaries[index + 1].metrics if index + 1 < len(summaries) else {}
         summary.metric_sections = []
         for title, key in section_specs:
-            rows = metric_comparison_rows(
+            row_builder = cost_comparison_rows if key == "execution_cost_micros_by_workflow" else metric_comparison_rows
+            rows = row_builder(
                 (summary.metrics or {}).get(key), (previous or {}).get(key)
             )
             rows = _link_idea_metric_rows(rows, ideas_by_id)
@@ -403,6 +406,7 @@ def daily_report(request):
         "ledger": ledger,
         "run_rows": metric_comparison_rows(execution["execution_runs_by_workflow"]),
         "token_rows": metric_comparison_rows(execution["execution_tokens_by_workflow"]),
+        "cost_rows": cost_comparison_rows(execution["execution_cost_micros_by_workflow"]),
         "review_items": review_items,
         "automation_items": automation_items,
         "prs": prs,
