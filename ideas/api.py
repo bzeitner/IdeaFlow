@@ -1453,6 +1453,18 @@ def relationship_council_queue(request):
         .prefetch_related("source__idea_personas__persona")
     )
     items = []
+
+    def bounded(value, limit):
+        value = str(value or "").strip()
+        if len(value) <= limit:
+            return value
+        marker = "\n[context truncated]\n"
+        available = max(0, limit - len(marker))
+        if not available:
+            return marker[:limit]
+        head = (available * 2) // 3
+        return f"{value[:head]}{marker}{value[-(available - head):]}"
+
     for suggestion in suggestions:
         assignments = [
             assignment
@@ -1469,26 +1481,47 @@ def relationship_council_queue(request):
                 "source": {
                     "id": suggestion.source_id,
                     "title": suggestion.source.title,
-                    "summary": suggestion.source.summary,
+                    "summary": bounded(
+                        suggestion.source.summary,
+                        settings.IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS,
+                    ),
                 },
                 "target": {
                     "id": suggestion.target_id,
                     "title": suggestion.target.title,
-                    "summary": suggestion.target.summary,
+                    "summary": bounded(
+                        suggestion.target.summary,
+                        settings.IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS,
+                    ),
                 },
                 "relationship": {
                     "type": suggestion.relation_type,
-                    "description": suggestion.description,
-                    "evidence": suggestion.evidence,
+                    "description": bounded(
+                        suggestion.description,
+                        settings.IDEAFLOW_RELATIONSHIP_DESCRIPTION_MAX_CHARS,
+                    ),
+                    "evidence": bounded(
+                        suggestion.evidence,
+                        settings.IDEAFLOW_RELATIONSHIP_EVIDENCE_MAX_CHARS,
+                    ),
                     "confidence": suggestion.confidence,
                 },
                 "personas": [
                     {
                         "id": assignment.persona_id,
                         "name": assignment.persona.name,
-                        "description": assignment.persona.description,
-                        "goals": assignment.persona.goals,
-                        "constraints": assignment.persona.constraints,
+                        "description": bounded(
+                            assignment.persona.description,
+                            settings.IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS,
+                        ),
+                        "goals": bounded(
+                            assignment.persona.goals,
+                            settings.IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS,
+                        ),
+                        "constraints": bounded(
+                            assignment.persona.constraints,
+                            settings.IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS,
+                        ),
                     }
                     for assignment in assignments
                 ],

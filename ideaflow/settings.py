@@ -317,6 +317,22 @@ IDEAFLOW_SEMANTIC_MIN_SIMILARITY = float(
     os.getenv('IDEAFLOW_SEMANTIC_MIN_SIMILARITY', '0.35')
 )
 
+# Relationship-council inputs are deliberately compact. These limits prevent
+# unusually long summaries, persona definitions, or classifier evidence from
+# turning a small evaluation into a large agent request.
+IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS = max(
+    1, env_int('IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS', 1500)
+)
+IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS = max(
+    1, env_int('IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS', 500)
+)
+IDEAFLOW_RELATIONSHIP_EVIDENCE_MAX_CHARS = max(
+    1, env_int('IDEAFLOW_RELATIONSHIP_EVIDENCE_MAX_CHARS', 1500)
+)
+IDEAFLOW_RELATIONSHIP_DESCRIPTION_MAX_CHARS = max(
+    1, env_int('IDEAFLOW_RELATIONSHIP_DESCRIPTION_MAX_CHARS', 1000)
+)
+
 # Isolated Graph Lab. Its static UI is served from a separate browser origin;
 # Django issues short-lived read-only capabilities after checking role_graph.
 IDEAFLOW_GRAPH_LAB_ENABLED = env_bool('IDEAFLOW_GRAPH_LAB_ENABLED', False)

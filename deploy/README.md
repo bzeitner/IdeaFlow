@@ -219,6 +219,11 @@ install and authenticate both the Claude and Codex CLIs for the `ideaflow`
 service user, configure the optional relationship model/binary overrides, and
 enable the mixed-provider council timer:
 
+The installed Claude CLI must support `--json-schema`. The installed Codex CLI
+must support both `--skip-git-repo-check` and `--output-schema`. The worker
+checks these capabilities before fetching council work, so an incompatible CLI
+fails once without repeatedly attempting and billing individual votes.
+
 ```bash
 # as root
 cp /home/ideaflow/IdeaFlow/deploy/ideaflow-relationship-council.{service,timer} /etc/systemd/system/

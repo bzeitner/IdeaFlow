@@ -184,6 +184,37 @@ class RelationshipCouncilApiTests(TestCase):
         self.assertEqual(item["suggestion_id"], self.suggestion.pk)
         self.assertEqual(len(item["personas"]), 3)
 
+    @override_settings(
+        IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS=40,
+        IDEAFLOW_RELATIONSHIP_PERSONA_MAX_CHARS=35,
+        IDEAFLOW_RELATIONSHIP_EVIDENCE_MAX_CHARS=45,
+        IDEAFLOW_RELATIONSHIP_DESCRIPTION_MAX_CHARS=50,
+    )
+    def test_queue_bounds_relationship_council_context(self):
+        self.source.summary = "source " * 20
+        self.source.save(update_fields=["summary"])
+        self.target.summary = "target " * 20
+        self.target.save(update_fields=["summary"])
+        self.suggestion.description = "description " * 20
+        self.suggestion.evidence = "evidence " * 20
+        self.suggestion.save(update_fields=["description", "evidence"])
+        persona = self.source.idea_personas.filter(active=True, required=True).first().persona
+        persona.description = "persona " * 20
+        persona.save(update_fields=["description"])
+
+        item = self.client.get(
+            "/api/relationship-council-reviews/?limit=5", **AUTH
+        ).json()["suggestions"][0]
+
+        self.assertLessEqual(len(item["source"]["summary"]), 40)
+        self.assertLessEqual(len(item["target"]["summary"]), 40)
+        self.assertLessEqual(len(item["relationship"]["evidence"]), 45)
+        self.assertLessEqual(len(item["relationship"]["description"]), 50)
+        self.assertTrue(
+            all(len(persona["description"]) <= 35 for persona in item["personas"])
+        )
+        self.assertIn("[context truncated]", item["source"]["summary"])
+
     def test_all_three_accept_promotes_relationship(self):
         response = self.submit(("accept", "accept", "accept"))
 

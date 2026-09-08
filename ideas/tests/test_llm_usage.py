@@ -40,6 +40,20 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertEqual(measurement["cost_micros"], 12_345)
         self.assertEqual(measurement["cost_source"], "provider_reported")
 
+    def test_prefers_claude_structured_output(self):
+        path = self.write({
+            "result": "fallback text",
+            "structured_output": {
+                "decision": "accept",
+                "rationale": "Supported.",
+            },
+            "usage": {},
+        })
+
+        text, _measurement = parse_claude(path)
+
+        self.assertEqual(json.loads(text)["decision"], "accept")
+
     def test_parses_codex_jsonl_and_records_subscription_cost(self):
         path = self.write("\n".join((
             json.dumps({"type": "thread.started", "thread_id": "thread-1"}),
