@@ -76,8 +76,19 @@ class GuideViewTests(TestCase):
         self.assertContains(response, "Status controls where work lives")
         self.assertContains(response, "Build a durable work loop")
         self.assertContains(response, "Ordinary agent work pauses after two runs")
-        self.assertContains(response, "pause or resume its future feed ingestion")
+        self.assertContains(response, "pause or resume future ingestion")
         self.assertContains(response, "Any Current, Tracking, or Archive role also grants access")
+
+    def test_guide_covers_current_reporting_and_operations_workspaces(self):
+        response = self.client.get(reverse("ideas:guide"))
+
+        self.assertContains(response, "Daily operations report")
+        self.assertContains(response, "does not invoke an AI model")
+        self.assertContains(response, "Podcast Management")
+        self.assertContains(response, "download totals")
+        self.assertContains(response, "complete execution instrumentation")
+        self.assertContains(response, "Find a feed queue by Idea number")
+        self.assertContains(response, "creation default in Preferences")
 
     def test_header_links_to_guide(self):
         response = self.client.get(reverse("ideas:home"))

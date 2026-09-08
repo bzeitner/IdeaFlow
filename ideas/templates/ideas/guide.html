@@ -25,7 +25,7 @@
       <ol class="guide-steps">
         <li><strong>Sign in with Google.</strong> IdeaFlow is invitation-only. After signing in, you can read public Ideas; private workspaces require an assigned role.</li>
         <li><strong>Look for your workspace tabs.</strong> Current, Tracking, and Archive appear only when you can manage Ideas in that status.</li>
-        <li><strong>Check the header actions.</strong> Artifacts is available after sign-in. Feeds appears when you have at least one Idea workspace role. Admin-only controls include Users, Ownership, Job history, Next research run, Help inbox, and Configuration.</li>
+        <li><strong>Check the header actions.</strong> Artifacts is available after sign-in. Feeds appears when you have at least one Idea workspace role. Weekly Summary access also includes the Daily operations report, while Podcast access includes Podcast management. Admin-only controls include Users, Ownership, Job history, Next research run, Help inbox, and Configuration.</li>
         <li><strong>Ask for access when something is missing.</strong> A hidden tab or action usually means your role has not been assigned—not that the data is gone.</li>
       </ol>
       {% if not user.is_authenticated %}
@@ -36,7 +36,7 @@
     <section id="first-session" class="guide-section">
       <div class="guide-section-heading"><span>2</span><div><h2>Complete your first session</h2><p>A useful Idea needs a clear purpose and one executable next step.</p></div></div>
       <div class="guide-feature-grid">
-        <div><h3>1. Open or create an Idea</h3><p>Open an existing Idea from one of your tabs. If you have Add Ideas or Admin access, use <strong>+ New Idea</strong>; new Ideas begin in Current.</p></div>
+        <div><h3>1. Open or create an Idea</h3><p>Open an existing Idea from one of your tabs. If you have Add Ideas or Admin access, use <strong>+ New Idea</strong>. New Ideas begin in Current unless you chose another workspace you can manage as your creation default in Preferences.</p></div>
         <div><h3>2. Explain the decision</h3><p>Give it a specific title, a short summary of what is being explored or built, and the category that best describes the topic.</p></div>
         <div><h3>3. Set the next action</h3><p>Write a concrete action someone can start without reconstructing the plan. Queue follow-ups when the order is already known.</p></div>
         <div><h3>4. Add only useful context</h3><p>Add source links, notes, stage, interest, repository, parent, or visibility when they help the next person make a better decision.</p></div>
@@ -82,10 +82,10 @@
         <li>Open Tracking and filter for human input, paused work, council disagreement, open questions, or missing next actions.</li>
         <li>Update rank, interest, stage, ownership, and next action where the portfolio has changed.</li>
         <li>Move dormant or completed Ideas to Archive; archiving preserves history and stops new feed ingestion and scheduled agent work for that Idea.</li>
-        <li>Review Artifacts and, when available to your role, Weekly Summaries for outcomes across Ideas.</li>
+        <li>Review Artifacts and, when available to your role, Weekly Summaries for outcomes across Ideas. Use the Daily operations report for today’s execution volume, token use, cost, review queue, automation backlog, and linked pull requests.</li>
       </ol>
       <div class="guide-feature-grid">
-        <div><h3>Feeds</h3><p>Feeds are shared RSS/Atom sources associated with Ideas. Filter and sort incoming items by Idea or topic, read summaries, and rate interest and information value. Selecting an Idea also lets an authorized user pause or resume its future feed ingestion.</p></div>
+        <div><h3>Feeds</h3><p>Feeds are shared RSS/Atom sources associated with Ideas. Find a feed queue by Idea number, or filter and sort incoming items by Idea or topic. Read summaries, rate interest and information value, and pause or resume future ingestion for an Idea you can manage.</p></div>
         <div><h3>Feed history</h3><p>Pausing or archiving does not remove existing articles. A shared feed continues refreshing while another active, unpaused Idea still needs it.</p></div>
         <div><h3>Tracking view</h3><p>Search by text, category, stage, attention, or owner. Filters apply as soon as you change them, and search updates after a short pause. Sort by human-input priority, family, rank, interest, or update time and make quick updates in place.</p></div>
         <div><h3>Ownership</h3><p>Each Idea has an owner responsible for direction. Administrators can review and reassign ownership across the portfolio.</p></div>
@@ -123,8 +123,10 @@
         <div><dt>Repeat tasks</dt><dd>Run a measurable search or collection task on an interval, retain structured results, and review each result’s status. Repeat work can be paused independently.</dd></div>
         <div><dt>Persona council</dt><dd>Assign decision perspectives and schedule a review after an Idea stalls. Required personas must unanimously approve a direction; disagreement returns the decision to a human.</dd></div>
         <div><dt>Knowledge Graph</dt><dd>Explore parentage and explicit relationships among Ideas. Graph users can review suggested relationships; Graph Lab provides a deeper interactive view when enabled.</dd></div>
-        <div><dt>Weekly Summaries</dt><dd>Review portfolio-level progress, tasks, pull requests, token use, and changes over a completed reporting week.</dd></div>
-        <div><dt>Podcasts</dt><dd>Configure a repeat-enabled Idea as a show, connect supporting research Ideas, draft episodes from new research, then review, edit, approve, publish, unpublish, or delete them.</dd></div>
+        <div><dt>Daily operations report</dt><dd>Inspect a deterministic, date-specific view of job outcomes, tracked tokens and LLM cost, work requiring review, automation backlog, and linked pull requests. It is available with the Weekly Summary role and does not invoke an AI model.</dd></div>
+        <div><dt>Weekly Summaries</dt><dd>Review portfolio-level progress, tasks, pull requests, token use, LLM cost, and changes over a completed reporting week.</dd></div>
+        <div><dt>Podcasts</dt><dd>Configure a repeat-enabled Idea as a show, connect supporting research Ideas, and draft episodes from new research. Podcast Management collects audio ready to publish, failed production jobs, public feed links, episode counts, and download totals in one workspace.</dd></div>
+        <div><dt>Job History</dt><dd>Administrators can filter recorded jobs by workflow, inspect status, model and measured token usage, review scoring, and expand the complete execution instrumentation behind each record.</dd></div>
         <div><dt>Public Ideas</dt><dd>A public Idea is readable by every signed-in user. Public visibility does not grant edit access, and published podcast pages may be available without sign-in when a show is publicly listed.</dd></div>
       </dl>
     </section>
@@ -152,12 +154,12 @@
         <tr><td>Archive</td><td>View and manage archived Ideas.</td></tr>
         <tr><td>Add Ideas</td><td>Create Ideas. It does not by itself grant access to every workspace.</td></tr>
         <tr><td>Knowledge Graph</td><td>Open the graph workspace and its relationship-review tools.</td></tr>
-        <tr><td>Weekly Summary</td><td>Read portfolio executive summaries.</td></tr>
-        <tr><td>Podcast</td><td>Configure shows and review or publish episodes. The appropriate Idea workspace role is also required to edit the underlying Idea.</td></tr>
+        <tr><td>Weekly Summary</td><td>Read portfolio executive summaries and the deterministic Daily operations report.</td></tr>
+        <tr><td>Podcast</td><td>Open Podcast Management, configure shows, inspect production failures and downloads, and review episodes. The appropriate Idea workspace role is also required to edit the underlying Idea or publish an episode.</td></tr>
         <tr><td>Admin</td><td>Full access, including user roles, ownership, Django administration, and configuration.</td></tr>
       </tbody></table></div>
       <p class="guide-note">If you can read a public Idea but cannot edit it, that is expected. Ask an administrator for the corresponding Current, Tracking, or Archive role when you need to manage it.</p>
     </section>
-    <footer class="guide-section guide-updated"><p class="dim">Guide updated August 23, 2026 · Covers help conversations, filters, preferences, human-friendly artifact views, and the current workspace lifecycle.</p></footer>
+    <footer class="guide-section guide-updated"><p class="dim">Guide updated September 7, 2026 · Covers current workspaces, reports, automation, podcast operations, preferences, access, and support.</p></footer>
   </article>
 {% endblock %}
