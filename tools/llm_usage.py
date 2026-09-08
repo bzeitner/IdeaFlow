@@ -46,7 +46,13 @@ def parse_claude(path):
         usage["total_tokens"] = usage["input_tokens"] + usage["output_tokens"] + usage["cached_tokens"]
     cost = data.get("total_cost_usd")
     cost_micros = round(float(cost) * 1_000_000) if cost is not None else None
-    return str(data.get("result") or ""), {
+    structured_output = data.get("structured_output")
+    output = (
+        json.dumps(structured_output, ensure_ascii=False)
+        if structured_output is not None
+        else str(data.get("result") or "")
+    )
+    return output, {
         **usage,
         "cost_micros": cost_micros,
         "cost_source": "provider_reported" if cost_micros is not None else "",
