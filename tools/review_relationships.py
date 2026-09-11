@@ -141,10 +141,8 @@ def run_vote(provider, prompt, model):
             [
                 "--sandbox",
                 "read-only",
-                "--ask-for-approval",
-                "never",
-                "--skip-git-repo-check",
                 "exec",
+                "--skip-git-repo-check",
                 "--ephemeral",
                 "--json",
                 "--output-schema",
@@ -275,21 +273,26 @@ def main():
                 client_json("trace-complete", "--trace-id", trace_id)
             completed += 1
         except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+            error_detail = str(exc)
+            if isinstance(exc, subprocess.CalledProcessError):
+                provider_error = (exc.stderr or exc.stdout or "").strip()
+                if provider_error:
+                    error_detail = f"{error_detail}: {provider_error}"
             if active_run_id:
                 try:
                     client_json(
                         "run-fail", "--run-id", active_run_id,
-                        "--error-class", type(exc).__name__, "--error-detail", str(exc),
+                        "--error-class", type(exc).__name__, "--error-detail", error_detail,
                         "--measurement-unavailable-reason", "provider_request_failed",
                     )
                 except (OSError, subprocess.CalledProcessError):
                     pass
             if trace_id:
                 try:
-                    client_json("trace-fail", "--trace-id", trace_id, "--reason", str(exc))
+                    client_json("trace-fail", "--trace-id", trace_id, "--reason", error_detail)
                 except (OSError, subprocess.CalledProcessError):
                     pass
-            print(f"Suggestion {item.get('suggestion_id', '?')}: failed: {exc}")
+            print(f"Suggestion {item.get('suggestion_id', '?')}: failed: {error_detail}")
             failed += 1
     print(f"Council relationship reviews completed={completed} failed={failed}")
     return 1 if failed else 0

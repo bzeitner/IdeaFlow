@@ -96,6 +96,8 @@ class RelationshipCouncilJobTests(SimpleTestCase):
         workdir = run.call_args.kwargs["cwd"]
         self.assertIn("--skip-git-repo-check", command)
         self.assertIn("--output-schema", command)
+        self.assertLess(command.index("exec"), command.index("--skip-git-repo-check"))
+        self.assertNotIn("--ask-for-approval", command)
         self.assertNotEqual(workdir, str(review_relationships.ROOT))
         self.assertIn("ideaflow-relationship-vote-", workdir)
 
