@@ -90,3 +90,41 @@ class LLMUsageParsingTests(SimpleTestCase):
         )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("trace registration failed", completed.stderr)
+
+    def test_execution_succeed_accepts_complete_measurements_under_nounset(self):
+        calls = self.write("")
+        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        fake.write('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS_FILE"\n')
+        fake.close()
+        os.chmod(fake.name, 0o700)
+        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
+        output = self.write("completed output")
+        measurement = self.write({
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "cost_micros": 500,
+            "cost_source": "provider_reported",
+        })
+        telemetry = Path(__file__).resolve().parents[2] / "tools" / "execution_telemetry.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-uc",
+                'source "$1"; IFCLI="$2"; IDEAFLOW_TELEMETRY_ACTIVE=1; '
+                'IDEAFLOW_RUN_ID=run-1; IDEAFLOW_TRACE_ID=trace-1; '
+                'execution_succeed "$3" "$4"',
+                "test", str(telemetry), fake.name, output, measurement,
+            ],
+            env={**os.environ, "CALLS_FILE": calls},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        recorded = Path(calls).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(recorded), 2)
+        self.assertIn("run-complete --run-id run-1", recorded[0])
+        self.assertIn("--measurement-status complete", recorded[0])
+        self.assertNotIn("--measurement-unavailable-reason", recorded[0])
+        self.assertEqual(recorded[1], "trace-complete --trace-id trace-1")

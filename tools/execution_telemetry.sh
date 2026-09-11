@@ -82,9 +82,27 @@ PY
   else
     reasons+=(--measurement-unavailable-reason provider-usage-unavailable --measurement-unavailable-reason cost-unavailable)
   fi
-  if ! "$IFCLI" run-complete --run-id "$IDEAFLOW_RUN_ID" \
-      --output-file "$output_file" --finish-reason stop --measurement-status "$measurement_status" \
-      "${metric_args[@]}" "${reasons[@]}" >/dev/null; then
+  # Bash 3.2 treats expansion of an empty array as an unbound variable under
+  # `set -u`. Complete measurements intentionally clear `reasons`, so keep the
+  # empty array out of that command path entirely.
+  if [[ "$measurement_status" == "complete" ]]; then
+    if "$IFCLI" run-complete --run-id "$IDEAFLOW_RUN_ID" \
+        --output-file "$output_file" --finish-reason stop --measurement-status "$measurement_status" \
+        "${metric_args[@]}" >/dev/null; then
+      completion_status=0
+    else
+      completion_status="$?"
+    fi
+  else
+    if "$IFCLI" run-complete --run-id "$IDEAFLOW_RUN_ID" \
+        --output-file "$output_file" --finish-reason stop --measurement-status "$measurement_status" \
+        "${metric_args[@]}" "${reasons[@]}" >/dev/null; then
+      completion_status=0
+    else
+      completion_status="$?"
+    fi
+  fi
+  if [[ "$completion_status" -ne 0 ]]; then
     echo "error: execution completion reporting failed; run ${IDEAFLOW_RUN_ID} requires reconciliation" >&2
     return 1
   fi
