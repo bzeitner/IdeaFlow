@@ -17,7 +17,7 @@ import json
 import re
 import secrets
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -32,7 +32,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 
-from executions.models import LLMRun
+from executions.models import ExecutionTrace, LLMRun
 from executions.services import (
     enforce_projection_write, record_artifact_version, record_deterministic_job,
     record_outcome,
@@ -40,7 +40,7 @@ from executions.services import (
 
 from .feeds import is_acceptable_feed_url, link_feed, record_feed_item_summary
 from .graph.projection import graph_context, graph_projection, graph_search, neighborhood
-from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, RepeatResultStatus, ResearchEntry, Resource, Status, SuggestionStatus, VoiceProfile, WeeklySummary
+from .models import AGENT_CHILD_LIMIT, Artifact, AIModel, Category, Episode, EpisodeRun, EpisodeRunStatus, Feed, FeedItem, Idea, IdeaRelationSuggestion, PersonaReview, PersonaVote, PromptRevisionStatus, PromptTemplate, RelationshipCouncilReview, RelationshipCouncilVote, RepeatResult, RepeatResultStatus, ResearchEntry, Resource, SemanticGraphSettings, Status, SuggestionStatus, VoiceProfile, WeeklySummary
 from .podcast_policy import (
     PODCAST_MAX_DURATION_SECONDS,
     PODCAST_WORDS_PER_SECOND,
@@ -1444,6 +1444,19 @@ def relationship_council_queue(request):
         limit = max(1, min(int(request.GET.get("limit", 10)), 50))
     except ValueError:
         return JsonResponse({"error": "limit must be an integer."}, status=400)
+    daily_limit = SemanticGraphSettings.load().relationship_council_daily_check_limit
+    current_timezone = timezone.get_current_timezone()
+    day_start = timezone.make_aware(
+        datetime.combine(timezone.localdate(), time.min), current_timezone
+    )
+    day_end = day_start + timedelta(days=1)
+    checks_used = ExecutionTrace.objects.filter(
+        workflow_version__workflow__key="relationship_council",
+        created_at__gte=day_start,
+        created_at__lt=day_end,
+    ).count()
+    checks_remaining = max(0, daily_limit - checks_used)
+    limit = min(limit, checks_remaining)
     suggestions = (
         IdeaRelationSuggestion.objects.filter(
             status=SuggestionStatus.PENDING,
@@ -1466,6 +1479,8 @@ def relationship_council_queue(request):
         return f"{value[:head]}{marker}{value[-(available - head):]}"
 
     for suggestion in suggestions:
+        if len(items) >= limit:
+            break
         assignments = [
             assignment
             for assignment in suggestion.source.idea_personas.all()
@@ -1527,9 +1542,12 @@ def relationship_council_queue(request):
                 ],
             }
         )
-        if len(items) >= limit:
-            break
-    return JsonResponse({"suggestions": items})
+    return JsonResponse({
+        "suggestions": items,
+        "daily_check_limit": daily_limit,
+        "checks_used_today": checks_used,
+        "checks_remaining_today": checks_remaining,
+    })
 
 
 @require_api_token

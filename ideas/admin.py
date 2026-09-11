@@ -280,7 +280,11 @@ class IdeaSemanticStateAdmin(TooltipAdminMixin, admin.ModelAdmin):
 
 @admin.register(SemanticGraphSettings)
 class SemanticGraphSettingsAdmin(TooltipAdminMixin, admin.ModelAdmin):
-    fields = ("auto_accept_confidence_percent", "updated_at")
+    fields = (
+        "auto_accept_confidence_percent",
+        "relationship_council_daily_check_limit",
+        "updated_at",
+    )
     readonly_fields = ("updated_at",)
 
     def has_add_permission(self, request):

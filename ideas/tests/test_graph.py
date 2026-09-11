@@ -5,6 +5,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from executions.models import ExecutionTrace
+from executions.tests.helpers import make_workflow_version
 from ideas.graph.projection import graph_context, graph_projection, neighborhood
 from ideas.graph.revision import current_revision
 from ideas.graph.semantic import bounded_semantic_text, content_hash, process_idea, semantic_text
@@ -183,6 +185,46 @@ class RelationshipCouncilApiTests(TestCase):
         item = response.json()["suggestions"][0]
         self.assertEqual(item["suggestion_id"], self.suggestion.pk)
         self.assertEqual(len(item["personas"]), 3)
+
+    def test_queue_respects_admin_configured_daily_check_limit(self):
+        SemanticGraphSettings.objects.update_or_create(
+            pk=1, defaults={"relationship_council_daily_check_limit": 0}
+        )
+
+        payload = self.client.get(
+            "/api/relationship-council-reviews/?limit=5", **AUTH
+        ).json()
+
+        self.assertEqual(payload["suggestions"], [])
+        self.assertEqual(payload["daily_check_limit"], 0)
+        self.assertEqual(payload["checks_remaining_today"], 0)
+
+    def test_daily_check_limit_defaults_to_fifty(self):
+        payload = self.client.get(
+            "/api/relationship-council-reviews/?limit=5", **AUTH
+        ).json()
+
+        self.assertEqual(payload["daily_check_limit"], 50)
+        self.assertEqual(payload["checks_used_today"], 0)
+        self.assertEqual(payload["checks_remaining_today"], 50)
+
+    def test_started_checks_count_against_daily_limit(self):
+        SemanticGraphSettings.objects.update_or_create(
+            pk=1, defaults={"relationship_council_daily_check_limit": 1}
+        )
+        ExecutionTrace.objects.create(
+            workflow_version=make_workflow_version("relationship_council"),
+            trigger="agent_cli",
+            queued_at=timezone.now(),
+        )
+
+        payload = self.client.get(
+            "/api/relationship-council-reviews/?limit=5", **AUTH
+        ).json()
+
+        self.assertEqual(payload["suggestions"], [])
+        self.assertEqual(payload["checks_used_today"], 1)
+        self.assertEqual(payload["checks_remaining_today"], 0)
 
     @override_settings(
         IDEAFLOW_RELATIONSHIP_SUMMARY_MAX_CHARS=40,

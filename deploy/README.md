@@ -219,6 +219,10 @@ install and authenticate both the Claude and Codex CLIs for the `ideaflow`
 service user, configure the optional relationship model/binary overrides, and
 enable the mixed-provider council timer:
 
+The maximum number of relationship checks per local calendar day is configured
+under **Semantic graph settings** in Django admin. It defaults to `50`; setting
+it to `0` pauses new checks without disabling the timer.
+
 The installed Claude CLI must support `--json-schema`. The installed Codex CLI
 must support both `--skip-git-repo-check` and `--output-schema`. The worker
 checks these capabilities before fetching council work, so an incompatible CLI

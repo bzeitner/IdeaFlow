@@ -569,6 +569,13 @@ class SemanticGraphSettings(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Relationships with confidence strictly greater than this percentage are accepted automatically.",
     )
+    relationship_council_daily_check_limit = models.PositiveSmallIntegerField(
+        default=50,
+        help_text=(
+            "Maximum relationship suggestions the council may begin per local "
+            "calendar day. Set to 0 to pause council checks."
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -305,7 +305,9 @@ decision** with its attributed votes on the Graph page. Install and enable
 `deploy/ideaflow-relationship-council.{service,timer}` to run this review every
 15 minutes. Both CLIs must be installed and authenticated for the `ideaflow`
 service account; model and binary overrides are listed in
-`deploy/env.production.example`.
+`deploy/env.production.example`. The worker is capped at 50 relationship checks
+per local calendar day by default. Administrators can change the limit under
+**Semantic graph settings**; setting it to `0` pauses new council checks.
 
 **Model routing.** Task→model mapping lives in `IDEAFLOW_TASK_MODELS` (settings)
 and is served at `/api/config`; cheap work like feed/blog summaries routes to a
