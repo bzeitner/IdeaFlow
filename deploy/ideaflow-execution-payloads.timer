@@ -1,0 +1,10 @@
+[Unit]
+Description=Maintain execution payload retention and verified backups hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

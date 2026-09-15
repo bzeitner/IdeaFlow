@@ -1,0 +1,13 @@
+[Unit]
+Description=IdeaFlow execution payload retention, backup, and restore verification
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+UMask=0077
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python manage.py maintain_execution_payloads --apply
+NoNewPrivileges=true
+PrivateTmp=true

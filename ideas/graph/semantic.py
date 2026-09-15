@@ -123,10 +123,15 @@ class SemanticAPI:
             if revision is None:
                 raise RuntimeError(f"No approved prompt revision exists for {key}.")
             manifest.append({"key": key, "version": revision.version, "sha256": content_hash(revision.content)})
+        from executions.storage import ExecutionPayloadStore
+        input_ref = ""
+        if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS:
+            input_ref = ExecutionPayloadStore().put("prompt", payload).reference
         run, _created = start_run(
             trace, configuration, purpose=purpose,
             prompt_revision_manifest=manifest,
             rendered_input_hash=canonical_hash(payload),
+            rendered_input_ref=input_ref,
             context_manifest={"endpoint": path},
         )
         try:
@@ -147,8 +152,12 @@ class SemanticAPI:
         reasons = []
         if not any(value is not None for value in usage.values()):
             reasons.append("provider_usage_unavailable")
+        output_ref = ""
+        if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS:
+            output_ref = ExecutionPayloadStore().put("response", data).reference
         complete_run(
             run, output_hash=canonical_hash(data),
+            output_ref=output_ref,
             provider_request_id=str(data.get("id") or ""), usage=usage,
             cost_micros=cost_micros, cost_source="price_table" if cost_micros is not None else "",
             measurement_status="complete" if not reasons else "partial",

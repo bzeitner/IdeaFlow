@@ -43,8 +43,24 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from pathlib import Path
 
 DEFAULT_BASE = "https://ideaflow.bitesoftheweek.com"
+
+
+def _capture_payloads_enabled():
+    # Read on every CLI invocation so long-running schedulers pick up a policy
+    # change without interrupting their current LLM work. Explicit env wins.
+    configured = os.environ.get("IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS")
+    if configured is not None:
+        return configured.lower() in {"1", "true", "yes"}
+    path = Path.home() / ".ideaflow" / "client.json"
+    if not path.exists():
+        return False
+    value = json.loads(path.read_text()).get("capture_payloads", False)
+    if not isinstance(value, bool):
+        raise ValueError("client.json capture_payloads must be a boolean")
+    return value
 
 
 def _request(method, path, *, params=None, body=None, execution=False):
@@ -385,8 +401,8 @@ def cmd_run_start(a):
         "rendered_input_hash": _sha256_file(a.input_file),
         "idempotency_key": a.idempotency_key,
     }
-    if os.environ.get("IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS", "").lower() in {"1", "true", "yes"}:
-        body["rendered_input"] = _read_text("", a.input_file)
+    if _capture_payloads_enabled():
+        body["rendered_input"] = Path(a.input_file).read_bytes().decode("utf-8")
     return _request(
         "POST", f"/v1/traces/{a.trace_id}/runs/", execution=True, body=body
     )
@@ -409,8 +425,8 @@ def cmd_run_complete(a):
         "cost_micros": a.cost_micros,
         "cost_source": a.cost_source,
     }
-    if os.environ.get("IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS", "").lower() in {"1", "true", "yes"}:
-        body["output"] = _read_text("", a.output_file)
+    if _capture_payloads_enabled():
+        body["output"] = Path(a.output_file).read_bytes().decode("utf-8")
     return _request(
         "POST", f"/v1/runs/{a.run_id}/complete/", execution=True, body=body
     )
