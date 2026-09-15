@@ -4,7 +4,7 @@ from functools import wraps
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.http import HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import path
 from django.utils import timezone
@@ -23,7 +23,7 @@ from .services import (
     complete_trace, fail_run, fail_tool_invocation, fail_trace, start_run,
     start_tool_invocation, start_trace,
 )
-from .storage import ExecutionPayloadStore
+from .storage import ExecutionPayloadStore, PayloadExpired
 
 
 def _provided_token(request):
@@ -53,7 +53,10 @@ def require_execution_scope(scope):
                 token_hash, principal.token_hash
             ):
                 return JsonResponse({"error": "Invalid execution token."}, status=401)
-            if not principal.has_scope(scope):
+            # Raw content access is an explicit operator grant; older broad
+            # execution principals must not gain it merely by upgrading code.
+            permitted = scope in principal.scopes if scope == "execution:payload:read" else principal.has_scope(scope)
+            if not permitted:
                 return JsonResponse({"error": f"Missing required scope: {scope}"}, status=403)
             ServicePrincipal.objects.filter(pk=principal.pk).update(last_used_at=timezone.now())
             request.execution_principal = principal
@@ -67,7 +70,10 @@ def _json_body(request):
     if length and int(length) > settings.IDEAFLOW_EXECUTION_API_MAX_BYTES:
         raise ValueError("Request body exceeds the execution API size limit.")
     try:
-        value = json.loads(request.body or b"{}")
+        body = request.read(settings.IDEAFLOW_EXECUTION_API_MAX_BYTES + 1)
+        if len(body) > settings.IDEAFLOW_EXECUTION_API_MAX_BYTES:
+            raise ValueError("Request body exceeds the execution API size limit.")
+        value = json.loads(body or b"{}")
     except json.JSONDecodeError as exc:
         raise ValueError("Request body must be valid JSON.") from exc
     if not isinstance(value, dict):
@@ -230,7 +236,11 @@ def run_collection(request, trace_id):
         if len(input_hash) != 64:
             raise ValueError("rendered_input_hash must be a SHA-256 hex digest.")
         input_ref = ""
+        if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS and "rendered_input" not in payload:
+            raise ValueError("Payload capture is enabled; rendered_input is required.")
         if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS and "rendered_input" in payload:
+            if canonical_hash(payload["rendered_input"]) != input_hash:
+                raise ValueError("rendered_input does not match rendered_input_hash.")
             stored = ExecutionPayloadStore().put(
                 "prompt", payload["rendered_input"], content_type="text/plain"
             )
@@ -285,7 +295,11 @@ def run_complete(request, run_id):
         if len(output_hash) != 64:
             raise ValueError("output_hash must be a SHA-256 hex digest.")
         output_ref = ""
+        if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS and "output" not in payload:
+            raise ValueError("Payload capture is enabled; output is required.")
         if settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS and "output" in payload:
+            if canonical_hash(payload["output"]) != output_hash:
+                raise ValueError("output does not match output_hash.")
             stored = ExecutionPayloadStore().put(
                 "response", payload["output"], content_type="text/plain"
             )
@@ -447,7 +461,38 @@ def tool_fail(request, tool_id):
     return JsonResponse(result)
 
 
+@require_execution_scope("execution:payload:read")
+def run_payload(request, run_id, kind):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    if kind not in {"input", "output"}:
+        return JsonResponse({"error": "Unknown payload kind."}, status=404)
+    run = get_object_or_404(LLMRun, pk=run_id)
+    reference = run.rendered_input_ref if kind == "input" else run.output_ref
+    digest = run.rendered_input_hash if kind == "input" else run.output_hash
+    if not reference:
+        return JsonResponse({"error": "Payload was not captured."}, status=404)
+    try:
+        content = ExecutionPayloadStore().get(reference)
+    except PayloadExpired:
+        return JsonResponse({"error": "Payload expired under retention policy."}, status=410)
+    except FileNotFoundError:
+        return JsonResponse({"error": "Stored payload is missing."}, status=404)
+    if hashlib.sha256(content).hexdigest() != digest:
+        return JsonResponse({"error": "Payload integrity check failed."}, status=409)
+    append_event(run.trace, "payload.accessed", run=run, payload={
+        "kind": kind, "principal_id": request.execution_principal.pk,
+        "sha256": digest,
+    })
+    response = HttpResponse(content, content_type="application/octet-stream")
+    response["Cache-Control"] = "no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Disposition"] = f'attachment; filename="{kind}.payload"'
+    return response
+
+
 urlpatterns = [
+    path("v1/runs/<uuid:run_id>/payloads/<str:kind>/", run_payload, name="execution_run_payload"),
     path("v1/traces/", trace_collection, name="execution_trace_collection"),
     path("v1/traces/<uuid:trace_id>/runs/", run_collection, name="execution_run_collection"),
     path("v1/traces/<uuid:trace_id>/complete/", trace_complete, name="execution_trace_complete"),

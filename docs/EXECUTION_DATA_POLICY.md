@@ -1,6 +1,6 @@
 # Execution Telemetry Retention and Redaction Policy
 
-Status: Phase 0 decision record
+Status: Active capture policy; activation remains explicit per environment
 Date: 2026-08-31
 
 ## Policy
@@ -26,6 +26,14 @@ Rendered prompts, model responses, and tool request/response bodies may contain 
 - Raw payload access requires an operator-level permission and produces an audit event.
 - Raw payloads default to 30-day retention through `IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS`.
 - Artifact versions deliberately retained by a user follow the artifact retention policy instead.
+
+The capture, operator-access, retention, and verified-backup procedures are in
+[Execution payload operations](EXECUTION_PAYLOAD_OPERATIONS.md). For exact
+execution evidence, the storage layer rejects known configured credentials and
+private keys rather than silently redacting content after its hash was recorded.
+Callers remain responsible for excluding unnecessary sensitive content before
+inference. The raw store is protected by filesystem permissions, not application
+encryption; the local backup mirror does not provide off-host disaster recovery.
 
 ### Redaction
 

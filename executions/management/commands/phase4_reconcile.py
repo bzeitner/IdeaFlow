@@ -11,7 +11,7 @@ from executions.models import (
     ArtifactVersion, CutoverMode, DeterministicJob, ExecutionTrace, LLMRun,
     OutcomeEvent, TraceStatus, WorkflowCutover,
 )
-from executions.storage import ExecutionPayloadStore
+from executions.storage import ExecutionPayloadStore, PayloadExpired
 from ideas.models import (
     Artifact, Episode, EpisodeRun, FeedItem, FeedItemAssessment,
     IdeaRelationSuggestion, PersonaReview, PersonaVote, RepeatResult,
@@ -593,13 +593,22 @@ class Command(BaseCommand):
             "capture_enabled": bool(settings.IDEAFLOW_EXECUTION_CAPTURE_PAYLOADS),
             "references": 0, "verified": 0, "missing": 0,
             "hash_mismatch": 0, "invalid_reference": 0, "not_captured": 0,
+            "before_capture_enabled": 0, "expired": 0,
         }
+        capture_since = parse_datetime(settings.IDEAFLOW_EXECUTION_CAPTURE_SINCE) if settings.IDEAFLOW_EXECUTION_CAPTURE_SINCE else None
+        if settings.IDEAFLOW_EXECUTION_CAPTURE_SINCE and capture_since is None:
+            raise CommandError("IDEAFLOW_EXECUTION_CAPTURE_SINCE must be an ISO-8601 timestamp.")
+        if capture_since and timezone.is_naive(capture_since):
+            raise CommandError("IDEAFLOW_EXECUTION_CAPTURE_SINCE requires a timezone.")
         for run in runs.iterator():
             pairs = [(run.rendered_input_ref, run.rendered_input_hash)]
             if run.status == TraceStatus.SUCCEEDED:
                 pairs.append((run.output_ref, run.output_hash))
             for reference, digest in pairs:
                 if not reference:
+                    if capture_since and run.created_at < capture_since:
+                        report["before_capture_enabled"] += 1
+                        continue
                     report["not_captured"] += 1
                     continue
                 report["references"] += 1
@@ -608,6 +617,8 @@ class Command(BaseCommand):
                     continue
                 try:
                     verified = store.verify(reference, digest)
+                except PayloadExpired:
+                    report["expired"] += 1
                 except FileNotFoundError:
                     report["missing"] += 1
                 except Exception:

@@ -1,14 +1,22 @@
 import hashlib
 import json
+import os
+import re
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import PurePosixPath
 
 from django.conf import settings
 from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+
+
+class PayloadExpired(FileNotFoundError):
+    """Content intentionally removed or inaccessible under retention policy."""
 
 
 @dataclass(frozen=True)
@@ -27,6 +35,8 @@ class ExecutionPayloadStore:
         self.storage = storage or FileSystemStorage(
             location=settings.IDEAFLOW_EXECUTION_PAYLOAD_ROOT,
             base_url=None,
+            file_permissions_mode=0o600,
+            directory_permissions_mode=0o700,
         )
 
     def put(self, kind, content, *, content_type="application/octet-stream"):
@@ -39,6 +49,20 @@ class ExecutionPayloadStore:
             content_type = "application/json"
         if len(content) > settings.IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES:
             raise ValidationError("Execution payload exceeds the configured size limit.")
+        if settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS < 1:
+            raise ValidationError("Payload retention must be at least one day.")
+        # Keep stored bytes identical to their execution hash. Reject known
+        # credentials instead of silently rewriting evidence after inference.
+        secrets = [value for key, value in os.environ.items()
+                   if re.search(r"(?:TOKEN|SECRET|PASSWORD|API_KEY)$", key)]
+        secrets.extend(str(getattr(settings, key, "") or "") for key in (
+            "SECRET_KEY", "IDEAFLOW_API_TOKEN", "IDEAFLOW_PODCAST_WORKER_TOKEN",
+            "IDEAFLOW_SEMANTIC_API_KEY",
+        ))
+        if any(len(value) >= 12 and value.encode() in content for value in secrets) or re.search(
+            rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----", content
+        ):
+            raise ValidationError("Payload contains a configured credential or private key; capture rejected.")
         safe_kind = self._safe_component(kind)
         digest = hashlib.sha256(content).hexdigest()
         today = date.today()
@@ -47,8 +71,11 @@ class ExecutionPayloadStore:
             f"{uuid.uuid4().hex}-{digest}.payload"
         )
         stored_name = self.storage.save(name, ContentFile(content))
+        now = timezone.now()
         metadata = json.dumps(
-            {"content_type": content_type, "sha256": digest, "size_bytes": len(content)},
+            {"content_type": content_type, "sha256": digest, "size_bytes": len(content),
+             "created_at": now.isoformat(),
+             "expires_at": (now + timedelta(days=settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS)).isoformat()},
             sort_keys=True,
         ).encode("utf-8")
         self.storage.save(f"{stored_name}.meta", ContentFile(metadata))
@@ -58,6 +85,12 @@ class ExecutionPayloadStore:
 
     def get(self, reference):
         name = self._name(reference)
+        if self.storage.exists(f"{name}.meta"):
+            with self.storage.open(f"{name}.meta", "rb") as source:
+                metadata = json.load(source)
+            expiry = parse_datetime(metadata.get("expires_at", ""))
+            if metadata.get("deleted_at") or (expiry and expiry <= timezone.now()):
+                raise PayloadExpired("Execution payload expired under retention policy.")
         with self.storage.open(name, "rb") as payload:
             content = payload.read(settings.IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES + 1)
         if len(content) > settings.IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES:
