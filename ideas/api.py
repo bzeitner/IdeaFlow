@@ -444,12 +444,17 @@ def idea_reconcile_pr(request, pk):
     if state not in {"CLOSED", "MERGED"}:
         return JsonResponse({"error": "state must be CLOSED or MERGED."}, status=400)
     idea = get_object_or_404(Idea.objects.prefetch_related("resources"), pk=pk)
+    requested_workflow = payload.get("workflow")
+    if requested_workflow is not None and requested_workflow not in ("execute", "critique"):
+        return JsonResponse({"error": "workflow must be execute or critique."}, status=400)
     try:
         produced_by_run = _execution_run(payload, idea=idea, workflows=("execute", "critique"))
         workflow_key = (
             produced_by_run.trace.workflow_version.workflow.key
-            if produced_by_run else "execute"
+            if produced_by_run else requested_workflow or "execute"
         )
+        if requested_workflow and requested_workflow != workflow_key:
+            return JsonResponse({"error": "workflow does not match the execution run."}, status=409)
         enforce_projection_write(workflow_key, produced_by_run)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=409)
