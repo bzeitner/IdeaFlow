@@ -6,6 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
+if [[ "$AGENT" =~ ^(antigravity|agy)$ && "$AGENT_BIN" == "$AGENT" ]]; then
+  if command -v agy >/dev/null 2>&1; then
+    AGENT_BIN="agy"
+  elif command -v antigravity >/dev/null 2>&1; then
+    AGENT_BIN="antigravity"
+  elif [[ -x "$HOME/.gemini/bin/agy" ]]; then
+    AGENT_BIN="$HOME/.gemini/bin/agy"
+  fi
+fi
 PRINT_PROMPT=0
 REFRESH=0
 for arg in "$@"; do
@@ -28,7 +37,11 @@ if [[ "$PRINT_PROMPT" -eq 0 && -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   exit 1
 fi
 if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
-  echo "error: the '$AGENT' CLI is not available." >&2
+  if [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+    echo "error: the Antigravity CLI ('agy') isn't on your PATH (install via 'curl -fsSL https://antigravity.google/cli/install.sh | bash' or set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
+  else
+    echo "error: the '$AGENT' CLI is not available." >&2
+  fi
   exit 1
 fi
 
@@ -47,6 +60,8 @@ fi
 PROVIDER="$AGENT"
 if [[ "$AGENT" == "codex" ]]; then
   EXECUTION_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+  EXECUTION_MODEL="${IDEAFLOW_ANTIGRAVITY_MODEL:-gemini-3.8-flash-high}"
 else
   EXECUTION_MODEL="$MODEL"
 fi
@@ -164,8 +179,13 @@ elif [[ "$AGENT" == "codex" ]]; then
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && args+=(--model "$IDEAFLOW_CODEX_MODEL")
   "$AGENT_BIN" "${args[@]}" exec --ephemeral --json "$PROMPT" > "$RAW_FILE"
   AGENT_STATUS="$?"
+elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+  args=(--dangerously-skip-permissions --output-format json)
+  [[ -n "${EXECUTION_MODEL:-}" && "$EXECUTION_MODEL" != "agy-default" ]] && args=(--model "$EXECUTION_MODEL" "${args[@]}")
+  "$AGENT_BIN" "${args[@]}" -p "$PROMPT" > "$RAW_FILE"
+  AGENT_STATUS="$?"
 else
-  echo "error: IDEAFLOW_AGENT must be claude or codex." >&2
+  echo "error: IDEAFLOW_AGENT must be claude, codex, or antigravity." >&2
   exit 2
 fi
 if [[ "$AGENT_STATUS" -eq 0 ]]; then

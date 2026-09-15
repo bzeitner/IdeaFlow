@@ -24,9 +24,10 @@
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
 #   IDEAFLOW_API_TOKEN  required — the shared bearer token
-#   IDEAFLOW_AGENT      claude (default) or codex
+#   IDEAFLOW_AGENT      claude (default), codex, or antigravity (agy)
 #   IDEAFLOW_AGENT_BIN  optional CLI name/path override
 #   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`
+#   IDEAFLOW_ANTIGRAVITY_MODEL model passed to `agy --model` (default: gemini-3.8-flash-high)
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -34,6 +35,15 @@ cd "$SCRIPT_DIR"
 IFCLI="$SCRIPT_DIR/tools/ideaflow"
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
+if [[ "$AGENT" =~ ^(antigravity|agy)$ && "$AGENT_BIN" == "$AGENT" ]]; then
+  if command -v agy >/dev/null 2>&1; then
+    AGENT_BIN="agy"
+  elif command -v antigravity >/dev/null 2>&1; then
+    AGENT_BIN="antigravity"
+  elif [[ -x "$HOME/.gemini/bin/agy" ]]; then
+    AGENT_BIN="$HOME/.gemini/bin/agy"
+  fi
+fi
 # shellcheck source=tools/prompt_standards.sh
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 # shellcheck source=tools/execution_telemetry.sh
@@ -74,8 +84,8 @@ if [[ -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   exit 1
 fi
 case "$AGENT" in
-  claude|codex) ;;
-  *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
+  claude|codex|antigravity|agy) ;;
+  *) echo "error: IDEAFLOW_AGENT must be claude, codex, or antigravity, got '$AGENT'." >&2; exit 2 ;;
 esac
 [[ "$MIN" =~ ^[0-9]+$ ]] || { echo "error: --min must be a whole number." >&2; exit 2; }
 [[ "$DELAY" =~ ^[0-9]+$ ]] || { echo "error: --delay must be a whole number of seconds." >&2; exit 2; }
@@ -88,6 +98,8 @@ RUN_STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 RUN_START_EPOCH="$(date '+%s')"
 if [[ "$AGENT" == "codex" ]]; then
   REQUESTED_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+  REQUESTED_MODEL="${IDEAFLOW_ANTIGRAVITY_MODEL:-gemini-3.8-flash-high}"
 else
   REQUESTED_MODEL="task-routed"
 fi
@@ -206,7 +218,15 @@ PROMPT
   chmod 600 "$prompt_file" "$output_file" "$raw_file" "$measurement_file"
   printf '%s' "$prompt" > "$prompt_file"
   execution_model="$REQUESTED_MODEL"
-  [[ "$execution_model" == "task-routed" ]] && execution_model="claude-cli-default"
+  if [[ "$execution_model" == "task-routed" ]]; then
+    if [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+      execution_model="${IDEAFLOW_ANTIGRAVITY_MODEL:-gemini-3.8-flash-high}"
+    elif [[ "$AGENT" == "codex" ]]; then
+      execution_model="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+    else
+      execution_model="claude-cli-default"
+    fi
+  fi
   execution_start \
     reflection "" "$AGENT" "$execution_model" generation "$prompt_file" \
     agent-portfolio-reflection shared-standards
@@ -214,7 +234,7 @@ PROMPT
   if [[ "$AGENT" == "claude" ]]; then
     "$AGENT_BIN" -p "$prompt" --allowedTools "Bash,Read,WebSearch,WebFetch" --output-format json > "$raw_file"
     agent_status="$?"
-  else
+  elif [[ "$AGENT" == "codex" ]]; then
     local codex_args=(
       --search
       -C "$SCRIPT_DIR"
@@ -224,6 +244,14 @@ PROMPT
     [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && codex_args+=(--model "$IDEAFLOW_CODEX_MODEL")
     codex_args+=(exec --ephemeral --json)
     "$AGENT_BIN" "${codex_args[@]}" "$prompt" > "$raw_file"
+    agent_status="$?"
+  elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+    local agy_args=(
+      --dangerously-skip-permissions
+      --output-format json
+    )
+    [[ -n "${execution_model:-}" && "$execution_model" != "agy-default" ]] && agy_args=(--model "$execution_model" "${agy_args[@]}")
+    "$AGENT_BIN" "${agy_args[@]}" -p "$prompt" > "$raw_file"
     agent_status="$?"
   fi
   if [[ "$agent_status" -eq 0 ]]; then

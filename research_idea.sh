@@ -22,9 +22,10 @@
 # Config (env):
 #   IDEAFLOW_API_BASE   default https://ideaflow.bitesoftheweek.com
 #   IDEAFLOW_API_TOKEN  required — the shared bearer token
-#   IDEAFLOW_AGENT      claude (default) or codex
+#   IDEAFLOW_AGENT      claude (default), codex, or antigravity (agy)
 #   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`; leave
 #                        unset to use the logged-in Codex CLI default
+#   IDEAFLOW_ANTIGRAVITY_MODEL model passed to `agy --model` (default: gemini-3.8-flash-high)
 
 set -euo pipefail
 
@@ -34,6 +35,15 @@ PRINT_PROMPT=0
 [[ "${3:-}" == "--print-prompt" ]] && PRINT_PROMPT=1
 AGENT="${IDEAFLOW_AGENT:-claude}"
 AGENT_BIN="${IDEAFLOW_AGENT_BIN:-$AGENT}"
+if [[ "$AGENT" =~ ^(antigravity|agy)$ && "$AGENT_BIN" == "$AGENT" ]]; then
+  if command -v agy >/dev/null 2>&1; then
+    AGENT_BIN="agy"
+  elif command -v antigravity >/dev/null 2>&1; then
+    AGENT_BIN="antigravity"
+  elif [[ -x "$HOME/.gemini/bin/agy" ]]; then
+    AGENT_BIN="$HOME/.gemini/bin/agy"
+  fi
+fi
 if [[ -z "$ID" || ! "$ID" =~ ^[0-9]+$ ]]; then
   echo "usage: $0 <idea-id> [research|review|execute|critique|persona|summary]" >&2
   exit 2
@@ -44,8 +54,8 @@ case "$MODE" in
   *) echo "error: mode must be research|review|execute|critique|persona|repeat|summary, got '$MODE'." >&2; exit 2 ;;
 esac
 case "$AGENT" in
-  claude|codex) ;;
-  *) echo "error: IDEAFLOW_AGENT must be claude or codex, got '$AGENT'." >&2; exit 2 ;;
+  claude|codex|antigravity|agy) ;;
+  *) echo "error: IDEAFLOW_AGENT must be claude, codex, or antigravity, got '$AGENT'." >&2; exit 2 ;;
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -78,7 +88,11 @@ CHILD_STANDARD="$(managed_prompt child-suggestion-standard "$CHILD_STANDARD")"
 NEXT_ACTION_STANDARD="$(managed_prompt next-action-standard "$NEXT_ACTION_STANDARD")"
 
 if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
-  echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
+  if [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+    echo "error: the Antigravity CLI ('agy') isn't on your PATH (install via 'curl -fsSL https://antigravity.google/cli/install.sh | bash' or set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
+  else
+    echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
+  fi
   exit 1
 fi
 if [[ "$PRINT_PROMPT" -eq 0 && -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
@@ -114,6 +128,8 @@ fi
 PROVIDER="$AGENT"
 if [[ "$AGENT" == "codex" ]]; then
   EXECUTION_MODEL="${IDEAFLOW_CODEX_MODEL:-codex-default}"
+elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+  EXECUTION_MODEL="${IDEAFLOW_ANTIGRAVITY_MODEL:-gemini-3.8-flash-high}"
 else
   EXECUTION_MODEL="$MODEL"
 fi
@@ -585,7 +601,7 @@ if [[ "$AGENT" == "claude" ]]; then
   "$AGENT_BIN" -p "$PROMPT" \
     --allowedTools "Bash,Read,Write,WebSearch,WebFetch" --output-format json > "$RAW_FILE"
   AGENT_STATUS="$?"
-else
+elif [[ "$AGENT" == "codex" ]]; then
   CODEX_ARGS=(
     --search
     -C "$SCRIPT_DIR"
@@ -595,6 +611,14 @@ else
   [[ -n "${IDEAFLOW_CODEX_MODEL:-}" ]] && CODEX_ARGS+=(--model "$IDEAFLOW_CODEX_MODEL")
   CODEX_ARGS+=(exec --ephemeral --json)
   "$AGENT_BIN" "${CODEX_ARGS[@]}" "$PROMPT" > "$RAW_FILE"
+  AGENT_STATUS="$?"
+elif [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
+  AGY_ARGS=(
+    --dangerously-skip-permissions
+    --output-format json
+  )
+  [[ -n "${EXECUTION_MODEL:-}" && "$EXECUTION_MODEL" != "agy-default" ]] && AGY_ARGS=(--model "$EXECUTION_MODEL" "${AGY_ARGS[@]}")
+  "$AGENT_BIN" "${AGY_ARGS[@]}" -p "$PROMPT" > "$RAW_FILE"
   AGENT_STATUS="$?"
 fi
 if [[ "$AGENT_STATUS" -eq 0 ]]; then

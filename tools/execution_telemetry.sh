@@ -17,6 +17,10 @@ execution_start() {
     echo "error: IDEAFLOW_CODEX_COST_MICROS_PER_RUN must be a positive integer for Codex cost allocation." >&2
     return 1
   fi
+  if [[ "$provider" =~ ^(antigravity|agy)$ ]] && [[ -n "${IDEAFLOW_ANTIGRAVITY_COST_MICROS_PER_RUN:-}" ]] && { [[ ! "${IDEAFLOW_ANTIGRAVITY_COST_MICROS_PER_RUN}" =~ ^[0-9]+$ ]] || [[ "${IDEAFLOW_ANTIGRAVITY_COST_MICROS_PER_RUN}" -eq 0 ]]; }; then
+    echo "error: IDEAFLOW_ANTIGRAVITY_COST_MICROS_PER_RUN must be a positive integer for Antigravity cost allocation." >&2
+    return 1
+  fi
   local nonce trace_json run_json prompt_args=() prompt_key
   local subject_args=()
   nonce="$(python3 -c 'import uuid; print(uuid.uuid4())')"

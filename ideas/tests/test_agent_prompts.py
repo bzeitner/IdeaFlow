@@ -32,7 +32,33 @@ def codex_prompt(script, *args):
     )
 
 
+def antigravity_prompt(script, *args):
+    return subprocess.check_output(
+        [str(script), *args],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "IDEAFLOW_API_TOKEN": "",
+            "IDEAFLOW_AGENT": "antigravity",
+            "IDEAFLOW_ANTIGRAVITY_MODEL": "gemini-3.7-flash",
+        },
+        text=True,
+    )
+
+
 class AgentPromptTests(SimpleTestCase):
+    def test_agy_default_model_is_supported_without_override(self):
+        for script, args in [
+            (ROOT / "research_idea_agy.sh", ["123", "research", "--print-prompt"]),
+            (ROOT / "weekly_summary.sh", ["--print-prompt"]),
+        ]:
+            with self.subTest(script=script.name):
+                env = {**os.environ, "IDEAFLOW_AGENT": "agy", "IDEAFLOW_API_TOKEN": ""}
+                env.pop("IDEAFLOW_ANTIGRAVITY_MODEL", None)
+                text = subprocess.check_output([str(script), *args], cwd=ROOT, env=env, text=True)
+                self.assertIn("gemini-3.8-flash-high", text)
+                self.assertNotIn("--execution-model <configured-", text)
+
     def test_weekly_metrics_mktemp_template_ends_with_placeholders(self):
         source = (ROOT / "weekly_summary.sh").read_text()
         self.assertIn('weekly-metrics.json.XXXXXX', source)
@@ -52,6 +78,28 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn('Idea #<id> — <title>', text)
         self.assertIn('+ children (total)', text)
         self.assertIn("must not double-count", text)
+
+    def test_antigravity_research_logs_actual_execution_identity(self):
+        text = antigravity_prompt(RUNNER, "123", "review", "--print-prompt")
+        self.assertIn("--model <configured-review-model>", text)
+        self.assertIn("--provider antigravity --execution-model gemini-3.7-flash", text)
+
+    def test_antigravity_weekly_summary_logs_actual_model(self):
+        text = antigravity_prompt(ROOT / "weekly_summary.sh", "--print-prompt")
+        self.assertIn("--model gemini-3.7-flash --provider antigravity", text)
+
+    def test_research_idea_agy_wrapper_forwards_args(self):
+        text = subprocess.check_output(
+            [str(ROOT / "research_idea_agy.sh"), "123", "review", "--print-prompt"],
+            cwd=ROOT,
+            env={
+                **os.environ,
+                "IDEAFLOW_API_TOKEN": "",
+                "IDEAFLOW_ANTIGRAVITY_MODEL": "gemini-3.7-flash",
+            },
+            text=True,
+        )
+        self.assertIn("--provider antigravity --execution-model gemini-3.7-flash", text)
 
     def test_weekly_summary_prompt_covers_every_idea_and_persists_once(self):
         text = subprocess.check_output(

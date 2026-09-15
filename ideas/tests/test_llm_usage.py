@@ -6,7 +6,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from tools.llm_usage import parse_claude, parse_codex
+from tools.llm_usage import parse_claude, parse_codex, parse_antigravity
 from tools.llm_pricing import estimate_openai_cost_micros
 
 
@@ -70,6 +70,43 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertEqual(measurement["cached_tokens"], 60)
         self.assertEqual(measurement["cost_micros"], 250_000)
         self.assertEqual(measurement["cost_source"], "subscription_allocated")
+
+    def test_parses_antigravity_aggregate_usage_and_provider_cost(self):
+        path = self.write({
+            "result": "done agy", "conversation_id": "conv-123", "total_cost_usd": 0.005,
+            "usage": {
+                "input_tokens": 50, "output_tokens": 20,
+                "cache_read_tokens": 10,
+                "thinking_tokens": 5,
+                "total_tokens": 70,
+            },
+        })
+
+        text, measurement = parse_antigravity(path)
+
+        self.assertEqual(text, "done agy")
+        self.assertEqual(measurement["total_tokens"], 70)
+        self.assertEqual(measurement["cached_tokens"], 10)
+        self.assertEqual(measurement["reasoning_tokens"], 5)
+        self.assertEqual(measurement["cost_micros"], 5_000)
+        self.assertEqual(measurement["cost_source"], "provider_reported")
+        self.assertEqual(measurement["provider_request_id"], "conv-123")
+
+    def test_prefers_antigravity_structured_output_and_allocated_cost(self):
+        path = self.write({
+            "result": "fallback text",
+            "structured_output": {"status": "ok"},
+            "conversation_id": "session-456",
+            "usage": {"input_tokens": 15, "output_tokens": 10, "total_tokens": 25},
+        })
+
+        text, measurement = parse_antigravity(path, allocated_cost_micros=10_000)
+
+        self.assertEqual(json.loads(text), {"status": "ok"})
+        self.assertEqual(measurement["total_tokens"], 25)
+        self.assertEqual(measurement["cost_micros"], 10_000)
+        self.assertEqual(measurement["cost_source"], "subscription_allocated")
+        self.assertEqual(measurement["provider_request_id"], "session-456")
 
     def test_unknown_openai_model_is_rejected_before_use(self):
         with self.assertRaisesRegex(ValueError, "No approved pricing policy"):

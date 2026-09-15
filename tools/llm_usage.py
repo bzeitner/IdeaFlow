@@ -92,16 +92,55 @@ def parse_codex(path, allocated_cost_micros=None):
     }
 
 
+def parse_antigravity(path, allocated_cost_micros=None):
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw_usage = data.get("usage") or {}
+    usage = _usage({
+        "input_tokens": raw_usage.get("input_tokens"),
+        "output_tokens": raw_usage.get("output_tokens"),
+        "cached_tokens": raw_usage.get("cache_read_tokens") or raw_usage.get("cached_tokens"),
+        "reasoning_tokens": raw_usage.get("thinking_tokens") or raw_usage.get("reasoning_tokens"),
+        "total_tokens": raw_usage.get("total_tokens"),
+    })
+    structured_output = data.get("structured_output")
+    output = (
+        json.dumps(structured_output, ensure_ascii=False)
+        if structured_output is not None
+        else str(data.get("result") or "")
+    )
+    cost = data.get("total_cost_usd")
+    cost_micros = round(float(cost) * 1_000_000) if cost is not None else None
+    cost_source = "provider_reported" if cost_micros is not None else ""
+    if cost_micros is None:
+        if allocated_cost_micros is None:
+            raw_cost = os.environ.get("IDEAFLOW_ANTIGRAVITY_COST_MICROS_PER_RUN", "")
+            if raw_cost.isdigit() and int(raw_cost) > 0:
+                allocated_cost_micros = int(raw_cost)
+        if allocated_cost_micros is not None:
+            cost_micros = allocated_cost_micros
+            cost_source = "subscription_allocated"
+
+    return output, {
+        **usage,
+        "cost_micros": cost_micros,
+        "cost_source": cost_source,
+        "provider_request_id": str(data.get("conversation_id") or data.get("session_id") or ""),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("provider", choices=("claude", "codex"))
+    parser.add_argument("provider", choices=("claude", "codex", "antigravity", "agy"))
     parser.add_argument("raw_file")
     parser.add_argument("output_file")
     parser.add_argument("measurement_file")
     args = parser.parse_args()
-    text, measurement = (
-        parse_claude(args.raw_file) if args.provider == "claude" else parse_codex(args.raw_file)
-    )
+    if args.provider == "claude":
+        text, measurement = parse_claude(args.raw_file)
+    elif args.provider == "codex":
+        text, measurement = parse_codex(args.raw_file)
+    else:
+        text, measurement = parse_antigravity(args.raw_file)
     Path(args.output_file).write_text(text, encoding="utf-8")
     Path(args.measurement_file).write_text(json.dumps(measurement), encoding="utf-8")
 
