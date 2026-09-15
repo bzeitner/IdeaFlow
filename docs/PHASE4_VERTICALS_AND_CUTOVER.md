@@ -113,6 +113,49 @@ After reconciliation shows complete attribution and every caller has been update
 
 Rollback is an immediate mode change back to `shadow` or `legacy`; no schema rollback is required.
 
+## Automated rollback evidence
+
+Run the following on the deployment being audited, with its normal database and
+`IDEAFLOW_API_TOKEN` configuration. Evidence belongs to the environment where
+the command ran; local test results are not production evidence.
+
+```sh
+.venv/bin/python manage.py phase4_test_rollback --owner bzeitner > /tmp/r4.1-rollback-evidence.json
+.venv/bin/python manage.py phase4_reconcile \
+  --since 2026-09-12T00:00:00Z \
+  --rollback-evidence /tmp/r4.1-rollback-evidence.json \
+  --fail-on-issues
+```
+
+`phase4_test_rollback` tests all six workflows through their authenticated API
+handlers. It checks an unattributed write in `authoritative` (409), `shadow`
+(successful database write), restored `authoritative` (409), `legacy`
+(successful database write), restored `authoritative` (409), and `frozen` (409).
+Each rejection must name the workflow and cutover restriction, and the test
+checks that the expected projection was actually created or rejected.
+
+The command locks each cutover record and changes its mode only inside a
+transaction that is always rolled back. It creates synthetic subjects and
+discards all probe records, outcomes, and queued rendering jobs. Production
+readers never see the temporary modes or synthetic records; existing history
+and the full original cutover configuration are retained. Database sequence
+counters can advance. A concurrent lock holder causes the probe to fail rather
+than wait. No LLM calls, file uploads, or audio rendering are performed.
+
+The emitted JSON includes the owner, actual test time, original/restored mode,
+HTTP status and projection count for each step, and the explicit scope
+`transactional_api_handlers`. Nothing is emitted unless every workflow passes.
+This verifies application/database rollback behavior in the current process;
+it does not verify HTTP transport, a running web worker's deployed code, or
+external worker recovery. Preserve any separately conducted operational test
+results alongside this evidence.
+
+PR reconciliation accepts an optional JSON `workflow` value of `execute` or
+`critique` so both cutovers can be exercised independently without a producing
+run. Omission preserves the existing `execute` default for unattributed calls;
+with a run, its workflow remains authoritative and a conflicting selector is
+rejected.
+
 ## Deployment
 
 Phase 4 adds no environment variables and does not require a worker software update. Existing workers remain protocol-compatible. Deploy in this order:
