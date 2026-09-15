@@ -53,7 +53,10 @@ def require_execution_scope(scope):
                 token_hash, principal.token_hash
             ):
                 return JsonResponse({"error": "Invalid execution token."}, status=401)
-            if not principal.has_scope(scope):
+            # Raw content access is an explicit operator grant; older broad
+            # execution principals must not gain it merely by upgrading code.
+            permitted = scope in principal.scopes if scope == "execution:payload:read" else principal.has_scope(scope)
+            if not permitted:
                 return JsonResponse({"error": f"Missing required scope: {scope}"}, status=403)
             ServicePrincipal.objects.filter(pk=principal.pk).update(last_used_at=timezone.now())
             request.execution_principal = principal

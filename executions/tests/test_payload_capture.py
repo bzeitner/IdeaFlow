@@ -71,6 +71,9 @@ class PayloadCaptureTests(TestCase):
         self.assertTrue(store.verify(run.output_ref, run.output_hash))
         path = f"/api/executions/v1/runs/{run_id}/payloads/output/"
         self.assertEqual(self.client.get(path, **self.headers).status_code, 403)
+        self.principal.scopes = ["execution:*"]
+        self.principal.save()
+        self.assertEqual(self.client.get(path, **self.headers).status_code, 403)
         self.principal.scopes.append("execution:payload:read")
         self.principal.save()
         fetched = self.client.get(path, **self.headers)
