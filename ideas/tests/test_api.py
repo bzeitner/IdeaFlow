@@ -91,6 +91,49 @@ class ApiIdeaJobLeaseTests(TestCase):
         self.assertEqual(reclaimed.status_code, 201)
         self.assertNotEqual(reclaimed.json()["job_token"], old_token)
 
+    def release(self, idea, workflow="research", job_token=None):
+        body = {"workflow": workflow}
+        if job_token is not None:
+            body["job_token"] = job_token
+        return self.client.post(
+            f"/api/ideas/{idea.pk}/claim/release/",
+            data=json.dumps(body),
+            content_type="application/json",
+            **AUTH,
+        )
+
+    def test_release_clears_lease_so_the_job_can_be_reclaimed_immediately(self):
+        idea = make_idea()
+        token = self.claim(idea).json()["job_token"]
+        response = self.release(idea, job_token=token)
+        self.assertEqual(response.status_code, 200)
+        idea.refresh_from_db()
+        self.assertEqual(idea.job_lease_token_hash, "")
+        self.assertIsNone(idea.job_lease_expires_at)
+        reclaimed = self.claim(idea)
+        self.assertEqual(reclaimed.status_code, 201)
+
+    def test_release_requires_the_matching_token(self):
+        idea = make_idea()
+        self.claim(idea)
+        response = self.release(idea, job_token="wrong-token")
+        self.assertEqual(response.status_code, 409)
+        idea.refresh_from_db()
+        self.assertNotEqual(idea.job_lease_token_hash, "")
+
+    def test_release_requires_the_matching_workflow(self):
+        idea = make_idea()
+        token = self.claim(idea, workflow="research").json()["job_token"]
+        response = self.release(idea, workflow="review", job_token=token)
+        self.assertEqual(response.status_code, 409)
+        idea.refresh_from_db()
+        self.assertNotEqual(idea.job_lease_token_hash, "")
+
+    def test_release_of_an_unleased_idea_is_a_harmless_no_op(self):
+        idea = make_idea()
+        response = self.release(idea)
+        self.assertEqual(response.status_code, 200)
+
 
 @override_settings(IDEAFLOW_API_TOKEN="")
 class ApiDisabledTests(TestCase):

@@ -192,6 +192,29 @@ def idea_job_claim(request, pk):
 
 
 @require_api_token
+@transaction.atomic
+def idea_job_release(request, pk):
+    """Release a claimed job lease early, e.g. after a failed run, instead of
+    leaving the idea locked until the lease naturally expires."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    try:
+        payload = json.loads(request.body or b"{}")
+        workflow = str(payload.get("workflow") or "")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "workflow is required."}, status=400)
+    if workflow not in JOB_WORKFLOWS:
+        return JsonResponse({"error": "Unknown workflow.", "allowed": sorted(JOB_WORKFLOWS)}, status=400)
+    idea = get_object_or_404(Idea.objects.select_for_update(), pk=pk)
+    lease_error = _verify_job_lease(idea, payload, {workflow})
+    if lease_error:
+        return lease_error
+    _release_job_lease(idea)
+    idea.save(update_fields=["job_lease_token_hash", "job_lease_workflow", "job_lease_expires_at", "updated_at"])
+    return JsonResponse({"idea_id": idea.pk, "released": True}, status=200)
+
+
+@require_api_token
 def idea_list(request):
     if request.method != "GET":
         return HttpResponseNotAllowed(["GET"])
@@ -1684,6 +1707,7 @@ urlpatterns = [
     path("weekly-summaries/", weekly_summary_list, name="api_weekly_summary_list"),
     path("ideas/<int:pk>/", idea_detail, name="api_idea_detail"),
     path("ideas/<int:pk>/claim/", idea_job_claim, name="api_idea_job_claim"),
+    path("ideas/<int:pk>/claim/release/", idea_job_release, name="api_idea_job_release"),
     path("ideas/<int:pk>/artifacts/", idea_artifact, name="api_idea_artifact_create"),
     path("ideas/<int:pk>/artifacts/<int:artifact_pk>/", idea_artifact, name="api_idea_artifact_update"),
     path("ideas/<int:pk>/reconcile-pr/", idea_reconcile_pr, name="api_idea_reconcile_pr"),

@@ -169,6 +169,13 @@ def cmd_claim_job(a):
     )
 
 
+def cmd_release_job(a):
+    return _request(
+        "POST", f"/ideas/{a.id}/claim/release/",
+        body={"workflow": a.workflow},
+    )
+
+
 def cmd_weekly_summaries(a):
     return _request("GET", "/weekly-summaries/")
 
@@ -555,6 +562,11 @@ def build_parser():
     s.add_argument("--workflow", required=True, choices=("research", "review", "execute", "critique", "repeat", "persona", "summary"))
     s.add_argument("--lease-seconds", type=int, default=3600)
     s.set_defaults(func=cmd_claim_job)
+
+    s = sub.add_parser("release-job", help="Release a claimed job lease early (e.g. after a failed run).")
+    s.add_argument("id", type=int)
+    s.add_argument("--workflow", required=True, choices=("research", "review", "execute", "critique", "repeat", "persona", "summary"))
+    s.set_defaults(func=cmd_release_job)
 
     s = sub.add_parser("graph-search", help="Search ideas exposed by the graph.")
     s.add_argument("query")
