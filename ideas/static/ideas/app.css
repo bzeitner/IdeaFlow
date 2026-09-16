@@ -634,3 +634,11 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Research and weekly-summary feedback share one accessible control panel. */
+.evaluation-feedback { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border, #ccc); }
+.evaluation-feedback form { display: grid; gap: .75rem; max-width: 48rem; margin: .75rem 0; }
+.evaluation-feedback label { display: grid; gap: .25rem; }
+.evaluation-feedback textarea, .evaluation-feedback select { width: 100%; box-sizing: border-box; }
+.feedback-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.evaluation-feedback .feedback-message { min-height: 1.5em; }

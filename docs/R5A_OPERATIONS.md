@@ -1,4 +1,4 @@
-# R5A A1/A2 operator guide
+# R5A operator guide
 
 Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. Evaluators enabled; model graders disabled.
 
@@ -208,4 +208,100 @@ read; run, trace, and idea state remained unchanged.
 `IDEAFLOW_EXECUTION_MODEL_GRADERS=false`. This enables operator evaluation
 writes; it does not schedule automatic evaluations.
 [Canary evidence](evidence/r5a-deterministic-canary-2026-09-16.json).
-The remaining A3–A6 work and broader release acceptance remain outstanding.
+A3 production rollout, A4–A6, and broader release acceptance remain outstanding.
+
+## A3 — Human feedback and exposure
+
+Status: implemented locally; not deployed or enabled in production.
+
+Apply migrations `evaluations.0003` and `0004`, collect static files, and restart
+through the normal deployment procedure before enabling
+`IDEAFLOW_EXECUTION_FEEDBACK=true`. This flag is separate from evaluator and
+model-grader flags. It defaults to false and gates all interaction services,
+including research edits and outcome links. Disabling it preserves authorized
+history/evaluation inspection and does not change generation or scheduling.
+
+Initial UI surfaces are the full research-entry page and weekly summaries.
+Accept/reject/useful controls support an optional 1–5 usefulness rating and a
+bounded reason; these ratings are human feedback, not calibrated progress
+scores. The shared service also supports save, cite, action, irrelevant, and
+dismiss for later integrations. Other output surfaces are not instrumented by
+A3; absence of telemetry there remains unknown.
+
+Each event records the authenticated user as an opaque ID, the business target
+kind/ID, and a hash of the displayed projection. Research hashes cover topic,
+focus, and context; summary hashes cover title, content, and reporting dates.
+Where valid provenance exists, producing-run ID and raw output hash are stored
+separately. They are not assumed to equal the projection hash. Unknown or
+inconsistent provenance remains unavailable. No report body is copied into an
+interaction record, and no protected payload is read by the feedback UI.
+Business/user identifiers are retained without foreign keys that would block
+ordinary deletion. History does not reconstruct deleted content.
+
+A signed, actor-bound output descriptor expires after 24 hours. Services
+recheck access and current output identity under a row lock before writes;
+stale pages must reload. Private research interactions require the owner and
+status role, or an administrator. Public ideas allow signed-in readers to give
+their own feedback; edits still require owner/status or administrator access.
+Weekly summaries retain the existing weekly-summary role requirement. History
+is scoped to the current actor, including older output versions. Browser writes
+require session authentication, POST, and CSRF. Machine bearer tokens cannot
+submit or impersonate human feedback through these endpoints.
+
+Exposure is a separate POST only after the report intersects the viewport in a
+visible tab. Collapsed, offscreen, prefetched, and hidden-tab content does not
+produce exposure. This is evidence of rendered visibility, not proof the whole
+report was read or understood. A server-issued view-session UUID deduplicates
+visibility retries; a new page view can record a later exposure. The server
+cannot independently attest that a client actually looked at the page. If
+JavaScript or visibility observation is unavailable, exposure remains unknown;
+feedback can still be recorded without fabricating exposure.
+
+Feedback retries are content-aware and preserve any original exposure link,
+even if the visibility event arrives later. Corrections append a new record
+pointing to the latest prior judgment; they never overwrite earlier feedback.
+The reporting service takes an actor, exact output identity, and time window,
+and derives positive, negative, mixed, exposed-without-feedback, or unknown.
+It returns not-exposed only when the caller explicitly supplies independent
+proof of complete instrumentation for that window. UI reporting does not make
+that assumption.
+
+“Edit research text” is an authorized real edit, not a feedback claim. Content
+and the edit event commit atomically with before/after projection hashes.
+No-op/stale edits are rejected; a retry returns the original edit without
+rewriting the report. A failed audit write rolls back the edit. Edit facts
+cannot be superseded as if they were subjective judgments. Existing legacy
+admin/API editing paths are not retroactively labeled as human edits.
+
+An optional link connects feedback to an existing `OutcomeEvent` for the same
+idea and producing run. Links are immutable and idempotent; no success outcome
+is generated merely because a user accepted a report. General admin inspection
+withholds free-form reasons; the output page shows the actor's own history and
+metadata-only producing-run evaluation diagnostics, explicitly separate from
+any subsequent edits.
+
+Three new tables (`EvaluationExposure`, `HumanFeedback`, `FeedbackOutcomeLink`)
+use immutable model/queryset guards and database update/delete guards, plus
+PostgreSQL truncate guards. Production rollback disables feedback writers; it
+does not delete records or remove guards. The existing test-only fixture reset
+now removes and restores both guard sets within its protected test transaction.
+
+Validation commands:
+
+```sh
+.venv/bin/python manage.py collectstatic --noinput
+.venv/bin/python manage.py test evaluations executions ideas.tests.test_migrations ideas.tests.test_views --noinput
+node --test evaluations/tests/feedback_ui.test.cjs
+```
+
+Browser verification uses an isolated local database: research feedback saved,
+real edits recorded before/after hashes, and a collapsed summary produced no
+exposure until opened. JavaScript tests cover hidden tabs, zero-area content,
+retry deduplication, failed exposure submissions, disabled instrumentation, and form
+controls that shadow the action URL. Production activation and acceptance
+evidence remain pending.
+
+A3 verification on 2026-09-16: all 336 focused tests passed on PostgreSQL 18
+with pgvector 0.8.2. SQLite passed the same suite with two PostgreSQL-only
+concurrency tests skipped. All six JavaScript tests, Django system checks,
+migration drift checks, and diff checks passed.

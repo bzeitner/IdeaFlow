@@ -85,6 +85,7 @@
     {% block content %}{% endblock %}
   </main>
   <script src="{% static 'ideas/app.js' %}"></script>
+  <script src="{% static 'evaluations/feedback.js' %}" defer></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {

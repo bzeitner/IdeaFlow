@@ -235,3 +235,99 @@ class EvaluationResult(FrozenRecord):
             self.supersedes = EvaluationResult.objects.select_related("evaluator_version").get(pk=self.supersedes_id)
             if self.supersedes.evaluated_run_id != run.pk or self.supersedes.evaluator_version.evaluator_id != version.evaluator_id:
                 raise ValidationError("Corrections must retain the target and evaluator identity.")
+
+
+class InteractionTarget(FrozenRecord):
+    """Opaque business/user IDs retain history without preventing deletion."""
+    actor_user_id = models.PositiveBigIntegerField()
+    target_kind = models.CharField(max_length=20, choices=[("research", "Research"), ("weekly_summary", "Weekly summary")])
+    target_id = models.PositiveBigIntegerField()
+    output_hash = models.CharField(max_length=64, validators=[HASH])
+    producing_run = models.ForeignKey("executions.LLMRun", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    run_output_hash = models.CharField(max_length=64, blank=True, validators=[HASH])
+    source = models.CharField(max_length=40, default="browser")
+    idempotency_key = models.CharField(max_length=64, unique=True, validators=[HASH])
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        if self.actor_label != f"user:{self.actor_user_id}":
+            raise ValidationError("Interaction actor must match its authenticated user.")
+        if self.producing_run_id:
+            from executions.models import LLMRun
+            run = LLMRun.objects.get(pk=self.producing_run_id)
+            if run.status != "succeeded" or run.output_hash != self.run_output_hash:
+                raise ValidationError("Producing run provenance does not match.")
+        elif self.run_output_hash:
+            raise ValidationError("Unknown producing runs cannot have an output hash.")
+        if self.source not in {"research_view", "weekly_summary_view", "research_edit", "human_service"}:
+            raise ValidationError("Unsupported human interaction source.")
+
+
+class EvaluationExposure(InteractionTarget):
+    view_session = models.UUIDField()
+
+    class Meta:
+        indexes = [models.Index(fields=["actor_user_id", "target_kind", "target_id", "output_hash", "created_at"], name="eval_exposure_actor_target")]
+
+
+class HumanFeedback(InteractionTarget):
+    ACTIONS = [(value, value.title()) for value in
+               ("accept", "reject", "useful", "save", "cite", "action", "irrelevant", "dismiss", "edit")]
+    action = models.CharField(max_length=20, choices=ACTIONS)
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    reason = models.CharField(max_length=2000, blank=True)
+    exposure = models.ForeignKey(EvaluationExposure, null=True, blank=True, on_delete=models.PROTECT)
+    supersedes = models.OneToOneField("self", null=True, blank=True, on_delete=models.PROTECT, related_name="correction")
+    before_hash = models.CharField(max_length=64, blank=True, validators=[HASH])
+    after_hash = models.CharField(max_length=64, blank=True, validators=[HASH])
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(rating__isnull=True) | models.Q(rating__gte=1, rating__lte=5), name="feedback_rating_one_to_five")]
+        indexes = [models.Index(fields=["actor_user_id", "target_kind", "target_id", "output_hash", "created_at"], name="eval_feedback_actor_target")]
+
+    def full_clean(self, *args, **kwargs):
+        if self.rating is not None and type(self.rating) is not int:
+            raise ValidationError("Rating must be an integer.")
+        return super().full_clean(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if self.rating is not None and not 1 <= self.rating <= 5:
+            raise ValidationError("Rating must be between 1 and 5.")
+        for relation in ("exposure", "supersedes"):
+            if getattr(self, relation + "_id"):
+                model = EvaluationExposure if relation == "exposure" else HumanFeedback
+                linked = model.objects.get(pk=getattr(self, relation + "_id"))
+                if any(getattr(linked, key) != getattr(self, key) for key in
+                       ("actor_user_id", "target_kind", "target_id", "output_hash", "producing_run_id", "run_output_hash")):
+                    raise ValidationError("Interaction links must retain actor and exact output identity.")
+                if relation == "supersedes" and (linked.action == "edit" or self.action == "edit"):
+                    raise ValidationError("Edit facts cannot be corrected as judgments.")
+                if relation == "supersedes" and HumanFeedback.objects.filter(supersedes_id=linked.pk).exists():
+                    raise ValidationError("Correct the latest feedback revision instead.")
+        if self.action == "edit":
+            if self.source != "research_edit" or self.before_hash != self.output_hash or not self.after_hash or self.after_hash == self.before_hash:
+                raise ValidationError("Edit feedback requires a real content change.")
+        elif self.before_hash or self.after_hash:
+            raise ValidationError("Only actual edits may include edit hashes.")
+
+
+class FeedbackOutcomeLink(FrozenRecord):
+    feedback = models.ForeignKey(HumanFeedback, on_delete=models.PROTECT, related_name="outcome_links")
+    outcome = models.ForeignKey("executions.OutcomeEvent", on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["feedback", "outcome"], name="feedback_outcome_unique")]
+
+    def clean(self):
+        from executions.models import OutcomeEvent
+        feedback = HumanFeedback.objects.get(pk=self.feedback_id)
+        outcome = OutcomeEvent.objects.get(pk=self.outcome_id)
+        from ideas.models import ResearchEntry
+        entry = ResearchEntry.objects.filter(pk=feedback.target_id).first() if feedback.target_kind == "research" else None
+        if not entry or outcome.idea_id != entry.idea_id or not feedback.producing_run_id or outcome.run_id != feedback.producing_run_id:
+            raise ValidationError("Outcome must identify the same idea and producing run.")
+        if self.actor_label != feedback.actor_label:
+            raise ValidationError("Only the feedback actor can link an outcome.")

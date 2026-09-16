@@ -18,6 +18,7 @@ from django.utils import timezone
 from django.utils.text import Truncator
 from django.views.decorators.http import require_POST
 from executions.models import LLMRun, WorkflowDefinition
+from evaluations.views import panel_for
 
 from .feeds import is_http_url, recent_articles
 from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
@@ -238,6 +239,8 @@ def _tabs(profile):
 @role_required("role_weekly_summary")
 def weekly_summaries(request):
     summaries = list(WeeklySummary.objects.all())
+    for summary in summaries:
+        summary.feedback_panel = panel_for(request.user, "weekly_summary", summary)
     ideas_by_id = Idea.objects.in_bulk()
     execution_by_period = execution_metrics_for_periods(
         (summary.period_start, summary.period_end) for summary in summaries
@@ -1833,6 +1836,7 @@ def view_research_entry(request, pk, entry_pk):
         {
             "idea": entry.idea,
             "entry": entry,
+            "feedback_panel": panel_for(request.user, "research", entry),
             "presentation": presentation,
             "tabs": _tabs(request.user.profile),
         },

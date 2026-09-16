@@ -14,20 +14,20 @@ from django.test import TransactionTestCase
 from django.test.utils import _TestState
 
 
-def _guards_installed(connection):
+def _guards_installed(connection, name="evaluations_identity_no_rename"):
     with connection.cursor() as cursor:
         if connection.vendor == "postgresql":
             cursor.execute(
                 "SELECT EXISTS (SELECT 1 FROM pg_trigger t "
                 "JOIN pg_class c ON c.oid = t.tgrelid "
                 "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                "WHERE t.tgname = 'evaluations_identity_no_rename' "
-                "AND n.nspname = current_schema())"
+                "WHERE t.tgname = %s "
+                "AND n.nspname = current_schema())", [name]
             )
         elif connection.vendor == "sqlite":
             cursor.execute(
                 "SELECT EXISTS (SELECT 1 FROM sqlite_master "
-                "WHERE type = 'trigger' AND name = 'evaluations_identity_no_rename')"
+                "WHERE type = 'trigger' AND name = %s)", [name]
             )
         else:
             return False
@@ -47,9 +47,15 @@ def audit_fixture_reset(alias, expected_name):
         # Execute only trigger DDL: do not enter SQLite's schema-editor context,
         # which attempts to toggle foreign-key checks inside this transaction.
         editor = connection.schema_editor()
+        interaction_guards = import_module("evaluations.migrations.0004_interaction_audit_guards")
+        has_interactions = _guards_installed(connection, "evaluations_humanfeedback_no_update")
+        if has_interactions:
+            interaction_guards.uninstall(apps, editor)
         guards.uninstall(apps, editor)
         yield
         guards.install(apps, editor)
+        if has_interactions:
+            interaction_guards.install(apps, editor)
 
 
 class AuditTransactionTestCase(TransactionTestCase):
