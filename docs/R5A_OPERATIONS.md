@@ -1,6 +1,6 @@
 # R5A A1/A2 operator guide
 
-Status: implemented locally; production rollout not performed.
+Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. Evaluators enabled; model graders disabled.
 
 ## What is available
 
@@ -193,3 +193,19 @@ Security regressions cover credential/extra-field rejection, excerpt approval
 and size limits, restricted admin inspection, durable access records after
 decode/result failures, hash mismatches, storage/audit failures, and rejection
 of enclosing transactions before a protected read.
+
+## Initial production canary — 2026-09-16
+
+`research.structure@1` evaluated retained output from research run
+`9ca70c40-d0e0-4020-9ed3-e1f93bf78261` (idea 125), creating result 1.
+The free-text contract produced two passes and three not-applicable checks;
+this is an uncalibrated structural diagnostic, not a semantic quality score.
+Output, manifest, and result hashes verified. The protected read produced a
+matched request/access audit pair. Retrying reused result 1 without another
+read; run, trace, and idea state remained unchanged.
+
+`IDEAFLOW_EXECUTION_EVALUATORS=true` is now persistent in production;
+`IDEAFLOW_EXECUTION_MODEL_GRADERS=false`. This enables operator evaluation
+writes; it does not schedule automatic evaluations.
+[Canary evidence](evidence/r5a-deterministic-canary-2026-09-16.json).
+The remaining A3–A6 work and broader release acceptance remain outstanding.

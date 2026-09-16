@@ -1,0 +1,132 @@
+{
+  "verified_at": "2026-09-16T22:49:08.463446+00:00",
+  "release": "1af80f39485c5634b1e79ecc499387a88e40749e",
+  "run_id": "9ca70c40-d0e0-4020-9ed3-e1f93bf78261",
+  "idea_id": 125,
+  "evaluator": "research.structure@1",
+  "result_id": 1,
+  "created": true,
+  "retry_created": false,
+  "output_hash": "0f1fedecb52b4fd0e6ee79ed859c900794942440d6c81ae1b13fc06d06c98353",
+  "input_manifest_hash": "f24e646db2a32da84f18d406762d353466fb41e1258842a6b7b0b7c80c19620e",
+  "evaluator_hash": "e4af4c21f4e3999e0533f799212e0e2cc0048b607ca83c90e7c1739af07a4053",
+  "research_state_unchanged": true,
+  "retry_added_access_events": false,
+  "access_events": [
+    {
+      "event_type": "payload.access_requested",
+      "payload": {
+        "kind": "output",
+        "source": "evaluation_operator",
+        "access_id": "b8afddc1-930e-4ad0-a70f-3e603c126c3c",
+        "actor_label": "bzeitner via Codex (authorized production canary)",
+        "expected_sha256": "0f1fedecb52b4fd0e6ee79ed859c900794942440d6c81ae1b13fc06d06c98353"
+      }
+    },
+    {
+      "event_type": "payload.accessed",
+      "payload": {
+        "kind": "output",
+        "sha256": "0f1fedecb52b4fd0e6ee79ed859c900794942440d6c81ae1b13fc06d06c98353",
+        "source": "evaluation_operator",
+        "access_id": "b8afddc1-930e-4ad0-a70f-3e603c126c3c",
+        "actor_label": "bzeitner via Codex (authorized production canary)",
+        "hash_verified": true,
+        "expected_sha256": "0f1fedecb52b4fd0e6ee79ed859c900794942440d6c81ae1b13fc06d06c98353"
+      }
+    }
+  ],
+  "summary": {
+    "counts": {
+      "expected": 5,
+      "applicable_or_unknown": 2,
+      "fail": 0,
+      "insufficient_evidence": 0,
+      "not_applicable": 3,
+      "pass": 2,
+      "pass_rate": 1.0,
+      "judgment_coverage": 1.0
+    },
+    "dimensions": {
+      "evidence_references": {
+        "expected": 1,
+        "applicable_or_unknown": 0,
+        "fail": 0,
+        "insufficient_evidence": 0,
+        "not_applicable": 1,
+        "pass": 0,
+        "pass_rate": null,
+        "judgment_coverage": null
+      },
+      "explicit_requirements": {
+        "expected": 2,
+        "applicable_or_unknown": 1,
+        "fail": 0,
+        "insufficient_evidence": 0,
+        "not_applicable": 1,
+        "pass": 1,
+        "pass_rate": 1.0,
+        "judgment_coverage": 1.0
+      },
+      "instruction_following": {
+        "expected": 2,
+        "applicable_or_unknown": 1,
+        "fail": 0,
+        "insufficient_evidence": 0,
+        "not_applicable": 1,
+        "pass": 1,
+        "pass_rate": 1.0,
+        "judgment_coverage": 1.0
+      }
+    },
+    "critical_failures": [],
+    "decision_grade": false
+  },
+  "criteria": [
+    {
+      "id": "output.nonempty",
+      "status": "pass",
+      "reason": "Checked output for non-whitespace content.",
+      "evidence_refs": [
+        "output"
+      ]
+    },
+    {
+      "id": "output.schema",
+      "status": "not_applicable",
+      "reason": "The frozen contract declares free text.",
+      "evidence_refs": [
+        "contract"
+      ]
+    },
+    {
+      "id": "output.required_fields",
+      "status": "not_applicable",
+      "reason": "No structured fields apply to free text.",
+      "evidence_refs": [
+        "contract"
+      ]
+    },
+    {
+      "id": "output.truncation",
+      "status": "pass",
+      "reason": "Provider reports ordinary completion; semantic completeness is not inferred.",
+      "evidence_refs": [
+        "run",
+        "output"
+      ]
+    },
+    {
+      "id": "references.internal",
+      "status": "not_applicable",
+      "reason": "No internal references declared; external citation support was not evaluated.",
+      "evidence_refs": [
+        "references"
+      ]
+    }
+  ],
+  "flags": {
+    "evaluators": true,
+    "model_graders": false
+  }
+}

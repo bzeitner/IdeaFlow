@@ -535,9 +535,12 @@ progress toward answering the objective.
 Detailed delivery slices, model contracts, calibration workflow, and rollout
 criteria: [R5A_EVALUATOR_FOUNDATION.md](R5A_EVALUATOR_FOUNDATION.md).
 
-A1/A2 now have a local implementation of evaluator records, rubric seeds, and
-operator-invoked deterministic research checks. Production rollout and the
-remaining R5A slices are pending; see [R5A_OPERATIONS.md](R5A_OPERATIONS.md).
+A1/A2 are deployed with evaluator records, rubric seeds, and operator-invoked
+deterministic research checks. The initial production canary passed on
+2026-09-16 (idea 125, result 1): hashes/access audit verified, retry idempotent,
+and research state unchanged. Evaluators are enabled; model graders remain
+disabled. A3–A6 and broader acceptance remain pending; see
+[R5A_OPERATIONS.md](R5A_OPERATIONS.md).
 
 Recommendation adopted: 2026-09-16. Use Idea 111's
 `draft-rubric-for-judging-agent-research.md` as the design basis for an initial
