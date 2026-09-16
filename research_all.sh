@@ -338,6 +338,7 @@ for i in "${!IDS[@]}"; do
     echo "=== ${title} (#${id}) done ==="
   else
     echo "!!! ${title} (#${id}) failed (continuing) !!!" >&2
+    IDEAFLOW_JOB_TOKEN="$job_token" "$IFCLI" release-job "$id" --workflow "$mode" >/dev/null 2>&1 || true
     fail=$((fail + 1))
   fi
   "$IFCLI" dump-idea "$id" > "$after_file" 2>/dev/null || printf '{}\n' > "$after_file"
