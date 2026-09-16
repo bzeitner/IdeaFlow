@@ -8,6 +8,8 @@ Type=oneshot
 User=ideaflow
 Group=ideaflow
 WorkingDirectory=/home/ideaflow/IdeaFlow
+Environment="PATH=/home/ideaflow/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment=TZ=America/Los_Angeles
 EnvironmentFile=/etc/ideaflow/agent.env
 ExecStart=/home/ideaflow/IdeaFlow/weekly_summary.sh
 TimeoutStartSec=90min

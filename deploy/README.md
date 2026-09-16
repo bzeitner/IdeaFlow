@@ -447,7 +447,7 @@ systemctl enable --now ideaflow-prune-orphan-feeds.timer
 systemctl list-timers ideaflow-prune-orphan-feeds.timer --no-pager
 ```
 
-Weekly portfolio summary (Sunday at 12:01 AM, covering the prior Sunday-Saturday and backfilling any missing activity weeks):
+Weekly portfolio summary (Sunday at 12:01 AM Pacific, with up to 10 minutes of randomized delay, covering the prior Sunday-Saturday and backfilling any missing activity weeks):
 
 ```bash
 # as root; /etc/ideaflow/agent.env must contain IDEAFLOW_API_TOKEN and the
