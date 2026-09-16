@@ -2,7 +2,7 @@
 Description=Generate IdeaFlow weekly executive summary each Sunday
 
 [Timer]
-OnCalendar=Sun *-*-* 00:01:00
+OnCalendar=Sun *-*-* 00:01:00 America/Los_Angeles
 Persistent=true
 RandomizedDelaySec=10min
 
