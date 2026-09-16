@@ -2,7 +2,8 @@ import json
 
 from django.contrib import admin
 
-from .models import EvaluationResult, EvaluatorApproval, EvaluatorDefinition, EvaluatorVersion, MetricDefinition
+from .models import (EvaluationResult, EvaluatorApproval, EvaluatorDefinition, EvaluatorVersion,
+                     MetricDefinition, EvaluationExposure, HumanFeedback, FeedbackOutcomeLink)
 
 
 class FrozenAdmin(admin.ModelAdmin):
@@ -73,3 +74,14 @@ class ResultAdmin(FrozenAdmin):
     def criterion_diagnostics(self, obj):
         return json.dumps([{key: row[key] for key in ("id", "status", "evidence_refs")}
                            for row in obj.criterion_results], indent=2)
+
+
+@admin.register(EvaluationExposure, HumanFeedback, FeedbackOutcomeLink)
+class InteractionAdmin(FrozenAdmin):
+    list_display = ("id", "actor_label", "created_at")
+
+    def get_fields(self, request, obj=None):
+        return tuple(field.name for field in self.model._meta.fields if field.name != "reason")
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.get_fields(request, obj)

@@ -18,6 +18,9 @@
       {% if presentation.view != 'raw' %}<a class="btn" href="?view=raw">Raw</a>{% else %}<a class="btn primary" href="{% url 'ideas:view_research_entry' idea.pk entry.pk %}">Formatted</a>{% endif %}
       <a class="help-link" href="{% url 'ideas:guide' %}#research-views">How research views work</a>
     </div>
-    {% include "ideas/_presentation_body.html" with presentation_title=entry.topic %}
+    <div id="output-research-{{ entry.pk }}">
+      {% include "ideas/_presentation_body.html" with presentation_title=entry.topic %}
+    </div>
+    {% include "evaluations/_feedback.html" with panel=feedback_panel %}
   </article>
 {% endblock %}

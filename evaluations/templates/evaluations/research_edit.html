@@ -1,0 +1,8 @@
+{% extends "ideas/base.html" %}
+{% block title %}Edit research · IdeaFlow{% endblock %}
+{% block content %}
+<h2>Edit research: {{ entry.topic }}</h2>
+<p>Saving records the changed version and an edit in your feedback history.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save research</button></form>
+<a href="{% url 'ideas:view_research_entry' entry.idea_id entry.pk %}">Cancel</a>
+{% endblock %}

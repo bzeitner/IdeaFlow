@@ -261,10 +261,13 @@ class FoundationTests(TestCase):
         from django.apps import apps
         guards = importlib.import_module("evaluations.migrations.0002_immutable_audit_guards")
         editor = connection.schema_editor()
+        interactions = importlib.import_module("evaluations.migrations.0004_interaction_audit_guards")
+        interactions.uninstall(apps, editor)
         guards.uninstall(apps, editor)
         with connection.cursor() as cursor:
             cursor.execute("UPDATE evaluations_metricdefinition SET actor_label = %s WHERE id = %s", ["probe", self.structure.metric_id])
         guards.install(apps, editor)
+        interactions.install(apps, editor)
         with self.assertRaises(DatabaseError), transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("DELETE FROM evaluations_metricdefinition WHERE id = %s", [self.structure.metric_id])
 

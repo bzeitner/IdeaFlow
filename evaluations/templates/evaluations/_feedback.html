@@ -1,0 +1,37 @@
+{% if panel %}
+<section class="evaluation-feedback" data-observe="{{ panel.observe_id }}">
+  <h3>Your feedback</h3>
+  {% if panel.enabled %}
+  <form method="post" action="{% url 'evaluations:interaction' %}" class="feedback-form">
+    {% csrf_token %}
+    <input type="hidden" name="target" value="{{ panel.token }}">
+    <input type="hidden" name="request_key" value="{{ panel.request_key }}">
+    <input type="hidden" name="operation" value="feedback">
+    <label>Reason (optional, no sensitive information)<textarea name="reason" maxlength="2000" rows="2"></textarea></label>
+    <label>Usefulness rating (optional)<select name="rating"><option value="">No rating</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+    <label>Correct earlier feedback<select name="supersedes"><option value="">New feedback</option>{% for feedback in panel.corrections %}<option value="{{ feedback.pk }}">#{{ feedback.pk }} — {{ feedback.get_action_display }}</option>{% endfor %}</select></label>
+    <div class="feedback-actions"><button type="submit" name="action" value="accept">Accept</button>
+    <button type="submit" name="action" value="reject">Reject</button>
+    <button type="submit" name="action" value="useful">Useful</button></div>
+  </form>
+  {% if panel.can_edit %}<a class="btn" href="{% url 'evaluations:edit_research' panel.target_id %}">Edit research text</a>{% endif %}
+  {% else %}<p class="dim">New feedback is currently disabled.</p>{% endif %}
+  <p class="feedback-message" role="status" aria-live="polite"></p>
+  <p class="dim">{{ panel.state_label }}. Viewing history may be incomplete.</p>
+  <details><summary>Feedback history</summary>
+    <ul>{% for feedback in panel.history %}<li>#{{ feedback.pk }} {{ feedback.get_action_display }}{% if feedback.output_hash != panel.output_hash and feedback.after_hash != panel.output_hash %} (earlier output version){% endif %} · {{ feedback.created_at|date:"M j, Y g:i A" }}{% if feedback.rating %} · {{ feedback.rating }}/5{% endif %}{% if feedback.supersedes_id %} · corrects #{{ feedback.supersedes_id }}{% endif %}{% if feedback.reason %}<p>{{ feedback.reason }}</p>{% endif %}
+      {% if feedback.action == 'edit' %}<p class="dim">Saved content change: {{ feedback.before_hash|slice:":12" }} → {{ feedback.after_hash|slice:":12" }}</p>{% endif %}
+      {% for link in feedback.outcome_links.all %}<p class="dim">Linked outcome #{{ link.outcome_id }}</p>{% endfor %}
+      {% if panel.enabled and panel.outcomes and feedback.output_hash == panel.output_hash %}
+      <form method="post" action="{% url 'evaluations:interaction' %}" class="outcome-link-form">
+        {% csrf_token %}<input type="hidden" name="target" value="{{ panel.token }}"><input type="hidden" name="operation" value="outcome"><input type="hidden" name="feedback_id" value="{{ feedback.pk }}">
+        <label>Link an existing outcome<select name="outcome_id">{% for outcome in panel.outcomes %}<option value="{{ outcome.pk }}">{{ outcome.event_type }} · {{ outcome.occurred_at|date:"M j, Y" }}</option>{% endfor %}</select></label><button type="submit">Link outcome</button>
+      </form>{% endif %}</li>{% empty %}<li>No feedback recorded.</li>{% endfor %}</ul>
+  </details>
+  {% if panel.results %}<details><summary>Producing-run evaluations</summary>
+    <p>These uncalibrated diagnostics assess the original run output; they are not scores for subsequent edits.</p>
+    {% for result in panel.results %}<p>{{ result.evaluator_version }} · progress {{ result.progress_score|default_if_none:"unavailable" }} · coverage {{ result.summary.counts.judgment_coverage|default_if_none:"unavailable" }} · critical failures {{ result.summary.critical_failures|length }}{% if result.grader_run %} · grader cost {{ result.grader_run.cost_micros|default_if_none:"unavailable" }} micro-USD{% endif %}</p>
+    <ul>{% for criterion in result.criterion_results %}<li>{{ criterion.id }}: {{ criterion.status }}</li>{% endfor %}</ul>{% endfor %}
+  </details>{% endif %}
+</section>
+{% endif %}
