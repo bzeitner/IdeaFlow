@@ -208,11 +208,11 @@ read; run, trace, and idea state remained unchanged.
 `IDEAFLOW_EXECUTION_MODEL_GRADERS=false`. This enables operator evaluation
 writes; it does not schedule automatic evaluations.
 [Canary evidence](evidence/r5a-deterministic-canary-2026-09-16.json).
-A3 production rollout, A4–A6, and broader release acceptance remain outstanding.
+A4–A6 and broader release acceptance remain outstanding.
 
 ## A3 — Human feedback and exposure
 
-Status: implemented locally; not deployed or enabled in production.
+Status: deployed at `c73c466` and feedback enabled on 2026-09-16; initial research feedback canary verified.
 
 Apply migrations `evaluations.0003` and `0004`, collect static files, and restart
 through the normal deployment procedure before enabling
@@ -298,10 +298,26 @@ Browser verification uses an isolated local database: research feedback saved,
 real edits recorded before/after hashes, and a collapsed summary produced no
 exposure until opened. JavaScript tests cover hidden tabs, zero-area content,
 retry deduplication, failed exposure submissions, disabled instrumentation, and form
-controls that shadow the action URL. Production activation and acceptance
-evidence remain pending.
+controls that shadow the action URL. Broader production acceptance, including the remaining R5A slices,
+remains pending.
 
 A3 verification on 2026-09-16: all 336 focused tests passed on PostgreSQL 18
 with pgvector 0.8.2. SQLite passed the same suite with two PostgreSQL-only
 concurrency tests skipped. All six JavaScript tests, Django system checks,
 migration drift checks, and diff checks passed.
+
+### A3 initial human canary — 2026-09-16
+
+The user submitted Useful feedback on idea 125, research entry 531. Feedback
+record 1 links to exposure 1 and producing run
+`9ca70c40-d0e0-4020-9ed3-e1f93bf78261`. Actor, target, projection hash, and raw
+run-output hash agree across the linked records; immutable content hashes
+verified. A later page view created exposure 2. No feedback reason or report
+body was retrieved for this verification.
+
+Feedback and evaluators remain enabled; model graders remain disabled.
+This verifies the initial research viewing/feedback path, not full R5A
+acceptance. Summary feedback, corrections, edits, and outcome links retain
+their automated/local-browser evidence; they were not exercised by this
+production canary.
+[Canary evidence](evidence/r5a-a3-feedback-canary-2026-09-16.json).

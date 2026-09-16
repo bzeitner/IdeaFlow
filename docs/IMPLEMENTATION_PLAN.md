@@ -539,9 +539,10 @@ A1/A2 are deployed with evaluator records, rubric seeds, and operator-invoked
 deterministic research checks. The initial production canary passed on
 2026-09-16 (idea 125, result 1): hashes/access audit verified, retry idempotent,
 and research state unchanged. Evaluators are enabled; model graders remain
-disabled. A3 feedback/exposure is implemented locally for research-entry and
-weekly-summary views, with immutable interaction records, audited research
-edits, corrections, and existing-outcome links. A3 deployment and A4–A6
+disabled. A3 feedback/exposure is deployed and enabled for research-entry and
+weekly-summary views. The initial human canary recorded useful feedback on
+research entry 531 with matching exposure, actor, projection hash, and producing
+run; audit hashes verified on 2026-09-16. A4–A6 and broader acceptance
 remain pending; see
 [R5A_OPERATIONS.md](R5A_OPERATIONS.md).
 

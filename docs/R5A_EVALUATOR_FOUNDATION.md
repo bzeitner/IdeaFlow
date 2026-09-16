@@ -1,6 +1,6 @@
 # R5A — Evaluator, Feedback, and Dataset Foundation
 
-Status: A1/A2 deployed; initial deterministic production canary verified on 2026-09-16; A3 implemented locally, rollout pending; A4–A6 remain planned
+Status: A1/A2 deployed; initial deterministic production canary verified on 2026-09-16; A3 deployed and initial human-feedback canary verified; A4–A6 remain planned
 Plan date: 2026-09-16
 Parent plan: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 

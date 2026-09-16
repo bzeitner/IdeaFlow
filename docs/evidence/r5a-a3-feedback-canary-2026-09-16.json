@@ -1,0 +1,43 @@
+{
+  "checked_at": "2026-09-16T23:27:12.101785+00:00",
+  "idea_id": 125,
+  "research_entry_id": 531,
+  "flags": {
+    "feedback": true,
+    "evaluators": true,
+    "model_graders": false
+  },
+  "exposures": [
+    {
+      "id": 1,
+      "created_at": "2026-09-16T23:25:25.349251+00:00",
+      "actor_user_id": 2,
+      "output_hash": "3f87a4ef9f31aee841ecb64922746a68bb6bd30fc0749353221ace05b3346408",
+      "content_hash_valid": true
+    },
+    {
+      "id": 2,
+      "created_at": "2026-09-16T23:26:09.223852+00:00",
+      "actor_user_id": 2,
+      "output_hash": "3f87a4ef9f31aee841ecb64922746a68bb6bd30fc0749353221ace05b3346408",
+      "content_hash_valid": true
+    }
+  ],
+  "feedback": [
+    {
+      "id": 1,
+      "action": "useful",
+      "created_at": "2026-09-16T23:26:05.186899+00:00",
+      "actor_user_id": 2,
+      "output_hash": "3f87a4ef9f31aee841ecb64922746a68bb6bd30fc0749353221ace05b3346408",
+      "producing_run_id": "9ca70c40-d0e0-4020-9ed3-e1f93bf78261",
+      "run_output_hash": "0f1fedecb52b4fd0e6ee79ed859c900794942440d6c81ae1b13fc06d06c98353",
+      "exposure_id": 1,
+      "supersedes_id": null,
+      "content_hash_valid": true,
+      "exposure_matches": true
+    }
+  ],
+  "release": "c73c466b51eff18bde0fa0a163c94e948dbb77ab",
+  "scope": "Initial research exposure and authenticated useful-feedback canary; not full R5A acceptance."
+}
