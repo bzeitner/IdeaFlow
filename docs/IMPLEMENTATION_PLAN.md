@@ -530,6 +530,70 @@ The initial research rubric is versioned as `research.answer_progress`:
 Do not reuse `ResearchEntry.quality`: it measures confidence in an effort, not
 progress toward answering the objective.
 
+### R5A research-quality rubric foundation
+
+Recommendation adopted: 2026-09-16. Use Idea 111's
+`draft-rubric-for-judging-agent-research.md` as the design basis for an initial
+versioned research-quality rubric, with the amendments below. Its benchmark
+statistics and general research claims have not been independently verified
+as part of this adoption; they are not acceptance criteria. Preserve the
+approved rubric contents in an immutable evaluator version rather than making
+runtime evaluation depend on the draft file.
+
+Research quality and research progress are separate measurements. Quality
+checks assess requirements, synthesis, evidence, and compliance;
+`research.answer_progress` retains the existing 1–5 objective-progress anchors.
+A compliant report may repeat known information, while a short supported
+finding may resolve the objective. Never convert a quality pass percentage
+into the progress score or store either metric in `ResearchEntry.quality`.
+
+Retain the draft's six diagnostic dimensions with these contracts:
+
+| Dimension | Evaluation contract |
+| --- | --- |
+| Explicit requirements | Compare the output with requirements frozen in the dataset case. |
+| Implicit requirements | Freeze expected contextual requirements before judging; judges must not invent expectations after seeing an answer. |
+| Synthesis | Assess whether the output integrates evidence into a supported judgment and distinguishes facts, assumptions, and recommendations. |
+| Evidence and references | Require traceable support for material factual claims using external sources, internal artifacts, or recorded observations. Check reference resolution separately from whether the evidence supports the claim. |
+| Communication quality | Report separately with low priority; presentation cannot compensate for deficient evidence or unmet requirements. |
+| Instruction and format following | Check required structure and disposition rules; verify prior-context inspection, tool use, approvals, and write-back behavior against execution events and manifests rather than report assertions. |
+
+Each criterion has a stable ID, dimension, applicability rule, required inputs,
+evaluator method, result format, and severity. Freeze these definitions,
+aggregation rules, and any weights with the evaluator version. Criteria must
+be behaviorally specific and avoid penalizing the same defect twice.
+
+Grade observable, applicable criteria as pass/fail. Record not-applicable and
+insufficient-evidence results separately, with reasons. A pass rate uses only
+applicable criteria with completed judgments and must be accompanied by
+coverage and missing-judgment counts; missing evidence is never a pass and an
+empty denominator produces no score. An observed absence of required support
+is a failure, distinct from unavailable evaluator inputs. Separate critical
+failures, such as fabricated evidence or invented approval, from ordinary
+requirement failures and display them regardless of the aggregate. Freeze
+critical-failure gates and missing-judgment tolerances before decision use.
+
+Use deterministic evaluators for checkable properties and measured model
+graders for synthesis and evidential support. Store concise rationales and
+evidence references; detailed chain-of-thought is not required. Model-family
+diversity is a bias-control choice to test during calibration, not a guarantee
+of independence or a substitute for blinding and order-bias checks.
+
+R5A delivers the versioned quality criteria alongside the progress rubric,
+result storage, human-feedback foundation, and immutable calibration cases.
+Calibrate both rubrics against human-scored frozen examples before using them
+for promotion decisions, including polished but uninformative reports, concise
+decisive findings, unsupported claims, and missing evaluator inputs. This
+research rubric does not replace workflow-specific evaluators for feed
+ranking, relationships, or podcasts.
+
+R5B remains responsible for research checkpoints and context policies. R5C
+implements paired generation and the blinded council: the evidence auditor
+examines support and citations, the progress evaluator applies objective
+progress anchors, and the skeptic examines contradictions and unresolved gaps.
+All three still submit independent progress votes under the shared contract
+below; diagnostic quality results remain separate from those votes.
+
 ### Type-specific scoring rubrics
 
 Each `EvaluatorVersion` declares its applicable idea type, metric key, rubric
@@ -581,6 +645,10 @@ evidence complexity.
 - Every type-specific progress rubric and council evaluator used in a decision
   is immutable and calibrated against a human-scored seed set for that rubric;
   calibration from one idea type cannot be assumed to transfer to another.
+- Research-quality criteria are versioned and calibrated separately from
+  progress scores. Reports preserve criterion results, evidence, critical
+  failures, applicability, and missing judgments without letting presentation
+  scores conceal substantive failures.
 - Research checkpoints are reproducible from their source manifests and never
   silently change after use.
 - `checkpoint_delta_v1` is eligible for scheduled shadow testing only if its
@@ -795,7 +863,7 @@ Do not classify deterministic feed fetches, media rendering, or repository comma
 | --- | --- | --- |
 | R0–R4 (deployed) | Execution ledger, compatibility instrumentation, initial source pipeline, Phase 4 vertical provenance, outcome events, and reversible workflow cutovers | Use the recorded per-workflow cutover mode; retain audit history |
 | R4.1 | Reconcile production trace completeness, attribution, measurements, payload health, cutover modes, and rollback tests | No behavior change; correct records and configuration without rerunning LLM work |
-| R5A | Generic metrics/evaluators/results, human-feedback foundation, and immutable dataset snapshots | Disable evaluator and feedback projection flags; retain records |
+| R5A | Generic metrics/evaluators/results, separate research-quality and 1–5 progress rubrics, human-feedback foundation, and immutable dataset snapshots | Disable evaluator and feedback projection flags; retain records |
 | R5B | Immutable research checkpoints and versioned full-history/checkpoint-delta context policies | Disable checkpoint construction/use; retain checkpoints for audit |
 | R5C | Offline paired research-context evaluation with blinded council scoring | Pause offline runners; no production projections are affected |
 | R6A | Limited online feed-ranking experiment | Pause enrollment; control remains active |
@@ -815,6 +883,9 @@ Database rollback should normally mean disabling new writers and restoring prior
 - Research-checkpoint immutability, source-manifest hashing, cutoff handling,
   context-policy rendering, stale-checkpoint fallback, rubric applicability,
   migration mapping, and 1–5 progress-score validation.
+- Quality-criterion applicability, missing-evidence versus observed-failure
+  handling, pass-rate denominators, critical-failure gates, and separation of
+  quality aggregates from objective-progress scores.
 
 ### Contract tests
 
@@ -891,7 +962,9 @@ changing authoritative research behavior:
    `EvaluatorVersion`, and `EvaluationResult` records.
 3. Implement the shared 1–5 anchors, the initial type-specific rubric family,
    explicit rubric applicability, and deterministic score validation; start
-   with `research.answer_progress` for the context experiment.
+   with `research.answer_progress` for the context experiment. Add the amended
+   Idea 111 research-quality criteria as a separate versioned rubric, retaining
+   diagnostic results, critical failures, and judgment coverage.
 4. Add `ResearchCheckpoint`, structured-state validation, source manifests,
    evidence cutoffs, and stable content hashes.
 5. Add `full_history_v1` and `checkpoint_delta_v1` to the context builder and
