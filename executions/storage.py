@@ -1,7 +1,5 @@
 import hashlib
 import json
-import os
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -13,6 +11,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+
+from .payload_safety import reject_configured_credentials
 
 
 class PayloadExpired(FileNotFoundError):
@@ -53,16 +53,7 @@ class ExecutionPayloadStore:
             raise ValidationError("Payload retention must be at least one day.")
         # Keep stored bytes identical to their execution hash. Reject known
         # credentials instead of silently rewriting evidence after inference.
-        secrets = [value for key, value in os.environ.items()
-                   if re.search(r"(?:TOKEN|SECRET|PASSWORD|API_KEY)$", key)]
-        secrets.extend(str(getattr(settings, key, "") or "") for key in (
-            "SECRET_KEY", "IDEAFLOW_API_TOKEN", "IDEAFLOW_PODCAST_WORKER_TOKEN",
-            "IDEAFLOW_SEMANTIC_API_KEY",
-        ))
-        if any(len(value) >= 12 and value.encode() in content for value in secrets) or re.search(
-            rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----", content
-        ):
-            raise ValidationError("Payload contains a configured credential or private key; capture rejected.")
+        reject_configured_credentials(content)
         safe_kind = self._safe_component(kind)
         digest = hashlib.sha256(content).hexdigest()
         today = date.today()

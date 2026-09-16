@@ -1,9 +1,9 @@
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TransactionTestCase
+from evaluations.tests.base import AuditTransactionTestCase
 
 
-class PerIdeaAssessmentMigrationTests(TransactionTestCase):
+class PerIdeaAssessmentMigrationTests(AuditTransactionTestCase):
     migrate_from = ("ideas", "0014_feeditem_content")
     migrate_to = ("ideas", "0015_per_idea_feed_item_assessments")
 
@@ -56,7 +56,7 @@ class PerIdeaAssessmentMigrationTests(TransactionTestCase):
         )
 
 
-class IdeaOwnerMigrationTests(TransactionTestCase):
+class IdeaOwnerMigrationTests(AuditTransactionTestCase):
     migrate_from = ("ideas", "0026_update_build_execution_prompt")
     migrate_to = ("ideas", "0027_idea_created_by")
 
