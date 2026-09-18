@@ -360,3 +360,188 @@ or new production verification results were created for this closeout.
 A4 frozen datasets is next. A5 measured calibration and A6 overall production
 acceptance remain pending. Evaluators and feedback remain enabled; model
 graders remain disabled. A3 closeout does not close the whole R5A release.
+
+## A4 — Frozen dataset operator workflow
+
+Status: implemented and locally verified on 2026-09-18; not yet deployed or
+production-accepted. A4 adds an operator command and restricted metadata admin;
+there is no public dataset endpoint or automatic production sampling.
+
+### Access, policy, and storage
+
+`IDEAFLOW_EXECUTION_DATASETS` defaults to false and gates dataset creation,
+preview/freeze, snapshots, and content deletion. Disabling it retains authorized
+sampling/export and metadata inspection. It does not change evaluator,
+feedback, model-grader, experiment, or workflow-cutover flags.
+
+Commands run only in the trusted local/server operator environment. `--user-id`
+must identify an active user with `evaluations.operate_datasets`; the command is
+not a remote authentication mechanism. Superusers have that permission.
+Otherwise an operator can use only datasets they own, and sampling/freezing
+also checks access to each research entry. Dataset policy is immutable: specify
+`workflows: ["research"]`, an explicit boolean `allow_legacy`, a named redaction
+policy, and positive retention days. Legacy outputs retain unavailable run
+provenance instead of fabricated execution IDs. New policy means a new dataset.
+
+Approved redacted content is stored in a separate `DatasetCaseContent` database
+table, bounded to 64 KiB per payload/request. It is not raw execution payload
+storage and has no public/admin content viewer. Dataset case metadata,
+approval hash, revision lineage, rubric assignments, cohorts, split, snapshots,
+labels, and tombstones have immutable model and database guards. Content cannot
+be updated and can be deleted only after a tombstone exists. Retention expiry
+immediately makes content unavailable to export; the purge command physically
+removes expired bodies and records tombstones. Schedule that operator command
+according to the approved dataset policy. Database backups and private export
+files must follow the same access/deletion policy; deleting a database body
+does not erase preexisting exports or backups. Restore procedures must reapply
+required deletions before exposing restored datasets.
+
+### 1. Create an explicit policy
+
+After applying migrations `evaluations.0005` and `0006`, enable dataset writers
+for the operator session. The following is an example policy, not approval to
+sample or retain any particular production output:
+
+```json
+{
+  "key": "research-pilot-v1",
+  "purpose": "Research calibration convenience sample; not representative",
+  "eligibility_policy": {"workflows": ["research"], "allow_legacy": true},
+  "redaction_policy": "operator-reviewed-excerpts-v1",
+  "retention_days": 30
+}
+```
+
+```sh
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset create \
+  --user-id USER_ID --request-file /private/operator/policy.json
+```
+
+Keep working files in an operator-only directory (mode 0700). Content-bearing
+command outputs use exclusive new files with mode 0600; they never overwrite a
+file or print report bodies to stdout. Input files must also be protected.
+
+### 2. Sample a bounded set and prepare redaction
+
+Use a JSON file containing `{"entry_ids": [RESEARCH_ENTRY_ID]}`. The command
+accepts 1–30 explicit IDs per call; it does not process the historical backlog.
+
+```sh
+.venv/bin/python manage.py evaluation_dataset sample \
+  --user-id USER_ID --dataset-id DATASET_ID \
+  --request-file /private/operator/selection.json \
+  --output-file /private/operator/sample.json
+```
+
+Sampling returns the projection identity and visible topic/focus/report.
+Prior state and source evidence are explicitly unavailable until an operator
+supplies authorized, reviewed excerpts. A redacted projection is not claimed
+to be identical to the original provider output: both origin projection hash
+and raw producing-run hash, when known, are retained separately.
+
+Prepare a proposal with exactly these fields:
+
+- `case_key`: stable slug; corrections use the same key and create revisions.
+- `origin`: exact identity returned by sampling; do not edit it.
+- `payload`: `objective`, `prior_state`, `output`, `evidence`, `unavailable`,
+  and `exclusions`. Text inputs are strings or null with a named unavailable
+  reason. Each evidence item has `ref`, redacted `excerpt`, and its SHA-256
+  hash using `canonical_hash(excerpt)`. Missing source evidence needs a reason.
+- `rubric_assignments`: list of exact evaluator version descriptors, each with
+  `id`, `hash`, and `rubric_key` from the seeded evaluator version.
+- `cohorts`: nonempty condition tags, such as short, long, conflicting, stale,
+  accepted, edited, rejected, polished-repetition, decisive, or missing-inputs.
+- `split`: `development` or `held_out`; revisions retain that assignment.
+- `evidence_cutoff`: an explicit timezone-aware, nonfuture timestamp.
+
+Credential patterns are rejected, but this is not comprehensive automatic PII
+redaction. The operator must review all proposed content and exclusions. The
+same source cannot be introduced under a different case key in the dataset,
+preventing an accidental duplicate across the two splits.
+
+### 3. Preview, approve, and freeze
+
+```sh
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset preview \
+  --user-id USER_ID --dataset-id DATASET_ID \
+  --request-file /private/operator/proposal.json \
+  --output-file /private/operator/preview.json
+```
+
+Review the exact proposal and policy in that private preview. Only after
+explicit approval of its `approval_hash`, freeze it:
+
+```sh
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset freeze \
+  --user-id USER_ID --dataset-id DATASET_ID \
+  --request-file /private/operator/preview.json \
+  --approve-hash APPROVED_HASH --idempotency-key CASE_REQUEST_KEY
+```
+
+The signed preview binds actor, dataset policy hash, and entire proposal; it
+expires after 24 hours. A changed proposal requires another preview and
+approval. Freeze rechecks access and current source identity under a row lock;
+a changed source fails closed. Retrying the same key and content returns the
+original record. A changed request under the same key fails. Approved revisions
+retain the original source identity and split; prior snapshots remain intact.
+
+### 4. Freeze an ordered snapshot and export
+
+Snapshot request JSON contains `case_ids` (1–200 ordered revision IDs) and a
+nonempty `sampling_rules` object recording selection and eligibility. Include
+coverage/exclusions and the convenience-sample limitation. A snapshot cannot
+include two revisions of one case or start with unavailable content.
+
+```sh
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset snapshot \
+  --user-id USER_ID --dataset-id DATASET_ID \
+  --request-file /private/operator/snapshot-request.json \
+  --idempotency-key SNAPSHOT_REQUEST_KEY
+.venv/bin/python manage.py evaluation_dataset export \
+  --user-id USER_ID --snapshot-id SNAPSHOT_ID \
+  --output-file /private/operator/snapshot-export.json
+```
+
+Export verifies dataset, snapshot, case, payload, rubric, and metric hashes.
+It includes frozen redacted bodies and exact rubric/metric definitions. Missing,
+expired, and deleted bodies have explicit status, null payload, and
+`reproducible: false`; deleted cases include the tombstone. No source-row reads
+or reconstruction occur. Export time/availability may change without changing
+the immutable snapshot. Human labels are separate append-only records; label
+collection, adjudication operations, and calibration remain A5 work.
+
+### 5. Retention and rollback
+
+```sh
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset purge-expired \
+  --user-id USER_ID --dataset-id DATASET_ID
+IDEAFLOW_EXECUTION_DATASETS=true .venv/bin/python manage.py evaluation_dataset delete-content \
+  --user-id USER_ID --case-id CASE_ID --reason required_deletion
+```
+
+These remove only protected bodies and preserve metadata, hashes, snapshot
+membership, and labels. They cannot restore a deleted body. Disable dataset
+writers to roll back rollout; do not reverse migrations or remove audit guards.
+
+### A4 acceptance checklist
+
+- Apply migrations and verify PostgreSQL audit/content guards.
+- Approve one concrete redacted production case and its retention policy.
+- Freeze/retry the case, create/export a snapshot, and verify hashes and exact
+  rubric assignments. Record metadata-only evidence under `docs/evidence/`.
+- Verify source changes do not alter frozen inputs, permissions fail closed,
+  unavailable content is explicit, and rollback retains authorized reads.
+- Build toward the 30-case research pilot across the planned conditions. It is
+  a planning target, not evidence of statistical power or rubric calibration.
+
+Production approval and a canary remain required before marking A4 verified.
+
+A4 local verification on 2026-09-18: the 354-test evaluations/executions/
+migrations/views regression suite passed on PostgreSQL 18 with pgvector 0.8.2.
+SQLite passed the 354-test suite with three PostgreSQL-only tests skipped;
+a final 49-test dataset/foundation run also passed with one concurrency skip.
+Django system checks, migration drift checks, and diff checks passed.
+[Local verification evidence](evidence/r5a-a4-local-verification-2026-09-18.json).
+The proposed first canary is a reviewed excerpt from research entry 531 with a
+30-day restricted retention policy; its explicit approval and production
+freeze/export remain pending. No production dataset or human label was created.

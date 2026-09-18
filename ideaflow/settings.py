@@ -274,6 +274,7 @@ IDEAFLOW_EXECUTION_FLAGS = {
     'projections': env_bool('IDEAFLOW_EXECUTION_PROJECTIONS', False),
     'feedback': env_bool('IDEAFLOW_EXECUTION_FEEDBACK', False),
     'evaluators': env_bool('IDEAFLOW_EXECUTION_EVALUATORS', False),
+    'datasets': env_bool('IDEAFLOW_EXECUTION_DATASETS', False),
     'model_graders': env_bool('IDEAFLOW_EXECUTION_MODEL_GRADERS', False),
     'experiments': env_bool('IDEAFLOW_EXECUTION_EXPERIMENTS', False),
 }

@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-18",
+  "scope": "Local A4 implementation verification only; not production acceptance",
+  "postgresql": {
+    "version": "18",
+    "pgvector": "0.8.2",
+    "tests": 354,
+    "passed": true,
+    "skipped": 0,
+    "isolated_cluster": true
+  },
+  "sqlite": {
+    "regression_tests": 354,
+    "passed": true,
+    "skipped": 3,
+    "final_targeted_tests": 49,
+    "final_targeted_passed": true,
+    "final_targeted_skipped": 1
+  },
+  "checks": {
+    "django_system_check": "pass",
+    "migration_drift": "none",
+    "git_diff_check": "pass"
+  },
+  "coverage": [
+    "approval hash/actor/dataset binding and expiry",
+    "source permission and current-identity recheck",
+    "immutable revisions and source deletion independence",
+    "concurrent freeze/snapshot retries",
+    "metadata and content database guards",
+    "retention tombstones and explicit unavailability",
+    "hash-verified export",
+    "label schema and independent adjudication links",
+    "private exclusive command output files",
+    "disabled writers retain authorized reads"
+  ],
+  "production": {
+    "deployed": false,
+    "dataset_created": false,
+    "case_frozen": false,
+    "canary_approval": "pending",
+    "proposed_source_research_entry": 531,
+    "proposed_retention_days": 30,
+    "proposal_hash": "880acc211e8c64771d812a9d30307ec29860c528140376ebe724dba92c374448"
+  }
+}

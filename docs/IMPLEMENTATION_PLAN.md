@@ -1,6 +1,6 @@
 # IdeaFlow Measurement-First Implementation Plan
 
-Status: Active — R5A A1/A2 deployed; A3 verified; A4 frozen datasets is next
+Status: Active — R5A A1/A2 deployed; A3 verified; A4 implemented locally, production acceptance pending
 Original plan date: 2026-08-31
 Status reconciled: 2026-09-18
 Related documents: `FEATURE_INVENTORY.md`, `REWRITE_TECHSPEC.md`
@@ -26,6 +26,10 @@ checks are deployed. A3 feedback/exposure is deployed and marked verified on
 2026-09-18 at the user's direction. Evaluators and feedback are enabled;
 model graders remain disabled. A4 frozen datasets is the next development
 slice, followed by A5 measured calibration and A6 overall production acceptance.
+A4 dataset models, protected case storage, approval-bound freezing, snapshots,
+exports, and retention tombstones are implemented and locally verified as of
+2026-09-18. Production rollout and an explicitly approved canary are pending;
+A4 is not yet marked shipped.
 The September 15 R4.1 reconciliation and rollback evidence is retained under
 `docs/evidence/`; production reconciliation remains an ongoing responsibility.
 
@@ -45,7 +49,7 @@ descriptions below differ from deployed reality.
 | Gateway-based structured job execution | Partial | Continue one workflow at a time; compatibility wrappers remain supported. |
 | Explicit human-feedback records and common feedback UI | A3 deployed and verified for research-entry and weekly-summary surfaces | Extend to other output surfaces separately. |
 | Versioned evaluator and metric models | A1/A2 deployed; deterministic canary verified | Complete A5 calibration before decision-grade model judgments. |
-| Immutable evaluation datasets and paired offline runner | Planned | A4 frozen datasets, then R5C paired offline evaluation. |
+| Immutable evaluation datasets and paired offline runner | A4 implemented and locally verified; production rollout pending | Approve and verify A4 production canary; R5C paired runner remains planned. |
 | Controlled online experimentation | Not started | Begin only after the R5 offline gate passes. |
 | Portfolio taxonomy and lifecycle migration | Planned | Keep outside the research-context experiment. |
 
@@ -553,8 +557,8 @@ research entry 531 with matching exposure, actor, projection hash, and producing
 run; audit hashes verified on 2026-09-16. The disable/restore and authenticated
 replay exercise completed on 2026-09-18. A3 is marked verified at the user's
 explicit direction on 2026-09-18; that closeout does not represent additional
-agent-observed production checks. A4–A6 and overall R5A acceptance remain
-pending; see
+agent-observed production checks. A4 is implemented and locally verified; its production rollout/canary and A5–A6
+remain pending, as does overall R5A acceptance; see
 [R5A_OPERATIONS.md](R5A_OPERATIONS.md).
 
 Recommendation adopted: 2026-09-16. Use Idea 111's
@@ -978,11 +982,14 @@ The program is complete when:
 
 ## 18. Next development slices — reconciled 2026-09-18
 
-A1/A2 are deployed and A3 is verified. Continue without changing authoritative
+A1/A2 are deployed and A3 is verified. A4 implementation and local verification
+are complete; production rollout and approved canary verification are next.
+Continue without changing authoritative
 research behavior or scheduling:
 
-1. **A4 — Frozen datasets:** implement immutable cases, snapshots, and labels;
-   authorized sampling; redaction preview/approval; manifest hashes and export.
+1. **A4 — Frozen datasets:** deploy the locally verified implementation; approve
+   the exact redacted canary and retention policy; freeze/export a snapshot and
+   record production acceptance evidence. Continue toward the 30-case pilot.
 2. **A5 — Measured calibration:** implement the bounded grader adapter and
    frozen-input command, collect human labels, and record calibration reports
    and version approval. Human labeling and threshold approval are prerequisites
