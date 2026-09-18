@@ -1,6 +1,6 @@
 # R5A operator guide
 
-Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. Evaluators enabled; model graders disabled.
+Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. A3 deployed and verified at user direction on 2026-09-18. Evaluators and feedback enabled; model graders disabled.
 
 ## What is available
 
@@ -212,7 +212,7 @@ A4–A6 and broader release acceptance remain outstanding.
 
 ## A3 — Human feedback and exposure
 
-Status: deployed at `c73c466` and feedback enabled on 2026-09-16; initial research feedback canary verified.
+Status: deployed at `c73c466` and feedback enabled on 2026-09-16; A3 verified and closed at user direction on 2026-09-18.
 
 Apply migrations `evaluations.0003` and `0004`, collect static files, and restart
 through the normal deployment procedure before enabling
@@ -321,3 +321,42 @@ acceptance. Summary feedback, corrections, edits, and outcome links retain
 their automated/local-browser evidence; they were not exercised by this
 production canary.
 [Canary evidence](evidence/r5a-a3-feedback-canary-2026-09-16.json).
+
+### A3 step 4 — production disable/restore exercise, 2026-09-17
+
+The production feedback flag was disabled and restored with application
+restarts. Direct deployed-handler checks rejected a valid authenticated
+submission while disabled (403), preserved authorized history, and rendered
+controls only while enabled. CSRF middleware rejected a missing-token request,
+and an existing unauthorized actor was denied by the deployed handler.
+Counts stayed at four feedback records and seven exposures throughout; the
+original canary feedback hash remained unchanged. No synthetic judgment was
+created. Evaluators remained enabled and model graders remained disabled.
+
+An identical replay at the immutable storage-service boundary reused feedback
+1, and changed content under its key was rejected.
+
+**Step 4 completed on 2026-09-18.** A genuine post-restoration Accept submission
+created feedback 5 for research entry 531, linked to exposure 12. A production
+database check verified its immutable content hash, matching exposure, and a
+single record for its request key. The user confirmed that replaying the
+authenticated HTTP request returned HTTP 200 with `"id": 5` and
+`"created": false`; the browser response was not independently observed by
+the agent. Together with the disable/restore checks above, this closes step 4.
+At the time of this exercise, production correction, edit, and outcome-link
+checks and overall A3 closeout were tracked separately; see the closeout below.
+[Exercise evidence](evidence/r5a-a3-step4-2026-09-17.json).
+
+### A3 closeout — 2026-09-18
+
+A3 is marked **verified and closed** at the user's explicit direction:
+“Mark A3 as verified, update Production plan to current state.”
+This is a user-directed acceptance decision, not a claim that the agent ran
+additional production correction, edit, outcome-link, or summary checks.
+Existing automated/local-browser evidence and the production canary and step 4
+evidence above remain the recorded verification basis; no synthetic feedback
+or new production verification results were created for this closeout.
+
+A4 frozen datasets is next. A5 measured calibration and A6 overall production
+acceptance remain pending. Evaluators and feedback remain enabled; model
+graders remain disabled. A3 closeout does not close the whole R5A release.

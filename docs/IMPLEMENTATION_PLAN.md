@@ -1,8 +1,8 @@
 # IdeaFlow Measurement-First Implementation Plan
 
-Status: Active — R4 deployed; R5 evaluation work is next
+Status: Active — R5A A1/A2 deployed; A3 verified; A4 frozen datasets is next
 Original plan date: 2026-08-31
-Status reconciled: 2026-09-01
+Status reconciled: 2026-09-18
 Related documents: `FEATURE_INVENTORY.md`, `REWRITE_TECHSPEC.md`
 
 ## 1. Objective
@@ -21,6 +21,14 @@ R4 is deployed. Releases R0–R4 established the measured-execution foundation
 and moved the durable optional workflows through the Phase 4 vertical and
 cutover work described in `PHASE4_VERTICALS_AND_CUTOVER.md`.
 
+R5A is now in progress: A1/A2 evaluator records, rubric seeds, and deterministic
+checks are deployed. A3 feedback/exposure is deployed and marked verified on
+2026-09-18 at the user's direction. Evaluators and feedback are enabled;
+model graders remain disabled. A4 frozen datasets is the next development
+slice, followed by A5 measured calibration and A6 overall production acceptance.
+The September 15 R4.1 reconciliation and rollback evidence is retained under
+`docs/evidence/`; production reconciliation remains an ongoing responsibility.
+
 The implementation phase numbers and the original release labels did not remain
 one-to-one. This status table is authoritative when the historical milestone
 descriptions below differ from deployed reality.
@@ -35,9 +43,9 @@ descriptions below differ from deployed reality.
 | Durable artifact/media versions, deterministic jobs, and outcome events | Shipped for the Phase 4 verticals | Extend consistently as remaining workflows move to authoritative mode. |
 | Source/evidence pipeline | Shipped in its initial form | Measure yield and complete the bounded evidence-queue product rollout. |
 | Gateway-based structured job execution | Partial | Continue one workflow at a time; compatibility wrappers remain supported. |
-| Explicit human-feedback records and common feedback UI | Not complete | Deliver with the R5 evaluator foundation. |
-| Versioned evaluator and metric models | Not complete | Deliver in R5 before using model judgments for promotion decisions. |
-| Immutable evaluation datasets and paired offline runner | Not complete | Deliver in R5. |
+| Explicit human-feedback records and common feedback UI | A3 deployed and verified for research-entry and weekly-summary surfaces | Extend to other output surfaces separately. |
+| Versioned evaluator and metric models | A1/A2 deployed; deterministic canary verified | Complete A5 calibration before decision-grade model judgments. |
+| Immutable evaluation datasets and paired offline runner | Planned | A4 frozen datasets, then R5C paired offline evaluation. |
 | Controlled online experimentation | Not started | Begin only after the R5 offline gate passes. |
 | Portfolio taxonomy and lifecycle migration | Planned | Keep outside the research-context experiment. |
 
@@ -362,10 +370,10 @@ Goal: centralize execution semantics while retaining provider-specific adapters.
 Goal: measure usefulness rather than only activity, tokens, and self-reported quality.
 
 R4 shipped `OutcomeEvent` support and outcome attribution for the Phase 4
-vertical workflows. The generic human-feedback and versioned-evaluator models
-listed below are not part of the current measured-execution schema and move
-forward as required R5 work. They must not be treated as deployed merely
-because related workflow-specific accept/reject actions already exist.
+vertical workflows. R5A A1/A2 subsequently deployed generic versioned-evaluator
+and metric records; A3 deployed common human-feedback and exposure services
+for research-entry and weekly-summary views and is verified as of 2026-09-18.
+Broader workflow coverage and calibrated model graders remain outstanding.
 
 ### Models
 
@@ -433,7 +441,7 @@ Implement before model graders:
 Goal: complete the generic evaluation foundation and safely compare candidate
 changes before exposing them to production users.
 
-This is the next production milestone after R4. It includes the unfinished
+This milestone is in progress through R5A. It includes the unfinished
 generic evaluator work from Milestone 4; offline experiments may not use
 ad-hoc, unversioned judge prompts or write scores into an existing field whose
 meaning differs from the metric being measured.
@@ -542,8 +550,11 @@ and research state unchanged. Evaluators are enabled; model graders remain
 disabled. A3 feedback/exposure is deployed and enabled for research-entry and
 weekly-summary views. The initial human canary recorded useful feedback on
 research entry 531 with matching exposure, actor, projection hash, and producing
-run; audit hashes verified on 2026-09-16. A4–A6 and broader acceptance
-remain pending; see
+run; audit hashes verified on 2026-09-16. The disable/restore and authenticated
+replay exercise completed on 2026-09-18. A3 is marked verified at the user's
+explicit direction on 2026-09-18; that closeout does not represent additional
+agent-observed production checks. A4–A6 and overall R5A acceptance remain
+pending; see
 [R5A_OPERATIONS.md](R5A_OPERATIONS.md).
 
 Recommendation adopted: 2026-09-16. Use Idea 111's
@@ -965,32 +976,27 @@ The program is complete when:
 - Security, backup/restore, budget, and incident runbooks have been exercised.
 - The previous execution paths can be retired without losing historical auditability.
 
-## 18. Recommended next development slice after R4
+## 18. Next development slices — reconciled 2026-09-18
 
-The next mergeable slice should complete measurement prerequisites without
-changing authoritative research behavior:
+A1/A2 are deployed and A3 is verified. Continue without changing authoritative
+research behavior or scheduling:
 
-1. Produce the R4.1 reconciliation report and resolve any unattributed or
-   incomplete production workflow population.
-2. Add immutable `MetricDefinition`, `EvaluatorDefinition`,
-   `EvaluatorVersion`, and `EvaluationResult` records.
-3. Implement the shared 1–5 anchors, the initial type-specific rubric family,
-   explicit rubric applicability, and deterministic score validation; start
-   with `research.answer_progress` for the context experiment. Add the amended
-   Idea 111 research-quality criteria as a separate versioned rubric, retaining
-   diagnostic results, critical failures, and judgment coverage.
-4. Add `ResearchCheckpoint`, structured-state validation, source manifests,
-   evidence cutoffs, and stable content hashes.
-5. Add `full_history_v1` and `checkpoint_delta_v1` to the context builder and
-   record their complete manifests without changing production selection.
-6. Build a small human-scored seed dataset spanning short, long, conflicting,
-   stale, and multi-hop research histories, with an explicit frozen rubric key
-   on every case.
-7. Run paired offline generation and three independent blinded evaluator roles,
-   including answer-order reversal for a prespecified sample.
-8. Publish the paired quality/cost report and make an explicit proceed, revise,
-   or stop decision against the R5 exit thresholds.
+1. **A4 — Frozen datasets:** implement immutable cases, snapshots, and labels;
+   authorized sampling; redaction preview/approval; manifest hashes and export.
+2. **A5 — Measured calibration:** implement the bounded grader adapter and
+   frozen-input command, collect human labels, and record calibration reports
+   and version approval. Human labeling and threshold approval are prerequisites
+   for completion; model graders remain disabled until the required gates pass.
+3. **A6 — Production acceptance:** extend reconciliation and consolidate canary,
+   runbook, rollback, and release evidence to close R5A as a whole.
+4. **R5B — Research checkpoints:** add immutable structured checkpoints, source
+   manifests, evidence cutoffs, and versioned `full_history_v1` and
+   `checkpoint_delta_v1` context policies without changing production selection.
+5. **R5C — Offline comparison:** run paired generation and independent blinded
+   evaluation on frozen cases, including prespecified answer-order reversal;
+   publish the quality/cost report and an explicit proceed, revise, or stop
+   decision against the R5 exit thresholds.
 
-Only after this slice passes should scheduled shadow execution be enabled. The
-first shadow release keeps full context authoritative, makes the treatment
+Only after the offline gate passes should scheduled shadow execution be enabled.
+The first shadow release keeps full context authoritative, makes the treatment
 strictly read-only, and proves that scheduling advances exactly once.
