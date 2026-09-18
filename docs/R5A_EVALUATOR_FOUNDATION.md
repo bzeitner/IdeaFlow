@@ -1,13 +1,14 @@
 # R5A — Evaluator, Feedback, and Dataset Foundation
 
-Status: A1/A2 deployed; initial deterministic production canary verified on 2026-09-16; A3 deployed and verified at user direction on 2026-09-18; A4–A6 remain planned
+Status: A1/A2 deployed; initial deterministic production canary verified on 2026-09-16; A3 deployed and verified at user direction on 2026-09-18; A4 implemented and locally verified (production rollout pending); A5–A6 remain planned
 Plan date: 2026-09-16
 Parent plan: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 
 A1/A2 usage and limits: [R5A_OPERATIONS.md](R5A_OPERATIONS.md). The initial
 command evaluates research structure deterministically; human/model rubric
-definitions are seeded but uncalibrated. Feedback/exposure UI is deployed and A3 is verified. Datasets and model-grader
-execution remain in their later slices.
+definitions are seeded but uncalibrated. Feedback/exposure UI is deployed and A3 is verified. A4 datasets are implemented
+and locally verified; production rollout and exact-case approval remain pending.
+Model-grader execution remains A5 work.
 
 ## 1. Outcome and scope
 

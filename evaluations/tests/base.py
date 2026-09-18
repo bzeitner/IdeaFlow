@@ -49,6 +49,10 @@ def audit_fixture_reset(alias, expected_name):
         editor = connection.schema_editor()
         interaction_guards = import_module("evaluations.migrations.0004_interaction_audit_guards")
         has_interactions = _guards_installed(connection, "evaluations_humanfeedback_no_update")
+        dataset_guards = import_module("evaluations.migrations.0006_dataset_audit_guards")
+        has_datasets = _guards_installed(connection, "evaluations_datasetcase_no_update")
+        if has_datasets:
+            dataset_guards.uninstall(apps, editor)
         if has_interactions:
             interaction_guards.uninstall(apps, editor)
         guards.uninstall(apps, editor)
@@ -56,6 +60,8 @@ def audit_fixture_reset(alias, expected_name):
         guards.install(apps, editor)
         if has_interactions:
             interaction_guards.install(apps, editor)
+        if has_datasets:
+            dataset_guards.install(apps, editor)
 
 
 class AuditTransactionTestCase(TransactionTestCase):

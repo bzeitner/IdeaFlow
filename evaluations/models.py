@@ -331,3 +331,154 @@ class FeedbackOutcomeLink(FrozenRecord):
             raise ValidationError("Outcome must identify the same idea and producing run.")
         if self.actor_label != feedback.actor_label:
             raise ValidationError("Only the feedback actor can link an outcome.")
+
+
+class EvaluationDataset(FrozenRecord):
+    key = models.SlugField(max_length=100, unique=True)
+    purpose = models.CharField(max_length=500)
+    owner_user_id = models.PositiveBigIntegerField()
+    access_classification = models.CharField(max_length=32, default='restricted')
+    eligibility_policy = models.JSONField()
+    redaction_policy = models.CharField(max_length=100)
+    retention_days = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+
+    class Meta:
+        permissions = [('operate_datasets', 'Operate protected evaluation datasets')]
+        constraints = [models.CheckConstraint(condition=models.Q(retention_days__gte=1), name='dataset_retention_positive')]
+
+    def clean(self):
+        policy = self.eligibility_policy
+        if (self.access_classification != 'restricted' or not isinstance(policy, dict)
+                or set(policy) != {'workflows', 'allow_legacy'} or policy['workflows'] != ['research']
+                or type(policy['allow_legacy']) is not bool):
+            raise ValidationError('Restricted research datasets require an explicit allow_legacy policy.')
+
+
+class DatasetCase(FrozenRecord):
+    dataset = models.ForeignKey(EvaluationDataset, on_delete=models.PROTECT)
+    case_key = models.SlugField(max_length=100)
+    revision = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    supersedes = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
+    origin = models.JSONField()
+    rubric_assignments = models.JSONField()
+    cohorts = models.JSONField()
+    split = models.CharField(max_length=16, choices=[('development', 'Development'), ('held_out', 'Held out')])
+    evidence_cutoff = models.DateTimeField()
+    expires_at = models.DateTimeField()
+    payload_hash = models.CharField(max_length=64, validators=[HASH])
+    approval_hash = models.CharField(max_length=64, validators=[HASH])
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['dataset', 'case_key', 'revision'], name='dataset_case_revision'),
+                       models.CheckConstraint(condition=models.Q(revision__gte=1), name='dataset_revision_positive')]
+
+    def audit_values(self):
+        from datetime import timezone as datetime_timezone
+        values = super().audit_values()
+        for name in ('evidence_cutoff', 'expires_at'):
+            value = getattr(self, name)
+            values[name] = value.astimezone(datetime_timezone.utc).isoformat() if value else None
+        return values
+
+    def clean(self):
+        from .datasets import validate_assignments
+        validate_assignments(self.rubric_assignments)
+        if not isinstance(self.cohorts, list) or not self.cohorts or not all(isinstance(c, str) and c.strip() for c in self.cohorts):
+            raise ValidationError('Explicit cohort tags are required.')
+        if not isinstance(self.origin, dict) or set(self.origin) != {'target_kind', 'target_id', 'output_hash', 'producing_run_id', 'run_output_hash'} or self.origin['target_kind'] != 'research':
+            raise ValidationError('A frozen research origin identity is required.')
+        if type(self.origin['target_id']) is not int or self.origin['target_id'] < 1:
+            raise ValidationError('Origin must identify a research entry.')
+        HASH(self.origin['output_hash'])
+        if self.origin['producing_run_id']:
+            UUID(self.origin['producing_run_id'])
+            HASH(self.origin['run_output_hash'])
+        elif self.origin['run_output_hash']:
+            raise ValidationError('Unavailable provenance must not invent a run hash.')
+        from django.utils import timezone
+        if (timezone.is_naive(self.evidence_cutoff) or timezone.is_naive(self.expires_at)
+                or self.evidence_cutoff > timezone.now() or self.expires_at <= self.evidence_cutoff):
+            raise ValidationError('Case timestamps must be aware and ordered; cutoff cannot be in the future.')
+        if self.supersedes_id:
+            prior = DatasetCase.objects.get(pk=self.supersedes_id)
+            if (prior.dataset_id, prior.case_key, prior.revision + 1, prior.split, prior.origin['target_id']) != (self.dataset_id, self.case_key, self.revision, self.split, self.origin['target_id']):
+                raise ValidationError('Revision lineage must retain dataset, case identity, and split.')
+        elif self.revision != 1:
+            raise ValidationError('Later revisions require explicit lineage.')
+
+
+class DatasetContentQuerySet(FrozenQuerySet):
+    def delete(self):
+        # Database guards require an existing immutable tombstone.
+        return models.QuerySet.delete(self)
+
+
+class DatasetCaseContent(models.Model):
+    """Deletable protected content; immutable metadata lives in DatasetCase."""
+    case = models.OneToOneField(DatasetCase, on_delete=models.PROTECT, primary_key=True, related_name='protected_content')
+    payload = models.JSONField()
+    objects = DatasetContentQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        from .datasets import validate_payload
+        validate_payload(self.payload)
+        if not self._state.adding or DatasetCaseTombstone.objects.filter(case_id=self.case_id).exists():
+            raise ValidationError('Frozen content cannot be rewritten or restored after deletion.')
+        if canonical_hash(self.payload) != self.case.payload_hash:
+            raise ValidationError('Frozen content hash mismatch.')
+        kwargs['force_insert'] = True
+        return super().save(*args, **kwargs)
+
+
+class DatasetCaseTombstone(FrozenRecord):
+    case = models.OneToOneField(DatasetCase, on_delete=models.PROTECT)
+    reason = models.CharField(max_length=24, choices=[('expired', 'Expired'), ('required_deletion', 'Required deletion')])
+
+
+class DatasetSnapshot(FrozenRecord):
+    dataset = models.ForeignKey(EvaluationDataset, on_delete=models.PROTECT)
+    manifest = models.JSONField()
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    def clean(self):
+        if not isinstance(self.manifest, dict) or set(self.manifest) != {'schema_version', 'dataset_hash', 'sampling_rules', 'redaction_policy', 'cases'}:
+            raise ValidationError('Invalid snapshot manifest.')
+        dataset = EvaluationDataset.objects.get(pk=self.dataset_id)
+        m = self.manifest
+        if m['schema_version'] != 1 or m['dataset_hash'] != dataset.content_hash or m['redaction_policy'] != dataset.redaction_policy or not isinstance(m['sampling_rules'], dict) or not m['sampling_rules']:
+            raise ValidationError('Snapshot policy mismatch.')
+        rows = m['cases']
+        if not isinstance(rows, list) or not rows or len(rows) > 200:
+            raise ValidationError('Snapshots require 1–200 ordered case revisions.')
+        keys = set()
+        for item in rows:
+            if not isinstance(item, dict) or set(item) != {'id', 'hash', 'payload_hash'}:
+                raise ValidationError('Invalid snapshot case descriptor.')
+            case = DatasetCase.objects.get(pk=item['id'], dataset_id=self.dataset_id)
+            if case.case_key in keys or item != {'id': case.pk, 'hash': case.content_hash, 'payload_hash': case.payload_hash}:
+                raise ValidationError('Duplicate case identity or snapshot hash mismatch.')
+            keys.add(case.case_key)
+
+
+class HumanCalibrationLabel(FrozenRecord):
+    case = models.ForeignKey(DatasetCase, on_delete=models.PROTECT)
+    evaluator_version = models.ForeignKey(EvaluatorVersion, on_delete=models.PROTECT)
+    reviewer_user_id = models.PositiveBigIntegerField()
+    criterion_results = models.JSONField()
+    progress_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    supporting_refs = models.JSONField(default=list, blank=True)
+    adjudicates = models.JSONField(default=list, blank=True)
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(progress_score__isnull=True) | models.Q(progress_score__gte=1, progress_score__lte=5), name='dataset_label_score_range')]
+
+    def full_clean(self, *args, **kwargs):
+        if self.progress_score is not None and type(self.progress_score) is not int:
+            raise ValidationError('Progress must be an integer.')
+        return super().full_clean(*args, **kwargs)
+
+    def clean(self):
+        from .datasets import validate_label
+        validate_label(self)

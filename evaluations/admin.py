@@ -3,7 +3,9 @@ import json
 from django.contrib import admin
 
 from .models import (EvaluationResult, EvaluatorApproval, EvaluatorDefinition, EvaluatorVersion,
-                     MetricDefinition, EvaluationExposure, HumanFeedback, FeedbackOutcomeLink)
+                     MetricDefinition, EvaluationExposure, HumanFeedback, FeedbackOutcomeLink,
+                     EvaluationDataset, DatasetCase, DatasetSnapshot, DatasetCaseTombstone,
+                     HumanCalibrationLabel)
 
 
 class FrozenAdmin(admin.ModelAdmin):
@@ -85,3 +87,25 @@ class InteractionAdmin(FrozenAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         return self.get_fields(request, obj)
+
+
+@admin.register(EvaluationDataset, DatasetCase, DatasetSnapshot, DatasetCaseTombstone, HumanCalibrationLabel)
+class DatasetAuditAdmin(FrozenAdmin):
+    """Metadata only; case bodies have no admin registration."""
+    list_display = ('id', 'actor_label', 'created_at', 'content_hash')
+
+    def has_view_permission(self, request, obj=None):
+        user = request.user
+        if not user.is_active or not user.has_perm('evaluations.operate_datasets'):
+            return False
+        if obj is None or user.is_superuser:
+            return True
+        dataset = obj if isinstance(obj, EvaluationDataset) else (obj.dataset if hasattr(obj, 'dataset_id') else obj.case.dataset)
+        return dataset.owner_user_id == user.pk
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if request.user.is_superuser:
+            return queryset
+        field = 'owner_user_id' if self.model == EvaluationDataset else ('dataset__owner_user_id' if self.model in (DatasetCase, DatasetSnapshot) else 'case__dataset__owner_user_id')
+        return queryset.filter(**{field: request.user.pk})
