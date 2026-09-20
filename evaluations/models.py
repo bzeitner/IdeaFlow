@@ -482,3 +482,73 @@ class HumanCalibrationLabel(FrozenRecord):
     def clean(self):
         from .datasets import validate_label
         validate_label(self)
+
+
+class CalibrationPlan(FrozenRecord):
+    snapshot = models.ForeignKey(DatasetSnapshot, on_delete=models.PROTECT)
+    human_version = models.ForeignKey(EvaluatorVersion, on_delete=models.PROTECT, related_name='human_calibration_plans')
+    grader_version = models.ForeignKey(EvaluatorVersion, on_delete=models.PROTECT, related_name='model_calibration_plans')
+    reviewer_ids = models.JSONField()
+    thresholds = models.JSONField()
+    budget = models.JSONField()
+    execution_binding = models.JSONField()
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    def clean(self):
+        from .calibration import validate_plan
+        validate_plan(self)
+
+
+class CalibrationReview(FrozenRecord):
+    plan = models.ForeignKey(CalibrationPlan, on_delete=models.PROTECT)
+    case = models.ForeignKey(DatasetCase, on_delete=models.PROTECT)
+    label = models.OneToOneField(HumanCalibrationLabel, on_delete=models.PROTECT)
+    assessment = models.JSONField()
+    role = models.CharField(max_length=16, choices=[('independent', 'Independent'), ('adjudication', 'Adjudication')])
+    supersedes = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    def clean(self):
+        from .calibration import validate_review
+        validate_review(self)
+
+
+class CalibrationAttempt(FrozenRecord):
+    plan = models.ForeignKey(CalibrationPlan, on_delete=models.PROTECT)
+    case = models.ForeignKey(DatasetCase, on_delete=models.PROTECT)
+    run = models.OneToOneField('executions.LLMRun', on_delete=models.PROTECT)
+    request_hash = models.CharField(max_length=64, validators=[HASH])
+    reserved_tokens = models.PositiveBigIntegerField()
+    reserved_cost_micros = models.PositiveBigIntegerField()
+    idempotency_key = models.CharField(max_length=200, unique=True)
+
+    def clean(self):
+        if self.case_id not in [r['id'] for r in self.plan.snapshot.manifest['cases']]:
+            raise ValidationError('Attempt case is outside the approved snapshot.')
+        if self.run.purpose != 'evaluation' or self.run.model_configuration_id != self.plan.grader_version.model_configuration_id:
+            raise ValidationError('Attempt requires the approved measured evaluation run.')
+
+
+class CaseEvaluationResult(FrozenRecord):
+    attempt = models.OneToOneField(CalibrationAttempt, on_delete=models.PROTECT)
+    assessment = models.JSONField()
+    summary = models.JSONField()
+
+    def clean(self):
+        from .calibration import validate_assessment
+        from .validation import summarize
+        attempt = self.attempt
+        validate_assessment(attempt.case, attempt.plan.grader_version, self.assessment)
+        if attempt.run.parsed_output != {'assessment_hash':canonical_hash(self.assessment)}:
+            raise ValidationError('Assessment does not match the measured response fingerprint.')
+        if attempt.run.status != 'succeeded' or not attempt.run.schema_valid:
+            raise ValidationError('Case results require a successful schema-valid grader run.')
+        if self.summary != summarize(attempt.plan.grader_version.rubric, self.assessment['criterion_results']):
+            raise ValidationError('Result summary differs from criterion diagnostics.')
+
+
+class CalibrationReport(FrozenRecord):
+    plan = models.ForeignKey(CalibrationPlan, on_delete=models.PROTECT)
+    input_manifest = models.JSONField()
+    metrics = models.JSONField()
+    eligible = models.BooleanField(default=False)
