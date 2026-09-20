@@ -457,3 +457,36 @@ def estimate_cost_micros(model_configuration, usage):
     )
     numerator = sum((usage.get(field) or 0) * rate for field, rate in components)
     return (numerator + 999_999) // 1_000_000
+
+
+@transaction.atomic
+def start_posthoc_evaluation(parent_run, model_configuration, *, rendered_input_hash,
+                             rendered_input_ref, prompt_revision_manifest, context_manifest,
+                             idempotency_key):
+    """Add a measured evaluation child without reopening a generation trace.
+
+    This dedicated operator path is not exposed by machine run-start endpoints.
+    General start_run keeps rejecting terminal traces.
+    """
+    parent = LLMRun.objects.get(pk=parent_run.pk)
+    trace = ExecutionTrace.objects.select_for_update().get(pk=parent.trace_id)
+    if parent.status != TraceStatus.SUCCEEDED or parent.purpose == RunPurpose.EVALUATION:
+        raise ValidationError('Post-hoc grading requires a successful non-evaluation parent.')
+    existing = LLMRun.objects.filter(trace=trace, idempotency_key=idempotency_key).first()
+    if existing:
+        if (existing.purpose != RunPurpose.EVALUATION or existing.parent_run_id != parent.pk
+                or existing.rendered_input_hash != rendered_input_hash
+                or existing.model_configuration_id != model_configuration.pk
+                or existing.context_manifest != context_manifest
+                or existing.prompt_revision_manifest != prompt_revision_manifest):
+            raise ValidationError('Post-hoc evaluation request conflicts with an existing run.')
+        return existing, False
+    attempt = (LLMRun.objects.filter(trace=trace, purpose=RunPurpose.EVALUATION).aggregate(value=Max('attempt_number'))['value'] or 0) + 1
+    now = timezone.now()
+    run = LLMRun.objects.create(trace=trace, parent_run=parent, purpose=RunPurpose.EVALUATION,
+        model_configuration=model_configuration, prompt_revision_manifest=prompt_revision_manifest,
+        rendered_input_hash=rendered_input_hash, rendered_input_ref=rendered_input_ref,
+        context_manifest=context_manifest, attempt_number=attempt, idempotency_key=idempotency_key,
+        status=TraceStatus.RUNNING, queued_at=now, started_at=now)
+    append_event(trace, 'evaluation.started', run=run, payload={'posthoc':True}, occurred_at=now)
+    return run, True

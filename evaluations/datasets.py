@@ -67,10 +67,12 @@ def validate_payload(payload):
         raise ValidationError('Evidence and exclusions must be explicit lists.')
     refs = set()
     for evidence in payload['evidence']:
-        if not isinstance(evidence, dict) or set(evidence) != {'ref', 'excerpt', 'hash'}:
+        if not isinstance(evidence, dict) or set(evidence) not in ({'ref', 'excerpt', 'hash'}, {'ref', 'excerpt', 'hash', 'kind'}):
             raise ValidationError('Evidence requires a reference, redacted excerpt, and exact hash.')
         if not isinstance(evidence['ref'], str) or not evidence['ref'].strip() or evidence['ref'] in refs or not isinstance(evidence['excerpt'], str) or evidence['hash'] != canonical_hash(evidence['excerpt']):
             raise ValidationError('Evidence identity or hash mismatch.')
+        if evidence.get('kind', 'source_evidence') not in {'source_evidence', 'execution_evidence', 'frozen_requirements'}:
+            raise ValidationError('Unsupported frozen evidence kind.')
         refs.add(evidence['ref'])
     if not payload['evidence'] and not payload['unavailable'].get('evidence'):
         raise ValidationError('Missing source evidence requires an explicit reason.')

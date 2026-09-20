@@ -589,3 +589,12 @@ matching hashes, and zero human calibration labels. **A4 is verified.** The
 and A6 overall acceptance remain outstanding. No rubric has gained
 decision-grade approval from this storage canary.
 [Production evidence](evidence/r5a-a4-production-canary-2026-09-18.json).
+
+## A5 implementation status — 2026-09-20
+
+Measured calibration tooling is implemented locally; see [R5A_CALIBRATION.md](R5A_CALIBRATION.md)
+for approved-plan preparation, independent human review, bounded grader calls,
+report approval, and recovery. Production deployment and real calibration remain
+pending. A5 is not verified. The A4 storage canary is explicitly ineligible;
+a new approved pilot, named human reviewers, exact model/pricing, prespecified
+thresholds, and spending limits are still required. Production flags are unchanged.

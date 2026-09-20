@@ -5,7 +5,9 @@ from django.contrib import admin
 from .models import (EvaluationResult, EvaluatorApproval, EvaluatorDefinition, EvaluatorVersion,
                      MetricDefinition, EvaluationExposure, HumanFeedback, FeedbackOutcomeLink,
                      EvaluationDataset, DatasetCase, DatasetSnapshot, DatasetCaseTombstone,
-                     HumanCalibrationLabel)
+                     HumanCalibrationLabel, CalibrationPlan, CalibrationAttempt,
+                     CalibrationReview, CalibrationReport, CaseEvaluationResult,
+                     EvaluatorApprovalSupersession)
 
 
 class FrozenAdmin(admin.ModelAdmin):
@@ -109,3 +111,37 @@ class DatasetAuditAdmin(FrozenAdmin):
             return queryset
         field = 'owner_user_id' if self.model == EvaluationDataset else ('dataset__owner_user_id' if self.model in (DatasetCase, DatasetSnapshot) else 'case__dataset__owner_user_id')
         return queryset.filter(**{field: request.user.pk})
+
+
+@admin.register(CalibrationPlan, CalibrationAttempt, CalibrationReview, CalibrationReport,
+                CaseEvaluationResult, EvaluatorApprovalSupersession)
+class CalibrationAuditAdmin(FrozenAdmin):
+    list_display = ('id', 'actor_label', 'created_at', 'content_hash')
+
+    def _owner_path(self):
+        if self.model == CalibrationPlan:
+            return 'snapshot__dataset__owner_user_id'
+        if self.model == CaseEvaluationResult:
+            return 'attempt__plan__snapshot__dataset__owner_user_id'
+        if self.model == EvaluatorApprovalSupersession:
+            return 'plan__snapshot__dataset__owner_user_id'
+        return 'plan__snapshot__dataset__owner_user_id'
+
+    def has_view_permission(self, request, obj=None):
+        if not request.user.is_active or not request.user.has_perm('evaluations.operate_datasets'):
+            return False
+        if obj is None or request.user.is_superuser:
+            return True
+        return self.model.objects.filter(pk=obj.pk, **{self._owner_path():request.user.pk}).exists()
+
+    def get_queryset(self, request):
+        query = super().get_queryset(request)
+        return query if request.user.is_superuser else query.filter(**{self._owner_path():request.user.pk})
+
+    def get_fields(self, request, obj=None):
+        # Detailed judgments and reporting are explicit operator command reads.
+        withheld = {'assessment', 'metrics', 'input_manifest', 'summary'}
+        return tuple(f.name for f in self.model._meta.fields if f.name not in withheld)
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.get_fields(request, obj)

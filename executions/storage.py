@@ -39,7 +39,7 @@ class ExecutionPayloadStore:
             directory_permissions_mode=0o700,
         )
 
-    def put(self, kind, content, *, content_type="application/octet-stream"):
+    def put(self, kind, content, *, content_type="application/octet-stream", retention_days=None):
         if isinstance(content, str):
             content = content.encode("utf-8")
         if not isinstance(content, bytes):
@@ -49,8 +49,9 @@ class ExecutionPayloadStore:
             content_type = "application/json"
         if len(content) > settings.IDEAFLOW_EXECUTION_PAYLOAD_MAX_BYTES:
             raise ValidationError("Execution payload exceeds the configured size limit.")
-        if settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS < 1:
-            raise ValidationError("Payload retention must be at least one day.")
+        retention_days = settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS if retention_days is None else retention_days
+        if type(retention_days) is not int or retention_days < 1 or retention_days > settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS:
+            raise ValidationError("Payload retention must be positive and cannot exceed the configured policy.")
         # Keep stored bytes identical to their execution hash. Reject known
         # credentials instead of silently rewriting evidence after inference.
         reject_configured_credentials(content)
@@ -66,7 +67,7 @@ class ExecutionPayloadStore:
         metadata = json.dumps(
             {"content_type": content_type, "sha256": digest, "size_bytes": len(content),
              "created_at": now.isoformat(),
-             "expires_at": (now + timedelta(days=settings.IDEAFLOW_EXECUTION_PAYLOAD_RETENTION_DAYS)).isoformat()},
+             "expires_at": (now + timedelta(days=retention_days)).isoformat()},
             sort_keys=True,
         ).encode("utf-8")
         self.storage.save(f"{stored_name}.meta", ContentFile(metadata))

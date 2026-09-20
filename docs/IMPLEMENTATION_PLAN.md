@@ -1,6 +1,6 @@
 # IdeaFlow Measurement-First Implementation Plan
 
-Status: Active — R5A A1/A2 deployed; A3 verified; A4 deployed and verified; A5 measured calibration is next
+Status: Active — R5A A1/A2 deployed; A3 verified; A4 deployed and verified; A5 tooling implemented locally; real calibration pending
 Original plan date: 2026-08-31
 Status reconciled: 2026-09-20
 Related documents: `FEATURE_INVENTORY.md`, `REWRITE_TECHSPEC.md`
@@ -29,8 +29,9 @@ the approved canary created dataset 1, case 1, and snapshot 1 on 2026-09-18.
 Hashes, retries, permissions, database guards, and source independence passed;
 retention automation and final readback were verified on 2026-09-20. Dataset
 writers are enabled only for explicit operator commands and the retention job;
-the global dataset flag remains off. A4 is verified. A5 measured calibration
-is next, followed by A6 overall production acceptance. The 30-case pilot and
+the global dataset flag remains off. A4 is verified. A5 measured-calibration tooling is implemented locally,
+with deployment and real calibration pending; see [R5A_CALIBRATION.md](R5A_CALIBRATION.md).
+A6 overall production acceptance follows calibration. The 30-case pilot and
 independent human labels remain to be assembled; the one-case storage canary
 is not a calibration dataset.
 The September 15 R4.1 reconciliation and rollback evidence is retained under
@@ -991,10 +992,13 @@ authoritative research behavior or scheduling:
 1. **Calibration dataset preparation:** use A4 to build the approved 30-case
    research pilot across the planned conditions; retain distinct development
    and held-out cases and collect independent human labels.
-2. **A5 — Measured calibration:** implement the bounded grader adapter and
-   frozen-input command, collect human labels, and record calibration reports
-   and version approval. Human labeling and threshold approval are prerequisites
-   for completion; model graders remain disabled until the required gates pass.
+2. **A5 — Measured calibration:** bounded grader execution, independent human
+   review/adjudication, immutable reports, and explicit version approval are
+   implemented locally. Brad and Zak are the designated independent reviewers;
+   bind their active user IDs when creating the plan. Review/deploy the tooling,
+   approve the exact model, pricing, thresholds and budget, then collect real pilot evidence and approve
+   eligible reports. See [the operator guide](R5A_CALIBRATION.md). A5 remains
+   unverified; production model graders remain disabled.
 3. **A6 — Production acceptance:** extend reconciliation and consolidate canary,
    runbook, rollback, and release evidence to close R5A as a whole.
 4. **R5B — Research checkpoints:** add immutable structured checkpoints, source
