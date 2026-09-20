@@ -1,0 +1,13 @@
+[Unit]
+Description=Purge expired protected content for IdeaFlow dataset %i
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=ideaflow
+Group=ideaflow
+WorkingDirectory=/home/ideaflow/IdeaFlow
+Environment=IDEAFLOW_EXECUTION_DATASETS=true
+EnvironmentFile=/etc/ideaflow/dataset-retention-%i.env
+ExecStart=/home/ideaflow/IdeaFlow/.venv/bin/python manage.py evaluation_dataset purge-expired --dataset-id %i --user-id ${IDEAFLOW_DATASET_OPERATOR_ID}
+UMask=0077

@@ -1,6 +1,6 @@
 # R5A operator guide
 
-Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. A3 deployed and verified at user direction on 2026-09-18. Evaluators and feedback enabled; model graders disabled.
+Status: A1/A2 deployed to production on 2026-09-16 at `1af80f3`; initial deterministic canary verified. A3 deployed and verified at user direction on 2026-09-18; A4 deployed with canary/retention verification completed on 2026-09-20. Evaluators and feedback enabled; model graders disabled.
 
 ## What is available
 
@@ -363,8 +363,8 @@ graders remain disabled. A3 closeout does not close the whole R5A release.
 
 ## A4 — Frozen dataset operator workflow
 
-Status: implemented and locally verified on 2026-09-18; not yet deployed or
-production-accepted. A4 adds an operator command and restricted metadata admin;
+Status: deployed at `9483687` on 2026-09-18; approved production canary passed
+on 2026-09-18, retention setup and final readback verified on 2026-09-20. A4 adds an operator command and restricted metadata admin;
 there is no public dataset endpoint or automatic production sampling.
 
 ### Access, policy, and storage
@@ -534,7 +534,7 @@ writers to roll back rollout; do not reverse migrations or remove audit guards.
 - Build toward the 30-case research pilot across the planned conditions. It is
   a planning target, not evidence of statistical power or rubric calibration.
 
-Production approval and a canary remain required before marking A4 verified.
+Production approval and canary verification completed; see the closeout below.
 
 A4 local verification on 2026-09-18: the 354-test evaluations/executions/
 migrations/views regression suite passed on PostgreSQL 18 with pgvector 0.8.2.
@@ -542,6 +542,50 @@ SQLite passed the 354-test suite with three PostgreSQL-only tests skipped;
 a final 49-test dataset/foundation run also passed with one concurrency skip.
 Django system checks, migration drift checks, and diff checks passed.
 [Local verification evidence](evidence/r5a-a4-local-verification-2026-09-18.json).
-The proposed first canary is a reviewed excerpt from research entry 531 with a
-30-day restricted retention policy; its explicit approval and production
-freeze/export remain pending. No production dataset or human label was created.
+At the end of local verification, production rollout and approval were still
+pending. The subsequent approved production canary and closeout are recorded below.
+
+### A4 production acceptance — completed 2026-09-20
+
+PR #67 was merged and deployed at `9483687` on September 18, following a fresh
+database backup. Migrations 0005/0006 applied successfully; the application
+restarted normally. The user explicitly approved the exact canary proposal
+hash and 30-day restricted retention policy before any case was frozen.
+
+The deployed operator command created dataset **1**, case **1**, and snapshot
+**1** from research entry 531. Preview/freeze/export ran through private files
+that were removed after verification. Case and snapshot retries returned the
+original records; changed request content was rejected. Dataset, case, payload,
+snapshot, rubric, and metric hashes verified. An existing unauthorized actor
+could not export. Disabling dataset writers in the operator process rejected
+writes while preserving authorized exports.
+
+A rollback-only source-row update proved that the snapshot retains its frozen
+content; the original research entry, idea, and producing run were unchanged.
+A simulated future clock verified explicit expiry/unavailability without
+changing stored dates. PostgreSQL rejected metadata/content mutation and
+content deletion without a tombstone; all 19 dataset guard triggers exist.
+These probes do not claim a real source deletion or naturally elapsed expiry.
+
+The approved body expires at **2026-10-18 23:47:05 UTC**. Access stops at expiry;
+the daily `ideaflow-dataset-retention@1.timer` physically removes expired bodies
+at the next run and preserves immutable metadata. Installed on September 20,
+the service passed systemd unit verification and a real initial run (exit 0).
+Its restricted configuration identifies operator user 2. The timer enables
+writers only within its process; the global dataset flag remains false.
+Evaluators and human feedback remain enabled; model graders remain disabled.
+
+Install the checked-in `deploy/ideaflow-dataset-retention@.service` and `.timer`
+under `/etc/systemd/system/`. For each approved dataset, create a root-owned
+mode-0600 `/etc/ideaflow/dataset-retention-DATASET_ID.env` containing
+`IDEAFLOW_DATASET_OPERATOR_ID=OWNER_USER_ID`, then reload systemd and enable
+`ideaflow-dataset-retention@DATASET_ID.timer`. The configured actor must remain
+active and authorized; monitor failed service runs. Disabling the timer stops
+physical purge scheduling, not the expiry checks on reads.
+
+September 20 readback confirmed one case, one snapshot, one retained body,
+matching hashes, and zero human calibration labels. **A4 is verified.** The
+30-case calibration pilot, independent human assessments, A5 measured grading,
+and A6 overall acceptance remain outstanding. No rubric has gained
+decision-grade approval from this storage canary.
+[Production evidence](evidence/r5a-a4-production-canary-2026-09-18.json).
