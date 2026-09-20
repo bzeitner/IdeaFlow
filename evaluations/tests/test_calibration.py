@@ -13,7 +13,7 @@ from evaluations import calibration as api
 from evaluations.datasets import create_dataset, sample_research, preview_case, freeze_case, create_snapshot
 from evaluations.grading import grade_case, abandon_attempt, build_prompt
 from evaluations.models import (CalibrationPlan,CalibrationAttempt,CalibrationReview,CalibrationReport,
-    CaseEvaluationResult,HumanCalibrationLabel,EvaluatorApproval)
+    CaseEvaluationResult,HumanCalibrationLabel,EvaluatorApproval,EvaluatorApprovalSupersession)
 from evaluations.seeds import seed_evaluators
 from executions.models import ModelConfiguration,PricingVersion,LLMRun
 from executions.services import canonical_hash,start_trace,start_run,complete_run
@@ -226,17 +226,50 @@ class CalibrationTests(TestCase):
             self.review(self.reviewer1,index)
             self.review(self.reviewer2,index)
         report,_=api.create_report(self.owner,self.plan.pk)
+        self.assertFalse(report.eligible)
+        self.assertEqual(report.metrics['blocking_reasons'],['missing_labels_adjudication_or_model_results'])
+        self.grade(0)
+        self.review(self.reviewer1,0)
+        self.review(self.reviewer2,0)
+        report,_=api.create_report(self.owner,self.plan.pk)
         self.assertTrue(report.eligible,report.metrics)
         self.assertEqual(report.metrics['held_out']['progress_mae'],0)
-        self.assertEqual(report.metrics['grader_cost']['known_micros'],1000)
+        self.assertEqual(report.metrics['grader_cost']['known_micros'],1500)
         self.assertEqual(report.metrics['generation_cost']['known_micros'],30)
-        self.assertEqual(report.metrics['combined_cost_micros'],1030)
+        self.assertEqual(report.metrics['combined_cost_micros'],1530)
         approval,created=api.approve_report(self.owner,report.pk,reason='Only this pilot scope')
         self.assertTrue(created)
         self.assertEqual(approval.evaluator_version_id,self.grader.pk)
+        self.assertEqual(list(api.effective_approvals(self.grader,plan=self.plan)),[approval])
         self.review(self.reviewer1,1,score=1,key='later-correction')
+        self.assertFalse(api.effective_approvals(self.grader,plan=self.plan).exists())
+        supersession=EvaluatorApprovalSupersession.objects.get()
+        self.assertEqual(supersession.approval_id,approval.pk)
+        with self.assertRaises(DatabaseError),transaction.atomic(),connection.cursor() as cursor:
+            cursor.execute('UPDATE evaluations_evaluatorapprovalsupersession SET actor_label=%s WHERE id=%s',['tampered',supersession.pk])
         with self.assertRaises(ValidationError):
             api.approve_report(self.owner,report.pk,reason='stale report')
+
+    def test_overlapping_plan_requires_explicit_evidence_free_supersession(self):
+        snapshot,_=create_snapshot(self.owner,self.dataset.pk,[c.pk for c in self.cases],
+            {'method':'replacement pilot','calibration_eligible':True},idempotency_key='replacement-snapshot')
+        spec={**self.spec,'snapshot_id':snapshot.pk}
+        with self.assertRaises(ValidationError):
+            api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='parallel-plan')
+        spec['supersedes_plan_id']=self.plan.pk
+        replacement,created=api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='replacement-plan')
+        self.assertTrue(created)
+        self.assertEqual(replacement.supersedes_id,self.plan.pk)
+        with self.assertRaises(ValidationError):
+            api.review_packet(self.reviewer1,self.plan.pk,self.cases[1].pk)
+
+    def test_plan_with_collected_evidence_cannot_be_superseded(self):
+        self.review(self.reviewer1)
+        snapshot,_=create_snapshot(self.owner,self.dataset.pk,[c.pk for c in self.cases],
+            {'method':'late replacement','calibration_eligible':True},idempotency_key='late-replacement-snapshot')
+        spec={**self.spec,'snapshot_id':snapshot.pk,'supersedes_plan_id':self.plan.pk}
+        with self.assertRaises(ValidationError):
+            api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='late-replacement')
 
     def test_model_and_price_drift_rejected_and_plan_immutable(self):
         ModelConfiguration.objects.filter(pk=self.config.pk).update(model_identifier='different-model')

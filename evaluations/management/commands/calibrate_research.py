@@ -50,7 +50,9 @@ class Command(BaseCommand):
                 snapshot=DatasetSnapshot.objects.get(pk=data['snapshot_id'])
                 authorize(user,snapshot.dataset,write=True)
                 data['execution_binding']=api.execution_binding(EvaluatorVersion.objects.get(pk=data['grader_version_id']))
-                candidate=CalibrationPlan(**data,actor_label=f'user:{user.pk}',idempotency_key='preview')
+                model_data={**data}
+                model_data['supersedes_id']=model_data.pop('supersedes_plan_id',None)
+                candidate=CalibrationPlan(**model_data,actor_label=f'user:{user.pk}',idempotency_key='preview')
                 candidate.clean()
                 result={'plan':data,'approval_hash':canonical_hash(data),
                     'notice':'Approve exact reviewers, held-out thresholds, model/pricing binding and maximum budgets before creating this plan. No provider call or human label has been created.'}

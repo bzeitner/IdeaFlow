@@ -6,7 +6,8 @@ from .models import (EvaluationResult, EvaluatorApproval, EvaluatorDefinition, E
                      MetricDefinition, EvaluationExposure, HumanFeedback, FeedbackOutcomeLink,
                      EvaluationDataset, DatasetCase, DatasetSnapshot, DatasetCaseTombstone,
                      HumanCalibrationLabel, CalibrationPlan, CalibrationAttempt,
-                     CalibrationReview, CalibrationReport, CaseEvaluationResult)
+                     CalibrationReview, CalibrationReport, CaseEvaluationResult,
+                     EvaluatorApprovalSupersession)
 
 
 class FrozenAdmin(admin.ModelAdmin):
@@ -112,7 +113,8 @@ class DatasetAuditAdmin(FrozenAdmin):
         return queryset.filter(**{field: request.user.pk})
 
 
-@admin.register(CalibrationPlan, CalibrationAttempt, CalibrationReview, CalibrationReport, CaseEvaluationResult)
+@admin.register(CalibrationPlan, CalibrationAttempt, CalibrationReview, CalibrationReport,
+                CaseEvaluationResult, EvaluatorApprovalSupersession)
 class CalibrationAuditAdmin(FrozenAdmin):
     list_display = ('id', 'actor_label', 'created_at', 'content_hash')
 
@@ -121,6 +123,8 @@ class CalibrationAuditAdmin(FrozenAdmin):
             return 'snapshot__dataset__owner_user_id'
         if self.model == CaseEvaluationResult:
             return 'attempt__plan__snapshot__dataset__owner_user_id'
+        if self.model == EvaluatorApprovalSupersession:
+            return 'plan__snapshot__dataset__owner_user_id'
         return 'plan__snapshot__dataset__owner_user_id'
 
     def has_view_permission(self, request, obj=None):

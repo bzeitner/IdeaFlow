@@ -12,7 +12,8 @@ from executions.models import LLMRun, WorkflowDefinition, WorkflowVersion
 from executions.services import (canonical_hash, start_trace, start_run, start_posthoc_evaluation,
     complete_run, fail_run, fail_trace, estimate_cost_micros, append_event)
 from executions.storage import ExecutionPayloadStore
-from .calibration import GRADER_SYSTEM, require_writes, evidence_map, validate_assessment, _case_in_plan
+from .calibration import (GRADER_SYSTEM, require_writes, evidence_map, validate_assessment,
+    _case_in_plan, ensure_active_plan)
 from .datasets import authorize, verified
 from .models import CalibrationPlan, CalibrationAttempt, CaseEvaluationResult
 from .validation import summarize
@@ -41,7 +42,7 @@ def _reserve(user,plan_id,case_id,key):
     require_writes()
     if not settings.IDEAFLOW_EXECUTION_FLAGS.get('model_graders',False):
         raise PermissionDenied('Model graders are disabled.')
-    plan=verified(CalibrationPlan.objects.select_for_update().get(pk=plan_id))
+    plan=ensure_active_plan(verified(CalibrationPlan.objects.select_for_update().get(pk=plan_id)))
     user=authorize(user,plan.snapshot.dataset,write=True)
     plan.clean()
     case=_case_in_plan(plan,case_id)

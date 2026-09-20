@@ -493,6 +493,9 @@ class CalibrationPlan(FrozenRecord):
     budget = models.JSONField()
     execution_binding = models.JSONField()
     idempotency_key = models.CharField(max_length=200, unique=True)
+    supersedes = models.OneToOneField(
+        'self', null=True, blank=True, related_name='superseded_by', on_delete=models.PROTECT,
+    )
 
     def clean(self):
         from .calibration import validate_plan
@@ -552,3 +555,17 @@ class CalibrationReport(FrozenRecord):
     input_manifest = models.JSONField()
     metrics = models.JSONField()
     eligible = models.BooleanField(default=False)
+
+
+class EvaluatorApprovalSupersession(FrozenRecord):
+    approval = models.OneToOneField(EvaluatorApproval, related_name='supersession', on_delete=models.PROTECT)
+    plan = models.ForeignKey(CalibrationPlan, on_delete=models.PROTECT)
+    review = models.ForeignKey(CalibrationReview, on_delete=models.PROTECT)
+    reason = models.TextField()
+
+    def clean(self):
+        if (self.approval.decision != 'approved'
+                or self.approval.evaluator_version_id != self.plan.grader_version_id
+                or self.approval.calibration_evidence.get('plan_hash') != self.plan.content_hash
+                or self.review.plan_id != self.plan_id):
+            raise ValidationError('Approval supersession must match the changed calibration evidence.')

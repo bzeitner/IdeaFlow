@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                 ('grader_version', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='model_calibration_plans', to='evaluations.evaluatorversion')),
                 ('human_version', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='human_calibration_plans', to='evaluations.evaluatorversion')),
                 ('snapshot', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='evaluations.datasetsnapshot')),
+                ('supersedes', models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='superseded_by', to='evaluations.calibrationplan')),
             ],
             options={
                 'abstract': False,

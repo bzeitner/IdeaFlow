@@ -44,6 +44,7 @@ Prepare a plan request with these fields (values require explicit approval):
 | `reviewer_ids` | Two distinct active human user IDs |
 | `thresholds` | `min_held_out_cases`, `min_agreement`, `min_coverage`, `max_progress_mae`, `max_critical_misses`, `min_critical_failures` |
 | `budget` | `max_calls`, `max_input_bytes`, `max_output_tokens`, `max_total_tokens`, `max_cost_micros`, `timeout_seconds`, `max_attempts_per_case` |
+| `supersedes_plan_id` | Optional exact active plan being replaced before any review, attempt, or report exists. Required when the held-out source family is already reserved. |
 
 Agreement and coverage are fractions from 0 to 1; progress error is on the separate 1–5 ordinal scale. Cost is USD millionths. Budgets are conservative reservations, so the affordable number of calls can be smaller than `max_calls`.
 
@@ -80,6 +81,11 @@ Packets omit producer/model metadata, cohort, split, and other judgments. This i
 
 Corrections use a new key and append a superseding record. Both independent originals remain. After both reviews exist, the operator can export `adjudication-packet` and submit `adjudicate` with the same options as `review`. The adjudication references the current two human labels; correcting either invalidates an older adjudication. Model judgments are excluded from the adjudication packet.
 
+Each human-rubric/source-family combination can have only one active calibration
+plan. A replacement must explicitly name the active plan and is permitted only
+before that plan has any review, grader attempt, or report. Superseded plans
+cannot accept new packets, labels, calls, reports, or approvals.
+
 For each case, under the additionally enabled model-grader flag:
 
 ```sh
@@ -100,7 +106,7 @@ Inspect failed/in-flight attempts before retrying. `recover --user-id OPERATOR_I
 
 Reports separate development from held-out cases and include criterion/cohort agreement, coverage, critical misses, progress error, human disagreement, and generation/grading/combined costs with unknowns explicit. Optional communication criteria cannot compensate for critical failures. A report is a pilot calibration observation, not a statistical-power claim. Review development diagnostics as well as the held-out gates.
 
-Incomplete gold labels, unresolved disagreements, missing model results, unfinished attempts, insufficient critical-failure examples, expired content, unknown grader costs, and exceeded reservations block approval. Report inputs are hashed. Approval recomputes the current report and rejects stale evidence after any label correction or additional attempt.
+Incomplete gold labels or missing model results in either development or held-out cases, unresolved disagreements, unfinished attempts, insufficient critical-failure examples, expired content, unknown grader costs, and exceeded reservations block approval. Report inputs are hashed. Approval recomputes the current report and rejects stale evidence after any label correction or additional attempt. A review correction submitted after approval appends an immutable approval-supersession record immediately; the evaluator has no effective approval until a new current report passes and is explicitly approved.
 
 Only after the report is eligible and reviewed:
 

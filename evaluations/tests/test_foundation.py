@@ -264,6 +264,8 @@ class FoundationTests(TestCase):
         interactions = importlib.import_module("evaluations.migrations.0004_interaction_audit_guards")
         datasets = importlib.import_module("evaluations.migrations.0006_dataset_audit_guards")
         calibration = importlib.import_module("evaluations.migrations.0008_calibration_audit_guards")
+        approval_supersessions = importlib.import_module("evaluations.migrations.0009_calibration_plan_and_approval_supersession")
+        approval_supersessions.uninstall_guard(apps, editor)
         calibration.uninstall(apps, editor)
         datasets.uninstall(apps, editor)
         interactions.uninstall(apps, editor)
@@ -274,6 +276,7 @@ class FoundationTests(TestCase):
         interactions.install(apps, editor)
         datasets.install(apps, editor)
         calibration.install(apps, editor)
+        approval_supersessions.install_guard(apps, editor)
         with self.assertRaises(DatabaseError), transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("DELETE FROM evaluations_metricdefinition WHERE id = %s", [self.structure.metric_id])
 
