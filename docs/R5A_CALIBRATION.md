@@ -2,6 +2,8 @@
 
 Status: implemented locally on 2026-09-20; production deployment and real calibration pending. Model graders remain disabled in production. No real provider calls or human labels were created by implementation tests. A4 remains verified; A5 is not yet verified.
 
+Reviewer selection: **Brad and Zak**, designated by the user on 2026-09-20. Confirm their distinct active application user IDs when creating the frozen plan. This designation does not constitute completed reviews or approve a model, thresholds, or spending budget.
+
 ## Scope and safeguards
 
 `calibrate_research` is a trusted local operator command, not a web or machine-token endpoint. It adds immutable plans, attempts, human reviews, frozen-case results, and reports with database update/delete/truncate guards. Admin exposes restricted metadata; packets and reports are written to new private files with mode 0600.

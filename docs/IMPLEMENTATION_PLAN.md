@@ -994,8 +994,9 @@ authoritative research behavior or scheduling:
    and held-out cases and collect independent human labels.
 2. **A5 — Measured calibration:** bounded grader execution, independent human
    review/adjudication, immutable reports, and explicit version approval are
-   implemented locally. Review/deploy the tooling, approve reviewers, exact model,
-   pricing, thresholds and budget, then collect real pilot evidence and approve
+   implemented locally. Brad and Zak are the designated independent reviewers;
+   bind their active user IDs when creating the plan. Review/deploy the tooling,
+   approve the exact model, pricing, thresholds and budget, then collect real pilot evidence and approve
    eligible reports. See [the operator guide](R5A_CALIBRATION.md). A5 remains
    unverified; production model graders remain disabled.
 3. **A6 — Production acceptance:** extend reconciliation and consolidate canary,
