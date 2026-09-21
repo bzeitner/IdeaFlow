@@ -68,7 +68,7 @@ def validate_plan(plan):
         raise ValidationError('Grader must bind the exact human rubric, metric, applicability, and frozen prompt.')
     config = grader.model_configuration
     pricing = config.pricing_version if config else None
-    if (not config or config.provider != 'anthropic' or config.settings != {'temperature':0}
+    if (not config or config.provider != 'anthropic' or config.settings != {}
             or not pricing or pricing.currency != 'USD' or pricing.provider != config.provider
             or pricing.model_identifier != config.model_identifier or not pricing.source
             or not pricing.input_micros_per_million or not pricing.output_micros_per_million):

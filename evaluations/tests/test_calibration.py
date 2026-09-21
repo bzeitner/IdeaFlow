@@ -39,7 +39,7 @@ class CalibrationTests(TestCase):
             input_micros_per_million=1000000,output_micros_per_million=2000000,
             effective_from=timezone.now()-timedelta(days=1),source='https://example.test/approved-price')
         cls.config=ModelConfiguration.objects.create(provider='anthropic',model_identifier='test-exact-model',
-            settings={'temperature':0},pricing_version=pricing,content_hash=canonical_hash('grader-config'))
+            settings={},pricing_version=pricing,content_hash=canonical_hash('grader-config'))
         cls.grader,_=api.publish_grader(cls.owner,cls.human.pk,cls.config.pk,2)
         cls.dataset=create_dataset(cls.owner,key='calibration',purpose='Test pilot',
             eligibility_policy={'workflows':['research'],'allow_legacy':True},redaction_policy='test-v1',retention_days=30)
@@ -377,6 +377,9 @@ class CalibrationTests(TestCase):
         request=json.loads(conn.request.call_args.kwargs['body'])
         self.assertEqual(request['max_tokens'],1000)
         self.assertEqual(request['service_tier'],'standard_only')
+        self.assertNotIn('temperature',request)
+        self.assertNotIn('top_p',request)
+        self.assertNotIn('top_k',request)
         self.assertNotIn('tools',request)
         self.assertEqual(request['messages'][0]['content'],'Frozen case')
         conn.close.assert_called_once()

@@ -12,7 +12,7 @@ class _AnthropicRequest:
         key = os.environ.get('ANTHROPIC_API_KEY')
         if not key:
             raise ValidationError('ANTHROPIC_API_KEY is not configured.')
-        body = json.dumps({'model':model, 'max_tokens':max_output_tokens, 'temperature':0,
+        body = json.dumps({'model':model, 'max_tokens':max_output_tokens,
                            'service_tier':'standard_only','system':system,'messages':[{'role':'user','content':prompt}]})
         deadline = time.monotonic() + timeout_seconds
         connection = http.client.HTTPSConnection('api.anthropic.com',timeout=timeout_seconds)
