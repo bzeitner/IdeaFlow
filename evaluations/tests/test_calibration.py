@@ -47,13 +47,15 @@ class CalibrationTests(TestCase):
         generation_config=make_configuration()
         cls.cases=[]
         cls.parents=[]
-        for index in range(3):
+        for index in range(api.PILOT_CASE_COUNT):
             idea=make_idea(created_by=cls.owner)
-            trace,_=start_trace(workflow,trigger='test',subject=idea)
-            parent,_=start_run(trace,generation_config,rendered_input_hash=canonical_hash('generation input'))
-            complete_run(parent,output_hash=canonical_hash('original output'),measurement_status='partial',
-                measurement_unavailable_reasons=['test'],cost_micros=10,cost_source='test',finalize_trace=True)
-            parent.refresh_from_db()
+            parent=None
+            if index != api.PILOT_CASE_COUNT - 1:
+                trace,_=start_trace(workflow,trigger='test',subject=idea)
+                parent,_=start_run(trace,generation_config,rendered_input_hash=canonical_hash('generation input'))
+                complete_run(parent,output_hash=canonical_hash('original output'),measurement_status='partial',
+                    measurement_unavailable_reasons=['test'],cost_micros=10,cost_source='test',finalize_trace=True)
+                parent.refresh_from_db()
             entry=ResearchEntry.objects.create(idea=idea,model=make_ai_model(),topic='Question',context='Report',produced_by_run=parent)
             origin=sample_research(cls.owner,cls.dataset.pk,[entry.pk])[0]['origin']
             proposal={'case_key':f'case-{index}','origin':origin,'payload':{'objective':'Question','prior_state':None,
@@ -69,9 +71,9 @@ class CalibrationTests(TestCase):
             {'method':'approved pilot','calibration_eligible':True},idempotency_key='snapshot')
         cls.spec={'snapshot_id':cls.snapshot.pk,'human_version_id':cls.human.pk,'grader_version_id':cls.grader.pk,
             'reviewer_ids':[cls.reviewer1.pk,cls.reviewer2.pk],
-            'thresholds':{'min_held_out_cases':2,'min_agreement':1,'min_coverage':1,'max_progress_mae':0,
+            'thresholds':{'min_held_out_cases':api.PILOT_CASE_COUNT-1,'min_agreement':1,'min_coverage':1,'max_progress_mae':0,
                 'max_critical_misses':0,'min_critical_failures':1},
-            'budget':{'max_calls':10,'max_input_bytes':65536,'max_output_tokens':2000,'max_total_tokens':1000000,
+            'budget':{'max_calls':40,'max_input_bytes':65536,'max_output_tokens':2000,'max_total_tokens':1000000,
                 'max_cost_micros':10000000,'timeout_seconds':60,'max_attempts_per_case':2},
             'execution_binding':api.execution_binding(cls.grader)}
         cls.plan,_=api.create_plan(cls.owner,**cls.spec,approved_hash=canonical_hash(cls.spec),idempotency_key='plan')
@@ -221,7 +223,7 @@ class CalibrationTests(TestCase):
         self.assertFalse(report.eligible)
         with self.assertRaises(ValidationError):
             api.approve_report(self.owner,report.pk,reason='pilot use')
-        for index in [1,2]:
+        for index in range(1,api.PILOT_CASE_COUNT):
             self.grade(index)
             self.review(self.reviewer1,index)
             self.review(self.reviewer2,index)
@@ -234,9 +236,10 @@ class CalibrationTests(TestCase):
         report,_=api.create_report(self.owner,self.plan.pk)
         self.assertTrue(report.eligible,report.metrics)
         self.assertEqual(report.metrics['held_out']['progress_mae'],0)
-        self.assertEqual(report.metrics['grader_cost']['known_micros'],1500)
-        self.assertEqual(report.metrics['generation_cost']['known_micros'],30)
-        self.assertEqual(report.metrics['combined_cost_micros'],1530)
+        self.assertEqual(report.metrics['grader_cost']['known_micros'],15000)
+        self.assertEqual(report.metrics['generation_cost']['known_micros'],290)
+        self.assertEqual(report.metrics['generation_cost']['unknown_count'],1)
+        self.assertIsNone(report.metrics['combined_cost_micros'])
         approval,created=api.approve_report(self.owner,report.pk,reason='Only this pilot scope')
         self.assertTrue(created)
         self.assertEqual(approval.evaluator_version_id,self.grader.pk)
@@ -294,6 +297,33 @@ class CalibrationTests(TestCase):
         with self.assertRaises(ValidationError):
             api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='no')
 
+    def test_pilot_requires_exact_case_count_and_both_splits(self):
+        short_snapshot,_=create_snapshot(self.owner,self.dataset.pk,[c.pk for c in self.cases[:-1]],
+            {'method':'short pilot','calibration_eligible':True},idempotency_key='short-pilot')
+        spec=copy.deepcopy(self.spec)
+        spec['snapshot_id']=short_snapshot.pk
+        spec['thresholds']['min_held_out_cases']=api.PILOT_CASE_COUNT-2
+        with self.assertRaises(ValidationError):
+            api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='short-pilot')
+
+        from evaluations.datasets import case_content
+        all_held_dataset=create_dataset(self.owner,key='all-held',purpose='Invalid split test',
+            eligibility_policy={'workflows':['research'],'allow_legacy':True},redaction_policy='test-v1',retention_days=30)
+        all_held_cases=[]
+        for index,source in enumerate(self.cases):
+            proposal={'case_key':f'all-held-{index}','origin':source.origin,'payload':case_content(source)[0],
+                'rubric_assignments':source.rubric_assignments,'cohorts':['all-held'],'split':'held_out',
+                'evidence_cutoff':timezone.now().isoformat()}
+            preview=preview_case(self.owner,all_held_dataset.pk,proposal)
+            case,_=freeze_case(self.owner,all_held_dataset.pk,proposal,approval_token=preview['approval_token'],
+                approved_hash=preview['approval_hash'],idempotency_key=f'all-held-{index}')
+            all_held_cases.append(case)
+        all_held_snapshot,_=create_snapshot(self.owner,all_held_dataset.pk,[c.pk for c in all_held_cases],
+            {'method':'invalid all-held pilot','calibration_eligible':True},idempotency_key='all-held')
+        spec={**self.spec,'snapshot_id':all_held_snapshot.pk}
+        with self.assertRaises(ValidationError):
+            api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='all-held')
+
     def test_optional_communication_does_not_offset_critical_miss(self):
         version=self.quality
         gold={'criterion_results':[{'id':c['id'],'status':'fail' if c['severity']=='critical' else 'pass'} for c in version.rubric['criteria']],'progress_score':None}
@@ -317,21 +347,8 @@ class CalibrationTests(TestCase):
         self.assertEqual(type(attempt.run.trace).objects.values().get(pk=attempt.run.trace_id),parent_before)
 
     def test_legacy_case_gets_dedicated_evaluation_trace_without_fabricated_parent(self):
-        # Freeze a new approved legacy case and fresh plan to test the fallback.
-        entry=ResearchEntry.objects.create(idea=make_idea(created_by=self.owner),model=make_ai_model(),topic='Legacy',context='Legacy report')
-        origin=sample_research(self.owner,self.dataset.pk,[entry.pk])[0]['origin']
-        from evaluations.datasets import case_content
-        payload=case_content(self.cases[1])[0]
-        proposal={'case_key':'legacy','origin':origin,'payload':payload,
-            'rubric_assignments':self.cases[1].rubric_assignments,'cohorts':['legacy'],'split':'held_out','evidence_cutoff':timezone.now().isoformat()}
-        preview=preview_case(self.owner,self.dataset.pk,proposal)
-        case,_=freeze_case(self.owner,self.dataset.pk,proposal,approval_token=preview['approval_token'],approved_hash=preview['approval_hash'],idempotency_key='legacy')
-        snapshot,_=create_snapshot(self.owner,self.dataset.pk,[case.pk],{'calibration_eligible':True},idempotency_key='legacy')
-        spec=copy.deepcopy(self.spec)
-        spec['snapshot_id']=snapshot.pk
-        spec['thresholds']['min_held_out_cases']=1
-        plan,_=api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),idempotency_key='legacy')
-        result,_=grade_case(self.owner,plan.pk,case.pk,idempotency_key='legacy',adapter=Mock(return_value=self.response()))
+        case=self.cases[-1]
+        result,_=grade_case(self.owner,self.plan.pk,case.pk,idempotency_key='legacy',adapter=Mock(return_value=self.response()))
         run=result.attempt.run
         self.assertIsNone(run.parent_run_id)
         self.assertEqual(run.trace.workflow_version.workflow.key,'evaluation')
@@ -381,7 +398,7 @@ class CalibrationTests(TestCase):
 
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 from django.db import connections
 from django.test import skipUnlessDBFeature
 from .base import AuditTransactionTestCase
@@ -416,3 +433,46 @@ class CalibrationConcurrencyTests(AuditTransactionTestCase):
         self.assertEqual(CalibrationAttempt.objects.count(),1)
         self.assertEqual(CaseEvaluationResult.objects.count(),1)
         self.assertTrue(any(r is not None for r in results))
+
+    @skipUnlessDBFeature('has_select_for_update')
+    def test_plan_replacement_cannot_race_with_first_review(self):
+        CalibrationTests.setUpTestData.__func__(type(self))
+        snapshot,_=create_snapshot(self.owner,self.dataset.pk,[c.pk for c in self.cases],
+            {'method':'concurrent replacement','calibration_eligible':True},idempotency_key='concurrent-replacement')
+        spec={**self.spec,'snapshot_id':snapshot.pk,'supersedes_plan_id':self.plan.pk}
+        prior_locked=Event()
+        replacement_started=Event()
+
+        def reviewer():
+            try:
+                with transaction.atomic():
+                    CalibrationPlan.objects.select_for_update().get(pk=self.plan.pk)
+                    prior_locked.set()
+                    if not replacement_started.wait(timeout=10):
+                        return None
+                    review,_=api.submit_review(self.reviewer1,self.plan.pk,self.cases[1].pk,
+                        CalibrationTests.assessment(self),human_attested=True,idempotency_key='racing-review')
+                    return review.pk
+            finally:
+                connections.close_all()
+
+        def replace():
+            try:
+                if not prior_locked.wait(timeout=10):
+                    return 'not-started'
+                replacement_started.set()
+                try:
+                    api.create_plan(self.owner,**spec,approved_hash=canonical_hash(spec),
+                        idempotency_key='racing-replacement')
+                except ValidationError:
+                    return 'rejected'
+                return 'created'
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            review_future=pool.submit(reviewer)
+            replacement_future=pool.submit(replace)
+            self.assertIsNotNone(review_future.result(timeout=20))
+            self.assertEqual(replacement_future.result(timeout=20),'rejected')
+        self.assertEqual(CalibrationPlan.objects.count(),1)
