@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from evaluations import calibration as api
 from evaluations.grading import grade_case, abandon_attempt
 from evaluations.datasets import authorize
-from evaluations.models import CalibrationPlan, DatasetSnapshot, EvaluatorVersion
+from evaluations.models import CalibrationPlan, CaseEvaluationResult, DatasetSnapshot, EvaluatorVersion
 from .evaluation_dataset import read_json, private_json
 from executions.services import canonical_hash
 
@@ -15,7 +15,7 @@ class Command(BaseCommand):
     help='Prepare and run explicitly budgeted frozen-case calibration; real calls require model_graders flag.'
 
     def add_arguments(self,parser):
-        parser.add_argument('operation',choices=['publish-grader','plan-preview','plan','packet','adjudication-packet','review','adjudicate','grade','recover','report','approve-report'])
+        parser.add_argument('operation',choices=['publish-grader','plan-preview','plan','packet','assisted-packet','adjudication-packet','review','adjudicate','grade','recover','report','approve-report'])
         parser.add_argument('--user-id',type=int,required=True)
         parser.add_argument('--plan-id',type=int)
         parser.add_argument('--case-id',type=int)
@@ -32,7 +32,7 @@ class Command(BaseCommand):
         op=options['operation']
         required={'publish-grader':['request_file'],'plan-preview':['request_file','output_file'],
             'plan':['request_file','approve_hash','idempotency_key'],'packet':['plan_id','case_id','output_file'],
-            'adjudication-packet':['plan_id','case_id','output_file'],
+            'assisted-packet':['plan_id','case_id','output_file'],'adjudication-packet':['plan_id','case_id','output_file'],
             'review':['plan_id','case_id','request_file','idempotency_key','human_attested'],
             'adjudicate':['plan_id','case_id','request_file','idempotency_key','human_attested'],
             'grade':['plan_id','case_id','idempotency_key'],'recover':['attempt_id'],
@@ -59,12 +59,29 @@ class Command(BaseCommand):
             elif op=='plan':
                 row,created=api.create_plan(user,**data['plan'],approved_hash=options['approve_hash'],idempotency_key=options['idempotency_key'])
                 result={'plan_id':row.pk,'hash':row.content_hash,'created':created}
-            elif op in {'packet','adjudication-packet'}:
-                fn=api.review_packet if op=='packet' else api.adjudication_packet
+            elif op in {'packet','assisted-packet','adjudication-packet'}:
+                fn={'packet':api.review_packet,'assisted-packet':api.assisted_review_packet,
+                    'adjudication-packet':api.adjudication_packet}[op]
                 result=fn(user,options['plan_id'],options['case_id'])
             elif op in {'review','adjudicate'}:
-                row,created=api.submit_review(user,options['plan_id'],options['case_id'],data,
-                    human_attested=options['human_attested'],idempotency_key=options['idempotency_key'],adjudication=op=='adjudicate')
+                assisted=data.get('review_mode') == 'model_assisted_error_audit_v1'
+                if assisted:
+                    if set(data) != {'review_mode','automated_result','assessment','difference_manifest'}:
+                        raise ValidationError('Assisted review envelope is malformed.')
+                    assessment=data['assessment']
+                    result_ref=data['automated_result']
+                    result_id=result_ref.get('id') if isinstance(result_ref,dict) else None
+                    result_hash=result_ref.get('hash') if isinstance(result_ref,dict) else None
+                    result_row=CaseEvaluationResult.objects.get(pk=result_id)
+                    if set(result_ref) != {'id','hash'} or result_row.content_hash != result_hash:
+                        raise ValidationError('Assisted review result fingerprint is invalid.')
+                else:
+                    assessment=data
+                    result_id=None
+                row,created=api.submit_review(user,options['plan_id'],options['case_id'],assessment,
+                    human_attested=options['human_attested'],idempotency_key=options['idempotency_key'],adjudication=op=='adjudicate',
+                    review_mode=data.get('review_mode','independent_blinded_v1') if isinstance(data,dict) else 'independent_blinded_v1',
+                    assisted_result_id=result_id,difference_manifest=data.get('difference_manifest') if assisted else None)
                 result={'review_id':row.pk,'label_id':row.label_id,'created':created}
             elif op=='grade':
                 row,created=grade_case(user,options['plan_id'],options['case_id'],idempotency_key=options['idempotency_key'])

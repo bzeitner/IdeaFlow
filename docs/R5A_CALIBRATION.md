@@ -72,6 +72,16 @@ Obtain a separate packet for each assigned reviewer:
 
 Packets omit producer/model metadata, cohort, split, and other judgments. This is metadata blinding: report prose itself can reveal identity, so redact revealing content during case preparation. The assessment JSON contains `criterion_results` with one `{id, status, reason, evidence_refs}` per criterion and `progress_score`. Reasons must be nonempty and bounded; references must name available frozen evidence. Pass/fail requires the criterion's required evidence kinds. Missing evidence requires abstention. Only judgeable ordinal progress gets an integer 1–5; quality and incomplete assessments require null.
 
+When reviewer capacity makes independent review infeasible, an assigned reviewer can instead perform a model-assisted error audit after the grader result exists:
+
+```sh
+.venv/bin/python manage.py calibrate_research assisted-packet \
+  --user-id REVIEWER_ID --plan-id PLAN_ID --case-id CASE_ID \
+  --output-file /private/path/reviewer-case.json
+```
+
+The assisted packet exposes the exact automated assessment and its immutable result ID/hash. The reviewer marks every criterion correct or wrong and supplies a corrected final row for each error. The import envelope must preserve the exact automated result fingerprint, reviewer-final assessment, and per-criterion difference manifest. The server verifies all three against the stored result. These records are useful for error discovery and correction analysis, but they are not independent human labels: any assisted review adds `model_assisted_labels_not_independent` to the report's blocking reasons and cannot authorize decision use under A5.
+
 ```sh
 .venv/bin/python manage.py calibrate_research review \
   --user-id REVIEWER_ID --plan-id PLAN_ID --case-id CASE_ID \

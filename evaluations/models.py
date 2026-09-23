@@ -508,6 +508,15 @@ class CalibrationReview(FrozenRecord):
     label = models.OneToOneField(HumanCalibrationLabel, on_delete=models.PROTECT)
     assessment = models.JSONField()
     role = models.CharField(max_length=16, choices=[('independent', 'Independent'), ('adjudication', 'Adjudication')])
+    review_mode = models.CharField(max_length=40, choices=[
+        ('independent_blinded_v1', 'Independent blinded'),
+        ('model_assisted_error_audit_v1', 'Model-assisted error audit'),
+    ], default='independent_blinded_v1')
+    assisted_result = models.ForeignKey(
+        'CaseEvaluationResult', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='assisted_reviews',
+    )
+    difference_manifest = models.JSONField(default=dict, blank=True)
     supersedes = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
     idempotency_key = models.CharField(max_length=200, unique=True)
 

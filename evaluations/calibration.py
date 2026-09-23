@@ -256,6 +256,49 @@ def review_packet(user, plan_id, case_id):
             'notice':'Review independently. No other reviewer judgments, grader results, cohorts, or producing model metadata are included.'}
 
 
+def assisted_review_packet(user, plan_id, case_id):
+    packet = review_packet(user, plan_id, case_id)
+    result = CaseEvaluationResult.objects.filter(
+        attempt__plan_id=plan_id, attempt__case_id=case_id,
+    ).select_related('attempt').order_by('pk').first()
+    if not result:
+        raise ValidationError('A completed automated grader result is required for assisted review.')
+    verified(result)
+    packet.update({
+        'review_mode': 'model_assisted_error_audit_v1',
+        'automated_result': {'id': result.pk, 'hash': result.content_hash},
+        'automated_assessment': result.assessment,
+        'notice': 'Model-assisted error audit. Mark each automated judgment correct or wrong and correct only the errors. This is not independent blinded calibration evidence.',
+    })
+    return packet
+
+
+def validate_difference_manifest(result, assessment, manifest):
+    if not isinstance(manifest, dict) or set(manifest) != {'review_mode', 'criteria'}:
+        raise ValidationError('The assisted review difference manifest is malformed.')
+    if manifest['review_mode'] != 'model_assisted_error_audit_v1' or not isinstance(manifest['criteria'], list):
+        raise ValidationError('The assisted review mode is invalid.')
+    automated = {row['id']: row for row in result.assessment['criterion_results']}
+    final = {row['id']: row for row in assessment['criterion_results']}
+    rows = manifest['criteria']
+    if len(rows) != len(automated):
+        raise ValidationError('The assisted review must audit every criterion.')
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {'id', 'automated_grader_correct', 'automated', 'reviewer_final'}:
+            raise ValidationError('An assisted criterion audit is malformed.')
+        cid = row['id']
+        if cid in seen or cid not in automated or type(row['automated_grader_correct']) is not bool:
+            raise ValidationError('An assisted criterion audit has an invalid identity or disposition.')
+        seen.add(cid)
+        if row['automated'] != automated[cid] or row['reviewer_final'] != final[cid]:
+            raise ValidationError('The assisted audit does not match the frozen automated and reviewer assessments.')
+        if row['automated_grader_correct'] != (automated[cid] == final[cid]):
+            raise ValidationError('The assisted audit disposition does not match the recorded correction.')
+    if seen != set(automated):
+        raise ValidationError('The assisted review criterion set is incomplete.')
+
+
 def validate_review(review):
     plan, label = review.plan, review.label
     case = _case_in_plan(plan, review.case_id)
@@ -268,9 +311,21 @@ def validate_review(review):
         raise ValidationError('Independent review requires its assigned reviewer.')
     if review.role == 'adjudication' and not label.adjudicates:
         raise ValidationError('Adjudication must preserve both independent labels.')
+    if review.review_mode == 'independent_blinded_v1':
+        if review.assisted_result_id or review.difference_manifest:
+            raise ValidationError('Blinded reviews must not contain automated grader material.')
+    elif review.review_mode == 'model_assisted_error_audit_v1':
+        if review.role != 'independent' or not review.assisted_result_id:
+            raise ValidationError('Assisted review requires an assigned reviewer and exact grader result.')
+        result = verified(review.assisted_result)
+        if (result.attempt.plan_id, result.attempt.case_id) != (review.plan_id, review.case_id):
+            raise ValidationError('Assisted review result belongs to a different plan or case.')
+        validate_difference_manifest(result, review.assessment, review.difference_manifest)
+    else:
+        raise ValidationError('Unsupported calibration review mode.')
     if review.supersedes_id:
         previous = review.supersedes
-        if (previous.plan_id,previous.case_id,previous.actor_label,previous.role) != (review.plan_id,review.case_id,review.actor_label,review.role):
+        if (previous.plan_id,previous.case_id,previous.actor_label,previous.role,previous.review_mode) != (review.plan_id,review.case_id,review.actor_label,review.role,review.review_mode):
             raise ValidationError('Corrections must retain review identity.')
 
 
@@ -283,7 +338,8 @@ def latest_reviews(plan,case):
 
 
 @transaction.atomic
-def submit_review(user,plan_id,case_id,assessment,*,human_attested,idempotency_key,adjudication=False):
+def submit_review(user,plan_id,case_id,assessment,*,human_attested,idempotency_key,adjudication=False,
+                  review_mode='independent_blinded_v1',assisted_result_id=None,difference_manifest=None):
     require_writes()
     user=active_user(user)
     plan=ensure_active_plan(verified(CalibrationPlan.objects.select_for_update().get(pk=plan_id)))
@@ -296,10 +352,22 @@ def submit_review(user,plan_id,case_id,assessment,*,human_attested,idempotency_k
         raise PermissionDenied('Reviewer is not assigned to this plan.')
     validate_assessment(case,plan.human_version,assessment)
     role='adjudication' if adjudication else 'independent'
+    difference_manifest = difference_manifest or {}
+    assisted_result = None
+    if review_mode == 'model_assisted_error_audit_v1':
+        if adjudication or not assisted_result_id:
+            raise ValidationError('Assisted review cannot be adjudication and requires an exact grader result.')
+        assisted_result = verified(CaseEvaluationResult.objects.select_related('attempt').get(pk=assisted_result_id))
+        if (assisted_result.attempt.plan_id, assisted_result.attempt.case_id) != (plan.pk, case.pk):
+            raise ValidationError('Assisted review result belongs to a different plan or case.')
+        validate_difference_manifest(assisted_result, assessment, difference_manifest)
+    elif review_mode != 'independent_blinded_v1' or assisted_result_id or difference_manifest:
+        raise ValidationError('Blinded review input must not contain assisted-review material.')
     key=canonical_hash({'plan':plan.pk,'actor':user.pk,'request':idempotency_key,'role':role})
     existing=CalibrationReview.objects.filter(idempotency_key=key).first()
     if existing:
-        if existing.case_id!=case.pk or existing.assessment!=assessment:
+        if (existing.case_id!=case.pk or existing.assessment!=assessment or existing.review_mode!=review_mode
+                or existing.assisted_result_id!=assisted_result_id or existing.difference_manifest!=difference_manifest):
             raise ValidationError('Review retry conflicts with the original.')
         return verified(existing),False
     adjudicates=[]
@@ -314,6 +382,7 @@ def submit_review(user,plan_id,case_id,assessment,*,human_attested,idempotency_k
         reviewer_user_id=user.pk,actor_label=f'user:{user.pk}',criterion_results=[{'id':r['id'],'status':r['status']} for r in assessment['criterion_results']],
         progress_score=assessment['progress_score'],supporting_refs=refs,adjudicates=adjudicates,idempotency_key=key)
     review=CalibrationReview.objects.create(plan=plan,case=case,label=label,assessment=assessment,role=role,
+        review_mode=review_mode,assisted_result=assisted_result,difference_manifest=difference_manifest,
         actor_label=f'user:{user.pk}',supersedes=prior,idempotency_key=key)
     # The locked plan serializes approval creation and later review corrections.
     for approval in effective_approvals(plan.grader_version, plan=plan):
@@ -394,7 +463,7 @@ def calculate_report(plan):
             verified(result)
             manifest['results'].append({'id':result.pk,'hash':result.content_hash})
         manifest['case_hashes'].append({'id':case.pk,'hash':case.content_hash,'available':available})
-        manifest['reviews'].extend({'id':r.pk,'hash':r.content_hash} for r in reviews)
+        manifest['reviews'].extend({'id':r.pk,'hash':r.content_hash,'review_mode':r.review_mode} for r in reviews)
         rows.append({'case_id':case.pk,'split':case.split,'cohorts':case.cohorts,'available':available,
             'gold':gold,'model':result.assessment if result else None,'human_agree':agree,
             'two_reviews':len(latest_reviews(plan,case))==2})
@@ -421,6 +490,8 @@ def calculate_report(plan):
     overall=_scores(rows,plan.human_version)
     thresholds=plan.thresholds
     reasons=[]
+    if CalibrationReview.objects.filter(plan=plan,review_mode='model_assisted_error_audit_v1').exists():
+        reasons.append('model_assisted_labels_not_independent')
     if held['cases']<thresholds['min_held_out_cases']:
         reasons.append('insufficient_held_out_cases')
     if overall['cases_with_gold']!=overall['cases'] or overall['cases_with_model']!=overall['cases']:

@@ -194,6 +194,43 @@ class CalibrationTests(TestCase):
         with self.assertRaises(ValidationError):
             api.adjudication_packet(self.owner,self.plan.pk,self.cases[1].pk)
 
+    def test_model_assisted_error_audit_is_bound_to_result_and_blocks_approval(self):
+        result,_=self.grade()
+        packet=api.assisted_review_packet(self.reviewer1,self.plan.pk,self.cases[1].pk)
+        self.assertEqual(packet['review_mode'],'model_assisted_error_audit_v1')
+        self.assertEqual(packet['automated_result'],{'id':result.pk,'hash':result.content_hash})
+        self.assertEqual(packet['automated_assessment'],result.assessment)
+        manifest={'review_mode':'model_assisted_error_audit_v1','criteria':[
+            {'id':row['id'],'automated_grader_correct':True,'automated':row,'reviewer_final':row}
+            for row in result.assessment['criterion_results']
+        ]}
+        review,created=api.submit_review(
+            self.reviewer1,self.plan.pk,self.cases[1].pk,result.assessment,
+            human_attested=True,idempotency_key='assisted-review',
+            review_mode='model_assisted_error_audit_v1',assisted_result_id=result.pk,
+            difference_manifest=manifest,
+        )
+        self.assertTrue(created)
+        self.assertEqual(review.assisted_result_id,result.pk)
+        report,_=api.create_report(self.owner,self.plan.pk)
+        self.assertFalse(report.eligible)
+        self.assertIn('model_assisted_labels_not_independent',report.metrics['blocking_reasons'])
+        self.assertIn('review_mode',report.input_manifest['reviews'][0])
+
+    def test_assisted_review_rejects_false_difference_manifest(self):
+        result,_=self.grade()
+        row=result.assessment['criterion_results'][0]
+        manifest={'review_mode':'model_assisted_error_audit_v1','criteria':[
+            {'id':row['id'],'automated_grader_correct':False,'automated':row,'reviewer_final':row}
+        ]}
+        with self.assertRaises(ValidationError):
+            api.submit_review(
+                self.reviewer1,self.plan.pk,self.cases[1].pk,result.assessment,
+                human_attested=True,idempotency_key='bad-assisted-review',
+                review_mode='model_assisted_error_audit_v1',assisted_result_id=result.pk,
+                difference_manifest=manifest,
+            )
+
     def test_human_reviews_idempotency_corrections_and_stale_adjudication(self):
         first,_=self.review(self.reviewer1,score=2)
         self.assertEqual(self.review(self.reviewer1,score=2),(first,False))
