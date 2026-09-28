@@ -128,6 +128,35 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("trace registration failed", completed.stderr)
 
+    def test_execution_start_accepts_subjectless_workflow_under_nounset(self):
+        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        fake.write(
+            '#!/bin/sh\n'
+            'case "$1" in\n'
+            '  trace-start) printf \'{"id":"trace-1"}\\n\' ;;\n'
+            '  run-start) printf \'{"id":"run-1"}\\n\' ;;\n'
+            '  *) exit 1 ;;\n'
+            'esac\n'
+        )
+        fake.close()
+        os.chmod(fake.name, 0o700)
+        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
+        telemetry = Path(__file__).resolve().parents[2] / "tools" / "execution_telemetry.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-uc",
+                'source "$1"; IFCLI="$2"; '
+                'execution_start weekly_summary "" claude model generation "$3"',
+                "test", str(telemetry), fake.name, fake.name,
+            ],
+            env={**os.environ, "IDEAFLOW_EXECUTION_API_TOKEN": "test-token"},
+            text=True, capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("execution trace: trace-1; run: run-1", completed.stderr)
+
     def test_execution_succeed_accepts_complete_measurements_under_nounset(self):
         calls = self.write("")
         fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
