@@ -30,19 +30,46 @@ execution_start() {
   if [[ -n "$idea_id" ]]; then
     subject_args+=(--idea "$idea_id")
   fi
-  if ! trace_json="$("$IFCLI" trace-start \
-      --workflow "$workflow" "${subject_args[@]}" --trigger scheduler \
-      --correlation-key "${workflow}:idea:${idea_id}" \
-      --idempotency-key "${workflow}:${idea_id}:${nonce}" 2>&1)"; then
+  # Bash 3.2 treats expansion of an empty array as an unbound variable under
+  # `set -u`. Portfolio-wide workflows intentionally have no subject, so keep
+  # the empty subject array out of that command path entirely.
+  if [[ -n "$idea_id" ]]; then
+    if trace_json="$("$IFCLI" trace-start \
+        --workflow "$workflow" "${subject_args[@]}" --trigger scheduler \
+        --correlation-key "${workflow}:idea:${idea_id}" \
+        --idempotency-key "${workflow}:${idea_id}:${nonce}" 2>&1)"; then
+      trace_status=0
+    else
+      trace_status="$?"
+    fi
+  else
+    if trace_json="$("$IFCLI" trace-start \
+        --workflow "$workflow" --trigger scheduler \
+        --correlation-key "${workflow}:idea:${idea_id}" \
+        --idempotency-key "${workflow}:${idea_id}:${nonce}" 2>&1)"; then
+      trace_status=0
+    else
+      trace_status="$?"
+    fi
+  fi
+  if [[ "$trace_status" -ne 0 ]]; then
     echo "error: execution trace registration failed: ${trace_json}" >&2
     return 1
   fi
   IDEAFLOW_TRACE_ID="$(printf '%s' "$trace_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
   export IDEAFLOW_TRACE_ID
-  if ! run_json="$("$IFCLI" run-start \
+  if [[ "$#" -gt 0 ]]; then
+    run_json="$("$IFCLI" run-start \
       --trace-id "$IDEAFLOW_TRACE_ID" --provider "$provider" --model "$model" \
       --purpose "$purpose" --input-file "$input_file" \
-      --idempotency-key "attempt:${nonce}" "${prompt_args[@]}" 2>&1)"; then
+      --idempotency-key "attempt:${nonce}" "${prompt_args[@]}" 2>&1)" && run_status=0 || run_status="$?"
+  else
+    run_json="$("$IFCLI" run-start \
+      --trace-id "$IDEAFLOW_TRACE_ID" --provider "$provider" --model "$model" \
+      --purpose "$purpose" --input-file "$input_file" \
+      --idempotency-key "attempt:${nonce}" 2>&1)" && run_status=0 || run_status="$?"
+  fi
+  if [[ "$run_status" -ne 0 ]]; then
     echo "error: execution run registration failed: ${run_json}" >&2
     "$IFCLI" trace-fail --trace-id "$IDEAFLOW_TRACE_ID" \
       --reason "run registration failed" >/dev/null 2>&1 || true
