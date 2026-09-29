@@ -7,7 +7,7 @@ from string import Formatter
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
+from django.core.validators import MaxLengthValidator, MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models, transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from pgvector.django import VectorField
 
+from .category_goals import GOAL_TEXT_MAX_LENGTH
 from .podcast_policy import PODCAST_MAX_DURATION_SECONDS
 
 STAR_CHOICES = [(i, f"{i} star{'s' if i != 1 else ''}") for i in range(1, 6)]
@@ -107,6 +108,13 @@ class Category(LookupBase):
         default=False,
         help_text="Research-type categories let their ideas track more feeds "
         "(10 instead of 5).",
+    )
+    goal_text = models.TextField(
+        blank=True,
+        max_length=GOAL_TEXT_MAX_LENGTH,
+        validators=[MaxLengthValidator(GOAL_TEXT_MAX_LENGTH)],
+        help_text="Research goal shown when adding an idea in this category and "
+        "passed to research agents. Managed on the Category goals admin page.",
     )
 
     class Meta(LookupBase.Meta):

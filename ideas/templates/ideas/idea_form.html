@@ -17,9 +17,11 @@
         <div class="field{% if field.name == 'title' %} title-field{% endif %}">
           <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
           {% if field.help_text %}<small class="dim">{{ field.help_text }}</small>{% endif %}{{ field.errors }}
+          {% if field.name == 'category' %}<p class="category-goal" data-category-goal hidden></p>{% endif %}
         </div>
       {% endif %}
     {% endfor %}
+    {{ category_goals|json_script:"category-goals-data" }}
 
     <fieldset class="repeat-settings" data-repeat-settings>
       <legend>Repeat task</legend>
@@ -84,6 +86,20 @@
     <div class="card-actions"><button class="btn primary" type="submit">Save Idea</button><a class="btn" href="{% if idea %}{{ idea.get_absolute_url }}{% else %}{% url 'ideas:current' %}{% endif %}">Cancel</a></div>
   </form>
   <script>
+    (function () {
+      const select = document.getElementById('id_category');
+      const box = document.querySelector('[data-category-goal]');
+      const data = document.getElementById('category-goals-data');
+      if (!select || !box || !data) return;
+      const goals = JSON.parse(data.textContent);
+      function refreshGoal() {
+        const goal = goals[select.value] || '';
+        box.textContent = goal ? 'Goal: ' + goal : '';
+        box.hidden = !goal;
+      }
+      select.addEventListener('change', refreshGoal);
+      refreshGoal();
+    }());
     (function () {
       const repeat = document.querySelector('[data-repeat-settings]');
       if (repeat) {

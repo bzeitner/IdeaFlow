@@ -642,3 +642,9 @@ table.tracking { width: 100%; border-collapse: collapse; background: var(--panel
 .evaluation-feedback textarea, .evaluation-feedback select { width: 100%; box-sizing: border-box; }
 .feedback-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .evaluation-feedback .feedback-message { min-height: 1.5em; }
+
+.category-goal { margin: 6px 0 0; padding: 8px 10px; border-left: 3px solid var(--dim); color: var(--dim); font-size: 13px; }
+.category-goal[hidden] { display: none; }
+.goal-row { margin-bottom: 18px; }
+.goal-row textarea { width: 100%; }
+.goal-row-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }

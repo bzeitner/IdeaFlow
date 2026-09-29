@@ -28,6 +28,7 @@
       <span class="dim">Rank {{ idea.rank }} · updated {{ idea.updated_at|date:"M j, Y g:i A T" }}</span>
       {% if idea.created_by %}<span class="dim">Owner {{ idea.created_by.email|default:idea.created_by.username }}</span>{% endif %}
     </div>
+    {% if idea.category and idea.category.goal_text %}<p class="category-goal"><strong>Goal:</strong> {{ idea.category.goal_text }}</p>{% endif %}
 
     {% if idea.artifacts.all %}
       <ul class="artifact-links">

@@ -1,0 +1,25 @@
+{% extends "ideas/base.html" %}
+{% block title %}Category goals · IdeaFlow{% endblock %}
+{% block content %}
+  <h2>Category goals</h2>
+  <p class="lede">The goal text shown when adding an idea in each category and passed to research agents. Leave blank for no goal.</p>
+
+  <form method="post">
+    {% csrf_token %}
+    {% for row in rows %}
+      <div class="field goal-row">
+        <div class="goal-row-head">
+          {% include "ideas/_pill.html" with obj=row.category %}
+          <span class="dim">{{ row.idea_count }} idea{{ row.idea_count|pluralize }}{% if not row.category.is_active %} · inactive{% endif %}</span>
+          {% if row.has_default %}<button class="btn small" type="submit" name="reset" value="{{ row.category.pk }}" formnovalidate onclick="return confirm('Reset this goal to the default text?');">Reset to default</button>{% endif %}
+        </div>
+        <label class="sr-only" for="{{ row.form.goal_text.id_for_label }}">Goal for {{ row.category.name }}</label>
+        {{ row.form.goal_text }}
+        {{ row.form.goal_text.errors }}
+      </div>
+    {% empty %}
+      <p class="dim">No categories yet.</p>
+    {% endfor %}
+    <div class="card-actions"><button class="btn primary" type="submit">Save goals</button></div>
+  </form>
+{% endblock %}

@@ -116,6 +116,7 @@ urlpatterns = [
     ),
     path("<int:pk>/continue-work/", views.continue_work, name="continue_work"),
     path("users/", views.user_management, name="user_management"),
+    path("categories/goals/", views.category_goals, name="category_goals"),
     path("ownership/", views.idea_ownership, name="idea_ownership"),
     path("research-history/", views.research_history, name="research_history"),
     path("research-queue/", views.research_queue, name="research_queue"),
