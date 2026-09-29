@@ -75,6 +75,34 @@ class CategoryGoalPageTests(TestCase):
         research.refresh_from_db()
         self.assertEqual(research.goal_text, DEFAULT_GOALS["research"][1])
 
+    def test_no_audit_entries_when_batch_rolls_back(self):
+        other = make_category(name="Beta", slug="beta", goal_text="Beta old")
+        self.client.force_login(self.admin, backend=MODEL_BACKEND)
+        with self.assertNoLogs("ideaflow.audit", level="INFO"):
+            self.client.post(self.url, {self.key(): "valid edit", self.key(other): "x" * 2001})
+
+    def test_audit_entries_emitted_after_commit(self):
+        self.client.force_login(self.admin, backend=MODEL_BACKEND)
+        with self.assertLogs("ideaflow.audit", level="INFO") as logs:
+            self.client.post(self.url, {self.key(): "valid edit"})
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("updated", logs.output[0])
+
+    def test_crlf_newlines_do_not_count_double(self):
+        # 1000 lines of "a" = 1999 chars with \n, but 2999 as submitted with \r\n.
+        text = "\r\n".join("a" * 1000)
+        self.post_as(self.admin, {self.key(): text})
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.goal_text, "\n".join("a" * 1000))
+
+    def test_reset_keeps_edits_to_other_rows(self):
+        research = make_category(name="Research", slug="research", goal_text="custom")
+        self.post_as(self.admin, {"reset": str(research.pk), self.key(research): "ignored", self.key(): "kept edit"})
+        research.refresh_from_db()
+        self.category.refresh_from_db()
+        self.assertEqual(research.goal_text, DEFAULT_GOALS["research"][1])
+        self.assertEqual(self.category.goal_text, "kept edit")
+
     def test_reset_unknown_category_404(self):
         self.assertEqual(self.post_as(self.admin, {"reset": "999999"}).status_code, 404)
 

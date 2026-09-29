@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
+from .category_goals import GOAL_TEXT_MAX_LENGTH
 from .models import Artifact, AIModel, Category, Idea, IdeaRelation, PodcastShow, Profile, ResearchEntry, Resource, Stage, Status
 
 
@@ -396,16 +397,30 @@ ResearchEntryFormSet = inlineformset_factory(
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
+class _NewlineNormalizedCharField(forms.CharField):
+    """Browsers count a newline as 1 char for maxlength but submit CRLF (2), so
+    normalize before the length validators run."""
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        return value.replace("\r\n", "\n").replace("\r", "\n") if value else value
+
+
 class CategoryGoalForm(forms.ModelForm):
     """Edits only `goal_text` — nothing else on Category is bindable from this page."""
+
+    goal_text = _NewlineNormalizedCharField(
+        required=False,
+        max_length=GOAL_TEXT_MAX_LENGTH,
+        widget=forms.Textarea(attrs={"rows": 4, "maxlength": GOAL_TEXT_MAX_LENGTH}),
+    )
 
     class Meta:
         model = Category
         fields = ["goal_text"]
-        widgets = {"goal_text": forms.Textarea(attrs={"rows": 4, "maxlength": 2000})}
 
     def clean_goal_text(self):
-        text = (self.cleaned_data.get("goal_text") or "").replace("\r\n", "\n").strip()
+        text = (self.cleaned_data.get("goal_text") or "").strip()
         if _CONTROL_CHARS.search(text):
             raise forms.ValidationError("Goal text can't contain control characters.")
         return text

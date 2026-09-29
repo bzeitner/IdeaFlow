@@ -2252,40 +2252,42 @@ def category_goals(request):
     forms_by_id = {c.pk: CategoryGoalForm(instance=c, prefix=f"cat{c.pk}") for c in categories}
     if request.method == "POST":
         reset_id = request.POST.get("reset", "")
-        changed = 0
+        if reset_id and not any(str(c.pk) == reset_id for c in categories):
+            raise Http404("Unknown category.")
+        changes = []  # audit entries, emitted only once the transaction commits
         invalid = False
         with transaction.atomic():
-            if reset_id:
-                category = next((c for c in categories if str(c.pk) == reset_id), None)
-                if category is None:
-                    raise Http404("Unknown category.")
+            for category in categories:
                 old = category.goal_text
-                category.goal_text = default_goal_for(category)
-                category.save(update_fields=["goal_text"])
-                audit_log.info(
-                    "category goal reset category=%s user=%s old=%r new=%r",
-                    category.pk, request.user.pk, old, category.goal_text,
-                )
-                changed = 1
-            else:
-                for category in categories:
-                    old = category.goal_text
-                    form = CategoryGoalForm(request.POST, instance=category, prefix=f"cat{category.pk}")
-                    forms_by_id[category.pk] = form
-                    if not form.is_valid():
-                        invalid = True
-                        continue
-                    if form.cleaned_data["goal_text"] != old:
-                        form.save()
-                        audit_log.info(
-                            "category goal updated category=%s user=%s old=%r new=%r",
-                            category.pk, request.user.pk, old, form.cleaned_data["goal_text"],
-                        )
-                        changed += 1
-                if invalid:
-                    transaction.set_rollback(True)
+                if str(category.pk) == reset_id:
+                    # Reset wins over whatever is in this row's textarea; edits to
+                    # other rows in the same POST are still saved below.
+                    new, verb = default_goal_for(category), "reset"
+                    if new != old:
+                        category.goal_text = new
+                        category.save(update_fields=["goal_text"])
+                        changes.append((verb, category.pk, old, new))
+                    continue
+                if f"cat{category.pk}-goal_text" not in request.POST:
+                    continue  # row not submitted: leave it alone rather than blanking it
+                form = CategoryGoalForm(request.POST, instance=category, prefix=f"cat{category.pk}")
+                forms_by_id[category.pk] = form
+                if not form.is_valid():
+                    invalid = True
+                    continue
+                new = form.cleaned_data["goal_text"]
+                if new != old:
+                    form.save()
+                    changes.append(("updated", category.pk, old, new))
+            if invalid:
+                transaction.set_rollback(True)
         if not invalid:
-            messages.success(request, f"Saved {changed} goal(s)." if changed else "No changes.")
+            for verb, pk, old, new in changes:
+                audit_log.info(
+                    "category goal %s category=%s user=%s old=%r new=%r",
+                    verb, pk, request.user.pk, old, new,
+                )
+            messages.success(request, f"Saved {len(changes)} goal(s)." if changes else "No changes.")
             return redirect("ideas:category_goals")
         messages.error(request, "Fix the highlighted goals; nothing was saved.")
     counts = dict(Category.objects.annotate(n=Count("ideas")).values_list("pk", "n"))
