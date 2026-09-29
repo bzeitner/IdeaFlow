@@ -38,6 +38,17 @@ them. Options in use can't be deleted (the FK is `PROTECT`); deactivate instead.
 **Status** is deliberately *not* editable: the three values are structural, each backed by its
 own route and template. Adding a fourth tab is a code change.
 
+### Category goals
+
+Each category has a **goal text** describing what research on its ideas should aim for. It is
+shown under the category dropdown when adding or editing an idea, on the idea's detail page,
+and returned to agents as `category.goal` by the idea detail API (`research-idea` uses it to
+frame its research). Admins (`role_admin` only) edit the goals at **Admin → Category goals**
+(`/categories/goals/`); "Reset to default" restores the original wording from
+`ideas/category_goals.py`, and every change is written to the `ideaflow.audit` log. Migration
+`0067_category_goal_text` seeds the defaults for blank goals only, matching categories by slug
+then name.
+
 The five categories and five stages above are seeded by migration `0002_seed_lookups`, so a
 fresh `migrate` starts with them already in place.
 

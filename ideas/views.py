@@ -1,6 +1,7 @@
 from functools import wraps
 from datetime import datetime, timedelta, timezone as dt_timezone
 import json
+import logging
 import re
 
 from django.contrib import messages
@@ -21,7 +22,8 @@ from executions.models import LLMRun, WorkflowDefinition
 from evaluations.views import panel_for
 
 from .feeds import is_http_url, recent_articles
-from .forms import ArtifactForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
+from .category_goals import default_goal_for
+from .forms import ArtifactForm, CategoryGoalForm, IdeaForm, IdeaRelationForm, PodcastShowForm, PodcastSourceForm, ProfilePreferencesForm, ResearchEntryForm, ResourceFormSet
 from .artifact_presentation import MAX_RENDER_CHARS, present_artifact, present_content, present_research_context
 from .graph.projection import graph_projection
 from .graph.capabilities import consume_capability, issue_capability
@@ -1097,6 +1099,11 @@ def idea_form(request, pk=None):
             "form": form,
             "formset": formset,
             "idea": idea,
+            "category_goals": {
+                str(pk): goal
+                for pk, goal in form.fields["category"].queryset.values_list("pk", "goal_text")
+                if goal
+            },
             "tabs": _tabs(profile),
             "active": idea.status if idea else None,
         },
@@ -2232,6 +2239,65 @@ def user_management(request):
             "role_columns": ROLE_COLUMNS,
             "tabs": _tabs(request.user.profile),
         },
+    )
+
+
+audit_log = logging.getLogger("ideaflow.audit")
+
+
+@role_required()
+def category_goals(request):
+    """Admin-only: edit the research goal text shown/used for each category."""
+    categories = list(Category.objects.order_by("order", "name"))
+    forms_by_id = {c.pk: CategoryGoalForm(instance=c, prefix=f"cat{c.pk}") for c in categories}
+    if request.method == "POST":
+        reset_id = request.POST.get("reset", "")
+        changed = 0
+        invalid = False
+        with transaction.atomic():
+            if reset_id:
+                category = next((c for c in categories if str(c.pk) == reset_id), None)
+                if category is None:
+                    raise Http404("Unknown category.")
+                old = category.goal_text
+                category.goal_text = default_goal_for(category)
+                category.save(update_fields=["goal_text"])
+                audit_log.info(
+                    "category goal reset category=%s user=%s old=%r new=%r",
+                    category.pk, request.user.pk, old, category.goal_text,
+                )
+                changed = 1
+            else:
+                for category in categories:
+                    old = category.goal_text
+                    form = CategoryGoalForm(request.POST, instance=category, prefix=f"cat{category.pk}")
+                    forms_by_id[category.pk] = form
+                    if not form.is_valid():
+                        invalid = True
+                        continue
+                    if form.cleaned_data["goal_text"] != old:
+                        form.save()
+                        audit_log.info(
+                            "category goal updated category=%s user=%s old=%r new=%r",
+                            category.pk, request.user.pk, old, form.cleaned_data["goal_text"],
+                        )
+                        changed += 1
+                if invalid:
+                    transaction.set_rollback(True)
+        if not invalid:
+            messages.success(request, f"Saved {changed} goal(s)." if changed else "No changes.")
+            return redirect("ideas:category_goals")
+        messages.error(request, "Fix the highlighted goals; nothing was saved.")
+    counts = dict(Category.objects.annotate(n=Count("ideas")).values_list("pk", "n"))
+    rows = [
+        {"category": c, "form": forms_by_id[c.pk], "idea_count": counts.get(c.pk, 0),
+         "has_default": bool(default_goal_for(c))}
+        for c in categories
+    ]
+    return render(
+        request,
+        "ideas/category_goals.html",
+        {"rows": rows, "tabs": _tabs(request.user.profile)},
     )
 
 

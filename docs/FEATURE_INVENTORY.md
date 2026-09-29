@@ -148,7 +148,7 @@ Rewrite disposition: **retain as an optional vertical module**. The 10 published
 
 ### User experience and administration
 
-- Google sign-in, profiles, roles, preferences, admin-managed lookup values, ownership reassignment, guide, and help conversation.
+- Google sign-in, profiles, roles, preferences, admin-managed lookup values, ownership reassignment, per-category goal text (admin-only editing page; shown on the idea form and passed to research agents), guide, and help conversation.
 
 Rewrite disposition: retain authentication, ownership, preferences, and access control. Defer the help conversation until there is a validated use case; it has zero production messages.
 

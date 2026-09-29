@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.conf import settings
 from django.db.models import Q
@@ -389,3 +391,21 @@ ResearchEntryFormSet = inlineformset_factory(
     extra=1,
     can_delete=True,
 )
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+class CategoryGoalForm(forms.ModelForm):
+    """Edits only `goal_text` — nothing else on Category is bindable from this page."""
+
+    class Meta:
+        model = Category
+        fields = ["goal_text"]
+        widgets = {"goal_text": forms.Textarea(attrs={"rows": 4, "maxlength": 2000})}
+
+    def clean_goal_text(self):
+        text = (self.cleaned_data.get("goal_text") or "").replace("\r\n", "\n").strip()
+        if _CONTROL_CHARS.search(text):
+            raise forms.ValidationError("Goal text can't contain control characters.")
+        return text

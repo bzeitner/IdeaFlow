@@ -82,9 +82,22 @@ class LookupAdmin(TooltipAdminMixin, admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(LookupAdmin):
-    list_display = ("name", "swatch", "is_research", "order", "is_active", "idea_count")
+    list_display = ("name", "swatch", "is_research", "goal_preview", "order", "is_active", "idea_count")
     list_editable = ("is_research", "order", "is_active")
-    fields = ("name", "slug", "color", "is_research", "order", "is_active")
+    fields = ("name", "slug", "color", "is_research", "goal_link", "order", "is_active")
+    readonly_fields = ("goal_link",)
+
+    @admin.display(description="Goal")
+    def goal_preview(self, obj):
+        return (obj.goal_text[:80] + "…") if len(obj.goal_text) > 80 else obj.goal_text
+
+    @admin.display(description="Goal text")
+    def goal_link(self, obj):
+        return format_html(
+            '{} <a href="{}">Edit on the Category goals page</a>',
+            obj.goal_text or "(none)",
+            reverse("ideas:category_goals"),
+        )
 
 
 @admin.register(Stage)

@@ -179,6 +179,8 @@ def idea_to_dict(idea, *, detail=True):
 
         from .feeds import recent_articles
 
+        if data["category"]:
+            data["category"]["goal"] = idea.category.goal_text
         data["notes"] = idea.notes
         data["summary_requested_at"] = (
             idea.summary_requested_at.isoformat() if idea.summary_requested_at else None
