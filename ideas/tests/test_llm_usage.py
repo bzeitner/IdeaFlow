@@ -1,13 +1,29 @@
 import json
 import os
 import subprocess
+import time
 import tempfile
 from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from tools.llm_usage import parse_claude, parse_codex, parse_antigravity
+from tools.llm_usage import parse_claude, parse_codex, parse_antigravity, parse_provider_error
 from tools.llm_pricing import estimate_openai_cost_micros
+
+
+ROOT = Path(__file__).resolve().parents[2]
+CLAUDE_AUTH_ENV_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_MANTLE",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+    "CLAUDE_CONFIG_DIR",
+    "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS",
+)
 
 
 class LLMUsageParsingTests(SimpleTestCase):
@@ -20,6 +36,25 @@ class LLMUsageParsingTests(SimpleTestCase):
         handle.close()
         self.addCleanup(Path(handle.name).unlink, missing_ok=True)
         return handle.name
+
+    def executable(self, body):
+        # Keep executable fixtures on the workspace filesystem; system temp
+        # directories may be mounted noexec in CI.
+        handle = tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", delete=False, dir=ROOT, prefix=".test-agent-"
+        )
+        handle.write("#!/bin/sh\n" + body)
+        handle.close()
+        os.chmod(handle.name, 0o700)
+        self.addCleanup(Path(handle.name).unlink, missing_ok=True)
+        return handle.name
+
+    def auth_env(self, **updates):
+        env = os.environ.copy()
+        for key in CLAUDE_AUTH_ENV_KEYS:
+            env.pop(key, None)
+        env.update(updates)
+        return env
 
     def test_parses_claude_aggregate_usage_and_provider_cost(self):
         path = self.write({
@@ -53,6 +88,271 @@ class LLMUsageParsingTests(SimpleTestCase):
         text, _measurement = parse_claude(path)
 
         self.assertEqual(json.loads(text)["decision"], "accept")
+
+    def test_extracts_claude_cli_error(self):
+        path = self.write({
+            "is_error": True,
+            "terminal_reason": "api_error",
+            "result": "Not logged in · Please run /login",
+        })
+
+        self.assertEqual(
+            parse_provider_error("claude", path),
+            "Not logged in · Please run /login",
+        )
+
+    def test_extracts_codex_cli_error(self):
+        path = self.write("\n".join((
+            "not json",
+            json.dumps(["unexpected", "shape"]),
+            json.dumps({
+                "type": "turn.failed",
+                "error": {"message": "Authentication failed"},
+            }),
+        )))
+
+        self.assertEqual(
+            parse_provider_error("codex", path),
+            "Authentication failed",
+        )
+
+    def test_codex_turn_failed_beats_later_non_fatal_error(self):
+        path = self.write("\n".join((
+            json.dumps({"type": "turn.failed", "error": {"message": "Real failure"}}),
+            json.dumps({"type": "error", "message": "Reconnecting..."}),
+        )))
+
+        self.assertEqual(parse_provider_error("codex", path), "Real failure")
+
+    def test_provider_error_ignores_non_object_json(self):
+        path = self.write(["unexpected", "shape"])
+
+        self.assertEqual(parse_provider_error("claude", path), "")
+
+    def test_claude_preflight_explains_profile_login(self):
+        fake = self.executable('printf \'{"loggedIn":false,"authMethod":"none"}\\n\'\nexit 1\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; agent_require_ready claude "$2"',
+                "test", str(preflight), fake,
+            ],
+            env=self.auth_env(CLAUDE_CONFIG_DIR="/tmp/claude alt"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Claude Code is not logged in", completed.stderr)
+        self.assertIn("CLAUDE_CONFIG_DIR=/tmp/claude alt", completed.stderr)
+        self.assertIn("auth login", completed.stderr)
+
+    def test_claude_preflight_accepts_logged_in_profile(self):
+        fake = self.executable('printf \'notice\\n{"loggedIn":true,"authMethod":"oauthAccount"}\\n\'\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; agent_require_ready claude "$2"',
+                "test", str(preflight), fake,
+            ],
+            env=self.auth_env(),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_warns_and_continues_on_unknown_output(self):
+        fake = self.executable("printf 'legacy status output\\n'\nexit 2\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("status was not recognized", completed.stderr)
+
+    def test_claude_preflight_warns_and_continues_on_timeout(self):
+        fake = self.executable("sleep 2\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="0.05"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("timed out", completed.stderr)
+
+    def test_preflight_timeout_kills_grandchild_holding_pipes(self):
+        fake = self.executable("sleep 30 &\nsleep 30\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        started = time.monotonic()
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="0.2"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertIn("timed out", completed.stderr)
+
+    def test_non_finite_preflight_timeout_uses_bounded_default(self):
+        fake = self.executable('printf \'{"loggedIn":true}\\n\'\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="inf"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_accepts_api_key_auth_without_login_status(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(ANTHROPIC_API_KEY="test-only-not-a-real-key"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_accepts_gateway_without_login_status(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(ANTHROPIC_BASE_URL="http://127.0.0.1:4000"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_accepts_third_party_provider_credentials(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        for variable, value in (
+            ("CLAUDE_CODE_USE_BEDROCK", "TRUE"),
+            ("CLAUDE_CODE_USE_VERTEX", "true"),
+        ):
+            with self.subTest(variable=variable):
+                completed = subprocess.run(
+                    ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+                     "test", str(preflight), fake],
+                    env=self.auth_env(**{variable: value}),
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_preflight_identity_changes_with_profile(self):
+        fake = self.executable("exit 0\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; CLAUDE_CONFIG_DIR=one agent_preflight_identity claude "$2"; '
+                'printf "\\n"; CLAUDE_CONFIG_DIR=two agent_preflight_identity claude "$2"',
+                "test", str(preflight), fake,
+            ],
+            env=self.auth_env(),
+            text=True,
+            capture_output=True,
+        )
+
+        first, second = completed.stdout.splitlines()
+        self.assertNotEqual(first, second)
+
+    def test_antigravity_missing_binary_restores_install_hint(self):
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready antigravity "$2"',
+             "test", str(preflight), "/missing/agy"],
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("https://antigravity.google/cli/install.sh", completed.stderr)
+
+    def test_runner_snapshot_reuses_the_running_bash(self):
+        bootstraps = []
+        for name in ("research_all.sh", "research_idea.sh"):
+            with self.subTest(script=name):
+                source = (ROOT / name).read_text(encoding="utf-8")
+                self.assertIn('exec "$BASH" -c', source)
+                self.assertNotIn("exec /bin/bash", source)
+                bootstraps.append(next(
+                    line.strip() for line in source.splitlines()
+                    if "IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT=" in line and "exec" in line
+                ))
+        self.assertEqual(bootstraps[0], bootstraps[1])
+
+    def test_runner_preflights_before_selection_and_claiming(self):
+        batch_source = (ROOT / "research_all.sh").read_text(encoding="utf-8")
+        child_source = (ROOT / "research_idea.sh").read_text(encoding="utf-8")
+
+        self.assertLess(batch_source.index('agent_require_ready "$AGENT" "$AGENT_BIN"'),
+                        batch_source.index('python3 "$SCRIPT_DIR/tools/select_tasks.py"'))
+        self.assertLess(batch_source.index('agent_require_ready "$AGENT" "$AGENT_BIN"'),
+                        batch_source.index('"$IFCLI" claim-job'))
+        self.assertIn('if [[ "$DRY_RUN" -eq 0 ]]', batch_source)
+        self.assertIn('agent_preflight_identity "$AGENT" "$AGENT_BIN"', batch_source)
+        self.assertIn('"${IDEAFLOW_AGENT_PREFLIGHTED:-}" != "$PREFLIGHT_IDENTITY"', child_source)
+
+    def test_dotenv_loader_includes_preflight_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, ".env").write_text(
+                "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS=7\n",
+                encoding="utf-8",
+            )
+            standards = ROOT / "tools" / "prompt_standards.sh"
+            env = os.environ.copy()
+            env.pop("IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS", None)
+
+            completed = subprocess.run(
+                [
+                    "bash", "-c",
+                    'source "$1"; prompt_load_ideaflow_env "$2"; '
+                    'printf "%s" "$IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS"',
+                    "test", str(standards), directory,
+                ],
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, "7")
 
     def test_parses_codex_jsonl_and_records_subscription_cost(self):
         path = self.write("\n".join((

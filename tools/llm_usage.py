@@ -128,13 +128,62 @@ def parse_antigravity(path, allocated_cost_micros=None):
     }
 
 
+def parse_provider_error(provider, path):
+    """Return a short, terminal-only provider failure without dumping raw output."""
+    try:
+        if provider == "codex":
+            # Codex emits non-fatal `error` events (e.g. reconnect notices), so
+            # a terminal turn.failed message takes precedence over them.
+            errors, failures = [], []
+            for line in Path(path).read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                kind = event.get("type")
+                if kind in {"error", "turn.failed"}:
+                    error = event.get("error")
+                    if isinstance(error, dict):
+                        message = error.get("message")
+                    else:
+                        message = error or event.get("message")
+                    (failures if kind == "turn.failed" else errors).append(message)
+            value = next((m for m in reversed(failures or errors) if m), "")
+        else:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return ""
+            error = data.get("error")
+            if isinstance(error, dict):
+                value = error.get("message") or error.get("type")
+            else:
+                value = error
+            if not value and data.get("is_error") is True:
+                value = data.get("result")
+    except (AttributeError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return ""
+    # This is printed only to the local terminal, never sent to telemetry. Keep
+    # it single-line and bounded so a provider cannot dump an entire response.
+    return " ".join(str(value or "").split())[:500]
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--error-only", action="store_true")
     parser.add_argument("provider", choices=("claude", "codex", "antigravity", "agy"))
     parser.add_argument("raw_file")
-    parser.add_argument("output_file")
-    parser.add_argument("measurement_file")
+    parser.add_argument("output_file", nargs="?")
+    parser.add_argument("measurement_file", nargs="?")
     args = parser.parse_args()
+    if args.error_only:
+        print(parse_provider_error(args.provider, args.raw_file))
+        return
+    if not args.output_file or not args.measurement_file:
+        parser.error("output_file and measurement_file are required unless --error-only is used")
     if args.provider == "claude":
         text, measurement = parse_claude(args.raw_file)
     elif args.provider == "codex":

@@ -26,6 +26,17 @@
 #   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`; leave
 #                        unset to use the logged-in Codex CLI default
 #   IDEAFLOW_ANTIGRAVITY_MODEL model passed to `agy --model` (default: gemini-3.8-flash-high)
+#   IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS auth-status timeout (default: 5)
+
+# Bash reads script files incrementally. Execute an in-memory snapshot so a git
+# pull or deploy cannot splice a new file version into an active job. This
+# bootstrap is intentionally duplicated in research_all.sh: sourcing a shared
+# helper before snapshotting would recreate the live-update race.
+if [[ "${IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT:-}" != "$0" ]]; then
+  IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT="$0" exec "$BASH" -c "$(<"$0")" "$0" "$@"
+fi
+# The marker only guards the re-exec above; don't leak it to child processes.
+unset IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT
 
 set -euo pipefail
 
@@ -64,6 +75,8 @@ IFCLI="$SCRIPT_DIR/tools/ideaflow"
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 # shellcheck source=tools/execution_telemetry.sh
 source "$SCRIPT_DIR/tools/execution_telemetry.sh"
+# shellcheck source=tools/agent_preflight.sh
+source "$SCRIPT_DIR/tools/agent_preflight.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -87,17 +100,17 @@ EFFORT_QUALITY_STANDARD="$(managed_prompt effort-quality-standard "$EFFORT_QUALI
 CHILD_STANDARD="$(managed_prompt child-suggestion-standard "$CHILD_STANDARD")"
 NEXT_ACTION_STANDARD="$(managed_prompt next-action-standard "$NEXT_ACTION_STANDARD")"
 
-if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
-  if [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
-    echo "error: the Antigravity CLI ('agy') isn't on your PATH (install via 'curl -fsSL https://antigravity.google/cli/install.sh | bash' or set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
-  else
-    echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
-  fi
-  exit 1
-fi
 if [[ "$PRINT_PROMPT" -eq 0 && -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   echo "error: set IDEAFLOW_API_TOKEN (the IdeaFlow API bearer token)." >&2
   exit 1
+fi
+
+if [[ "$PRINT_PROMPT" -eq 0 ]]; then
+  PREFLIGHT_IDENTITY="$(agent_preflight_identity "$AGENT" "$AGENT_BIN")"
+  if [[ "${IDEAFLOW_AGENT_PREFLIGHTED:-}" != "$PREFLIGHT_IDENTITY" ]]; then
+    agent_require_ready "$AGENT" "$AGENT_BIN"
+    export IDEAFLOW_AGENT_PREFLIGHTED="$PREFLIGHT_IDENTITY"
+  fi
 fi
 
 if [[ "$PRINT_PROMPT" -eq 1 ]]; then
@@ -646,6 +659,8 @@ set -e
 if [[ "$AGENT_STATUS" -eq 0 ]]; then
   execution_succeed "$OUTPUT_FILE" "$MEASUREMENT_FILE"
 else
+  PROVIDER_ERROR="$(python3 "$SCRIPT_DIR/tools/llm_usage.py" --error-only "$AGENT" "$RAW_FILE" 2>/dev/null || true)"
+  [[ -n "$PROVIDER_ERROR" ]] && echo "error: ${PROVIDER_ERROR}" >&2
   execution_fail "$AGENT_STATUS" "${AGENT} ${MODE} process exited ${AGENT_STATUS}"
   exit "$AGENT_STATUS"
 fi
