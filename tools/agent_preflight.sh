@@ -62,6 +62,8 @@ agent_require_ready() {
   auth_state="$(python3 - "$agent_bin" "${IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS:-5}" <<'PY'
 import json
 import math
+import os
+import signal
 import subprocess
 import sys
 
@@ -72,22 +74,31 @@ try:
 except ValueError:
     timeout = 5.0
 
+# Run in its own process group so a timeout can kill grandchildren that would
+# otherwise hold the pipes open and block communicate() past the deadline.
 try:
-    completed = subprocess.run(
+    proc = subprocess.Popen(
         [sys.argv[1], "auth", "status"],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout,
-        check=False,
+        start_new_session=True,
     )
-except subprocess.TimeoutExpired:
-    print("timeout")
-    raise SystemExit
 except OSError:
     print("unknown")
     raise SystemExit
 
-text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+try:
+    stdout, stderr = proc.communicate(timeout=timeout)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    print("timeout")
+    raise SystemExit
+
+text = "\n".join(part for part in (stdout, stderr) if part)
 decoder = json.JSONDecoder()
 for offset, character in enumerate(text):
     if character != "{":

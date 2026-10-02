@@ -132,7 +132,9 @@ def parse_provider_error(provider, path):
     """Return a short, terminal-only provider failure without dumping raw output."""
     try:
         if provider == "codex":
-            messages = []
+            # Codex emits non-fatal `error` events (e.g. reconnect notices), so
+            # a terminal turn.failed message takes precedence over them.
+            errors, failures = [], []
             for line in Path(path).read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
@@ -142,13 +144,15 @@ def parse_provider_error(provider, path):
                     continue
                 if not isinstance(event, dict):
                     continue
-                if event.get("type") in {"error", "turn.failed"}:
+                kind = event.get("type")
+                if kind in {"error", "turn.failed"}:
                     error = event.get("error")
                     if isinstance(error, dict):
-                        messages.append(error.get("message"))
+                        message = error.get("message")
                     else:
-                        messages.append(error or event.get("message"))
-            value = next((message for message in reversed(messages) if message), "")
+                        message = error or event.get("message")
+                    (failures if kind == "turn.failed" else errors).append(message)
+            value = next((m for m in reversed(failures or errors) if m), "")
         else:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             if not isinstance(data, dict):

@@ -37,6 +37,8 @@
 if [[ "${IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT:-}" != "$0" ]]; then
   IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT="$0" exec "$BASH" -c "$(<"$0")" "$0" "$@"
 fi
+# The marker only guards the re-exec above; don't leak it to child processes.
+unset IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

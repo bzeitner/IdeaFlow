@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import time
 import tempfile
 from pathlib import Path
 
@@ -115,6 +116,14 @@ class LLMUsageParsingTests(SimpleTestCase):
             "Authentication failed",
         )
 
+    def test_codex_turn_failed_beats_later_non_fatal_error(self):
+        path = self.write("\n".join((
+            json.dumps({"type": "turn.failed", "error": {"message": "Real failure"}}),
+            json.dumps({"type": "error", "message": "Reconnecting..."}),
+        )))
+
+        self.assertEqual(parse_provider_error("codex", path), "Real failure")
+
     def test_provider_error_ignores_non_object_json(self):
         path = self.write(["unexpected", "shape"])
 
@@ -185,6 +194,22 @@ class LLMUsageParsingTests(SimpleTestCase):
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("timed out", completed.stderr)
+
+    def test_preflight_timeout_kills_grandchild_holding_pipes(self):
+        fake = self.executable("sleep 30 &\nsleep 30\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        started = time.monotonic()
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="0.2"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertLess(time.monotonic() - started, 5)
         self.assertIn("timed out", completed.stderr)
 
     def test_non_finite_preflight_timeout_uses_bounded_default(self):
