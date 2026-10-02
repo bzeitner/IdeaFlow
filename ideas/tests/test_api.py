@@ -2,11 +2,16 @@ import json
 import hashlib
 from datetime import timedelta
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from executions.models import ArtifactVersion, CutoverMode, DeterministicJob, OutcomeEvent, WorkflowCutover
+from executions.models import (
+    ArtifactVersion, CutoverMode, DeterministicJob, ExecutionTrace, LLMRun,
+    OutcomeEvent, TraceStatus, WorkflowCutover,
+)
+from executions.tests.helpers import make_configuration, make_workflow_version
 from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, Idea, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
 
 from .helpers import make_idea, make_podcast_show, make_stage, make_user
@@ -145,6 +150,29 @@ class ApiDisabledTests(TestCase):
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
 class ApiReadTests(TestCase):
+    def _artifact_run(self, idea, workflow_version, configuration, suffix):
+        now = timezone.now()
+        trace = ExecutionTrace.objects.create(
+            workflow_version=workflow_version,
+            subject_content_type=ContentType.objects.get_for_model(Idea),
+            subject_object_id=idea.pk,
+            trigger="test",
+            status=TraceStatus.RUNNING,
+            queued_at=now,
+            started_at=now,
+            idempotency_key=f"artifact-trace-{suffix}",
+        )
+        return LLMRun.objects.create(
+            trace=trace,
+            purpose="generation",
+            model_configuration=configuration,
+            rendered_input_hash=f"input-{suffix}",
+            status=TraceStatus.RUNNING,
+            queued_at=now,
+            started_at=now,
+            idempotency_key=f"artifact-run-{suffix}",
+        )
+
     def test_list_returns_all_ideas(self):
         make_idea(title="One")
         make_idea(title="Two", status=Status.TRACKING)
@@ -216,6 +244,53 @@ class ApiReadTests(TestCase):
         self.assertEqual(idea.artifacts.filter(kind=Artifact.Kind.SUMMARY).count(), 1)
         artifact.refresh_from_db()
         self.addCleanup(artifact.file.delete, save=False)
+
+    def test_later_run_can_update_artifact_without_erasing_entry_provenance(self):
+        idea = make_idea()
+        model = AIModel.objects.get(slug="other")
+        entry = ResearchEntry.objects.create(idea=idea, topic="Original", model=model)
+        workflow_version = make_workflow_version("review")
+        configuration = make_configuration()
+        first_run = self._artifact_run(idea, workflow_version, configuration, "one")
+        second_run = self._artifact_run(idea, workflow_version, configuration, "two")
+
+        created = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Working list",
+                "kind": "list",
+                "url": "https://example.com/v1",
+                "research_entry_id": entry.pk,
+                "execution_run_id": first_run.pk,
+            },
+            **AUTH,
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        artifact_id = created.json()["artifact"]["id"]
+
+        updated = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact_id}/",
+            {
+                "title": "Working list",
+                "kind": "list",
+                "url": "https://example.com/v2",
+                "execution_run_id": second_run.pk,
+            },
+            **AUTH,
+        )
+
+        self.assertEqual(updated.status_code, 200, updated.content)
+        artifact = Artifact.objects.get(pk=artifact_id)
+        self.assertEqual(artifact.research_entry, entry)
+        self.assertEqual(artifact.produced_by_run, first_run)
+        self.assertEqual(
+            list(
+                artifact.versions.order_by("created_at").values_list(
+                    "producing_run_id", flat=True
+                )
+            ),
+            [first_run.pk, second_run.pk],
+        )
 
     def test_detail_404_for_unknown_idea(self):
         response = self.client.get("/api/ideas/999999/", **AUTH)

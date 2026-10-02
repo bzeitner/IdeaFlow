@@ -399,9 +399,15 @@ def idea_artifact(request, pk, artifact_pk=None):
     artifact.description = description
     artifact.kind = kind
     artifact.url = external_url
-    artifact.research_entry = entry
-    if artifact.produced_by_run_id and produced_by_run and artifact.produced_by_run_id != produced_by_run.pk:
-        return JsonResponse({"error": "Artifact is already attributed to another run."}, status=409)
+    # An update without a new entry keeps the deliverable's existing research
+    # association. This lets a later run replace the file before it logs its own
+    # completion, rather than erasing useful provenance or claiming completion
+    # before the upload succeeds.
+    if created or entry is not None:
+        artifact.research_entry = entry
+    # produced_by_run identifies the run that first created this logical
+    # artifact. Later revisions carry their own producing run on the immutable
+    # ArtifactVersion chain below.
     if artifact.produced_by_run_id is None:
         artifact.produced_by_run = produced_by_run
     artifact.generated_at = generated_at

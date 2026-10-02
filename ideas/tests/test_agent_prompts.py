@@ -198,6 +198,15 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("resources and next action", text)
         self.assertIn("remove-resource <idea-id> <resource-id>", text)
 
+    def test_review_prompt_executes_human_action_and_verifies_artifact_first(self):
+        text = prompt("review")
+
+        self.assertIn("active next_action as work to execute", text)
+        self.assertIn("Do not merely restate, recommend, or requeue", text)
+        self.assertIn("update that exact artifact with", text)
+        self.assertIn("verified upload before log-effort", text)
+        self.assertIn("pass --next-action ''", text)
+
     def test_execute_prompt_requires_verification_and_a_nonempty_report(self):
         text = prompt("execute")
 
