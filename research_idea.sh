@@ -64,6 +64,8 @@ IFCLI="$SCRIPT_DIR/tools/ideaflow"
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 # shellcheck source=tools/execution_telemetry.sh
 source "$SCRIPT_DIR/tools/execution_telemetry.sh"
+# shellcheck source=tools/agent_preflight.sh
+source "$SCRIPT_DIR/tools/agent_preflight.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -87,13 +89,8 @@ EFFORT_QUALITY_STANDARD="$(managed_prompt effort-quality-standard "$EFFORT_QUALI
 CHILD_STANDARD="$(managed_prompt child-suggestion-standard "$CHILD_STANDARD")"
 NEXT_ACTION_STANDARD="$(managed_prompt next-action-standard "$NEXT_ACTION_STANDARD")"
 
-if [[ "$PRINT_PROMPT" -eq 0 ]] && ! command -v "$AGENT_BIN" >/dev/null 2>&1; then
-  if [[ "$AGENT" =~ ^(antigravity|agy)$ ]]; then
-    echo "error: the Antigravity CLI ('agy') isn't on your PATH (install via 'curl -fsSL https://antigravity.google/cli/install.sh | bash' or set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
-  else
-    echo "error: the '$AGENT' CLI isn't on your PATH (set IDEAFLOW_AGENT_BIN to its absolute path)." >&2
-  fi
-  exit 1
+if [[ "$PRINT_PROMPT" -eq 0 && "${IDEAFLOW_AGENT_PREFLIGHTED:-0}" != "1" ]]; then
+  agent_require_ready "$AGENT" "$AGENT_BIN"
 fi
 if [[ "$PRINT_PROMPT" -eq 0 && -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   echo "error: set IDEAFLOW_API_TOKEN (the IdeaFlow API bearer token)." >&2
@@ -646,6 +643,8 @@ set -e
 if [[ "$AGENT_STATUS" -eq 0 ]]; then
   execution_succeed "$OUTPUT_FILE" "$MEASUREMENT_FILE"
 else
+  PROVIDER_ERROR="$(python3 "$SCRIPT_DIR/tools/llm_usage.py" --error-only "$AGENT" "$RAW_FILE" 2>/dev/null || true)"
+  [[ -n "$PROVIDER_ERROR" ]] && echo "error: ${PROVIDER_ERROR}" >&2
   execution_fail "$AGENT_STATUS" "${AGENT} ${MODE} process exited ${AGENT_STATUS}"
   exit "$AGENT_STATUS"
 fi

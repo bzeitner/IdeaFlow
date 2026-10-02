@@ -48,6 +48,8 @@ fi
 source "$SCRIPT_DIR/tools/prompt_standards.sh"
 # shellcheck source=tools/execution_telemetry.sh
 source "$SCRIPT_DIR/tools/execution_telemetry.sh"
+# shellcheck source=tools/agent_preflight.sh
+source "$SCRIPT_DIR/tools/agent_preflight.sh"
 prompt_load_ideaflow_env "$SCRIPT_DIR"
 BASE="${IDEAFLOW_API_BASE:-https://ideaflow.bitesoftheweek.com}"
 SHARED_STANDARDS="$(prompt_shared_standards)"
@@ -90,6 +92,11 @@ esac
 [[ "$MIN" =~ ^[0-9]+$ ]] || { echo "error: --min must be a whole number." >&2; exit 2; }
 [[ "$DELAY" =~ ^[0-9]+$ ]] || { echo "error: --delay must be a whole number of seconds." >&2; exit 2; }
 [[ "$JOB_LEASE_SECONDS" =~ ^[0-9]+$ ]] || { echo "error: IDEAFLOW_JOB_LEASE_SECONDS must be a whole number of seconds." >&2; exit 2; }
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  agent_require_ready "$AGENT" "$AGENT_BIN"
+  export IDEAFLOW_AGENT_PREFLIGHTED=1
+fi
 
 STATE_FILE="$(mktemp -t ideaflow-selection.json.XXXXXX)"
 RUN_METRICS_FILE="$(mktemp -t ideaflow-run-metrics.tsv.XXXXXX)"
@@ -262,6 +269,8 @@ PROMPT
   if [[ "$agent_status" -eq 0 ]]; then
     execution_succeed "$output_file" "$measurement_file"
   else
+    provider_error="$(python3 "$SCRIPT_DIR/tools/llm_usage.py" --error-only "$AGENT" "$raw_file" 2>/dev/null || true)"
+    [[ -n "$provider_error" ]] && echo "error: ${provider_error}" >&2
     execution_fail "$agent_status" "${AGENT} reflection process exited ${agent_status}"
   fi
   rm -f "$prompt_file" "$output_file" "$raw_file" "$measurement_file"

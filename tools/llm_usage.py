@@ -128,13 +128,48 @@ def parse_antigravity(path, allocated_cost_micros=None):
     }
 
 
+def parse_provider_error(provider, path):
+    """Return the provider's human-readable failure without exposing raw output."""
+    try:
+        if provider == "codex":
+            messages = []
+            for line in Path(path).read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                event = json.loads(line)
+                if event.get("type") in {"error", "turn.failed"}:
+                    error = event.get("error")
+                    if isinstance(error, dict):
+                        messages.append(error.get("message"))
+                    else:
+                        messages.append(error or event.get("message"))
+            value = next((message for message in reversed(messages) if message), "")
+        else:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            error = data.get("error")
+            if isinstance(error, dict):
+                value = error.get("message") or error.get("type")
+            else:
+                value = error
+            value = value or data.get("result") if data.get("is_error") or error else value
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return ""
+    return " ".join(str(value or "").split())
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--error-only", action="store_true")
     parser.add_argument("provider", choices=("claude", "codex", "antigravity", "agy"))
     parser.add_argument("raw_file")
-    parser.add_argument("output_file")
-    parser.add_argument("measurement_file")
+    parser.add_argument("output_file", nargs="?")
+    parser.add_argument("measurement_file", nargs="?")
     args = parser.parse_args()
+    if args.error_only:
+        print(parse_provider_error(args.provider, args.raw_file))
+        return
+    if not args.output_file or not args.measurement_file:
+        parser.error("output_file and measurement_file are required unless --error-only is used")
     if args.provider == "claude":
         text, measurement = parse_claude(args.raw_file)
     elif args.provider == "codex":

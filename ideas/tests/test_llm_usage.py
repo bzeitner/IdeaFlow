@@ -6,7 +6,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from tools.llm_usage import parse_claude, parse_codex, parse_antigravity
+from tools.llm_usage import parse_claude, parse_codex, parse_antigravity, parse_provider_error
 from tools.llm_pricing import estimate_openai_cost_micros
 
 
@@ -53,6 +53,62 @@ class LLMUsageParsingTests(SimpleTestCase):
         text, _measurement = parse_claude(path)
 
         self.assertEqual(json.loads(text)["decision"], "accept")
+
+    def test_extracts_claude_cli_error(self):
+        path = self.write({
+            "is_error": True,
+            "terminal_reason": "api_error",
+            "result": "Not logged in · Please run /login",
+        })
+
+        self.assertEqual(
+            parse_provider_error("claude", path),
+            "Not logged in · Please run /login",
+        )
+
+    def test_claude_preflight_explains_profile_login(self):
+        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        fake.write('#!/bin/sh\nprintf \'{"loggedIn":false,"authMethod":"none"}\\n\'\nexit 1\n')
+        fake.close()
+        os.chmod(fake.name, 0o700)
+        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
+        preflight = Path(__file__).resolve().parents[2] / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; agent_require_ready claude "$2"',
+                "test", str(preflight), fake.name,
+            ],
+            env={**os.environ, "CLAUDE_CONFIG_DIR": "/tmp/claude alt"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("Claude Code is not logged in", completed.stderr)
+        self.assertIn("CLAUDE_CONFIG_DIR=/tmp/claude alt", completed.stderr)
+        self.assertIn("auth login", completed.stderr)
+
+    def test_claude_preflight_accepts_logged_in_profile(self):
+        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        fake.write('#!/bin/sh\nprintf \'{"loggedIn":true,"authMethod":"oauthAccount"}\\n\'\n')
+        fake.close()
+        os.chmod(fake.name, 0o700)
+        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
+        preflight = Path(__file__).resolve().parents[2] / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; agent_require_ready claude "$2"',
+                "test", str(preflight), fake.name,
+            ],
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_parses_codex_jsonl_and_records_subscription_cost(self):
         path = self.write("\n".join((
