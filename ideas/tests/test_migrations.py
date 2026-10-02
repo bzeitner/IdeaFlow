@@ -1,6 +1,57 @@
+from importlib import import_module
+
+from django.apps import apps
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase
 from evaluations.tests.base import AuditTransactionTestCase
+
+
+class ReviewActiveActionPromptMigrationTests(TestCase):
+    def setUp(self):
+        PromptTemplate = apps.get_model("ideas", "PromptTemplate")
+        PromptRevision = apps.get_model("ideas", "PromptRevision")
+        self.template = PromptTemplate.objects.get(key="agent-review")
+        latest = self.template.revisions.order_by("-version").first()
+        self.seed = PromptRevision.objects.create(
+            template=self.template,
+            version=latest.version + 1,
+            content="1. Read the idea.\n2. Synthesize the existing research_entries.",
+            status="approved",
+            change_summary="Migration test seed.",
+        )
+        self.migration = import_module(
+            "ideas.migrations.0068_review_executes_active_action"
+        )
+
+    def test_upgrade_is_versioned_and_idempotent(self):
+        before = self.template.revisions.count()
+
+        self.migration.upgrade_review_prompt(apps, None)
+        self.migration.upgrade_review_prompt(apps, None)
+
+        self.assertEqual(self.template.revisions.count(), before + 1)
+        self.seed.refresh_from_db()
+        self.assertEqual(self.seed.status, "superseded")
+        approved = self.template.revisions.filter(status="approved").order_by(
+            "-version"
+        ).first()
+        self.assertIn(
+            "active next_action as work to execute", approved.content
+        )
+
+    def test_missing_marker_fails_loudly(self):
+        PromptRevision = apps.get_model("ideas", "PromptRevision")
+        PromptRevision.objects.create(
+            template=self.template,
+            version=self.seed.version + 1,
+            content="Review without the expected insertion point.",
+            status="approved",
+            change_summary="Missing-marker test seed.",
+        )
+
+        with self.assertRaisesMessage(RuntimeError, "expected synthesis marker"):
+            self.migration.upgrade_review_prompt(apps, None)
 
 
 class PerIdeaAssessmentMigrationTests(AuditTransactionTestCase):

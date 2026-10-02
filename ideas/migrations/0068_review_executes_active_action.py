@@ -30,7 +30,9 @@ def upgrade_review_prompt(apps, schema_editor):
         return
     marker = "2. Synthesize the existing research_entries"
     if marker not in approved.content:
-        return
+        raise RuntimeError(
+            "Cannot upgrade agent-review prompt: expected synthesis marker is missing."
+        )
     content = approved.content.replace(marker, f"{ACTIVE_ACTION_GUIDANCE}{marker}", 1)
     approved.status = "superseded"
     approved.save(update_fields=["status"])

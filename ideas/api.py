@@ -131,6 +131,23 @@ def _execution_run(payload, *, idea=None, workflows=()):
     return run
 
 
+def _artifact_workflow_can_update(artifact, produced_by_run):
+    """Keep artifact revisions inside their owning workflow family.
+
+    Research and review are one lifecycle: research creates durable findings
+    and review advances them. Other workflows may revise their own artifacts,
+    but cannot overwrite deliverables owned by a different workflow family.
+    Legacy unattributed artifacts remain updateable without inventing an owner.
+    """
+    if artifact is None or artifact.produced_by_run_id is None or produced_by_run is None:
+        return True
+    original = artifact.produced_by_run.trace.workflow_version.workflow.key
+    incoming = produced_by_run.trace.workflow_version.workflow.key
+    if original == incoming:
+        return True
+    return {original, incoming} <= {"research", "review"}
+
+
 def _provided_token(request):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -394,11 +411,16 @@ def idea_artifact(request, pk, artifact_pk=None):
     if artifact is None and kind == Artifact.Kind.SUMMARY:
         artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
         created = artifact is None
+    if not created and not _artifact_workflow_can_update(artifact, produced_by_run):
+        return JsonResponse(
+            {"error": "Artifact belongs to a different workflow family."}, status=409
+        )
     artifact = artifact or Artifact(idea=idea)
     artifact.title = title[:200]
     artifact.description = description
     artifact.kind = kind
-    artifact.url = external_url
+    if created or external_url or uploaded:
+        artifact.url = external_url
     # An update without a new entry keeps the deliverable's existing research
     # association. This lets a later run replace the file before it logs its own
     # completion, rather than erasing useful provenance or claiming completion
@@ -408,7 +430,7 @@ def idea_artifact(request, pk, artifact_pk=None):
     # produced_by_run identifies the run that first created this logical
     # artifact. Later revisions carry their own producing run on the immutable
     # ArtifactVersion chain below.
-    if artifact.produced_by_run_id is None:
+    if created:
         artifact.produced_by_run = produced_by_run
     artifact.generated_at = generated_at
     if uploaded:
