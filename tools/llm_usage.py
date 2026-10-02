@@ -136,7 +136,12 @@ def parse_provider_error(provider, path):
             for line in Path(path).read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
-                event = json.loads(line)
+                try:
+                    event = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(event, dict):
+                    continue
                 if event.get("type") in {"error", "turn.failed"}:
                     error = event.get("error")
                     if isinstance(error, dict):

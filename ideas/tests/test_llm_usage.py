@@ -11,6 +11,18 @@ from tools.llm_pricing import estimate_openai_cost_micros
 
 
 ROOT = Path(__file__).resolve().parents[2]
+CLAUDE_AUTH_ENV_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_MANTLE",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+    "CLAUDE_CONFIG_DIR",
+    "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS",
+)
 
 
 class LLMUsageParsingTests(SimpleTestCase):
@@ -35,6 +47,13 @@ class LLMUsageParsingTests(SimpleTestCase):
         os.chmod(handle.name, 0o700)
         self.addCleanup(Path(handle.name).unlink, missing_ok=True)
         return handle.name
+
+    def auth_env(self, **updates):
+        env = os.environ.copy()
+        for key in CLAUDE_AUTH_ENV_KEYS:
+            env.pop(key, None)
+        env.update(updates)
+        return env
 
     def test_parses_claude_aggregate_usage_and_provider_cost(self):
         path = self.write({
@@ -82,10 +101,14 @@ class LLMUsageParsingTests(SimpleTestCase):
         )
 
     def test_extracts_codex_cli_error(self):
-        path = self.write(json.dumps({
-            "type": "turn.failed",
-            "error": {"message": "Authentication failed"},
-        }))
+        path = self.write("\n".join((
+            "not json",
+            json.dumps(["unexpected", "shape"]),
+            json.dumps({
+                "type": "turn.failed",
+                "error": {"message": "Authentication failed"},
+            }),
+        )))
 
         self.assertEqual(
             parse_provider_error("codex", path),
@@ -107,7 +130,7 @@ class LLMUsageParsingTests(SimpleTestCase):
                 'source "$1"; agent_require_ready claude "$2"',
                 "test", str(preflight), fake,
             ],
-            env={**os.environ, "CLAUDE_CONFIG_DIR": "/tmp/claude alt"},
+            env=self.auth_env(CLAUDE_CONFIG_DIR="/tmp/claude alt"),
             text=True,
             capture_output=True,
         )
@@ -127,6 +150,7 @@ class LLMUsageParsingTests(SimpleTestCase):
                 'source "$1"; agent_require_ready claude "$2"',
                 "test", str(preflight), fake,
             ],
+            env=self.auth_env(),
             text=True,
             capture_output=True,
         )
@@ -140,6 +164,7 @@ class LLMUsageParsingTests(SimpleTestCase):
         completed = subprocess.run(
             ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
              "test", str(preflight), fake],
+            env=self.auth_env(),
             text=True,
             capture_output=True,
         )
@@ -154,13 +179,27 @@ class LLMUsageParsingTests(SimpleTestCase):
         completed = subprocess.run(
             ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
              "test", str(preflight), fake],
-            env={**os.environ, "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS": "0.05"},
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="0.05"),
             text=True,
             capture_output=True,
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("timed out", completed.stderr)
+
+    def test_non_finite_preflight_timeout_uses_bounded_default(self):
+        fake = self.executable('printf \'{"loggedIn":true}\\n\'\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS="inf"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_claude_preflight_accepts_api_key_auth_without_login_status(self):
         fake = self.executable("exit 99\n")
@@ -169,7 +208,21 @@ class LLMUsageParsingTests(SimpleTestCase):
         completed = subprocess.run(
             ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
              "test", str(preflight), fake],
-            env={**os.environ, "ANTHROPIC_API_KEY": "test-only-not-a-real-key"},
+            env=self.auth_env(ANTHROPIC_API_KEY="test-only-not-a-real-key"),
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_accepts_gateway_without_login_status(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env=self.auth_env(ANTHROPIC_BASE_URL="http://127.0.0.1:4000"),
             text=True,
             capture_output=True,
         )
@@ -188,7 +241,7 @@ class LLMUsageParsingTests(SimpleTestCase):
                 completed = subprocess.run(
                     ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
                      "test", str(preflight), fake],
-                    env={**os.environ, variable: value},
+                    env=self.auth_env(**{variable: value}),
                     text=True,
                     capture_output=True,
                 )
@@ -205,6 +258,7 @@ class LLMUsageParsingTests(SimpleTestCase):
                 'printf "\\n"; CLAUDE_CONFIG_DIR=two agent_preflight_identity claude "$2"',
                 "test", str(preflight), fake,
             ],
+            env=self.auth_env(),
             text=True,
             capture_output=True,
         )
@@ -226,11 +280,17 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertIn("https://antigravity.google/cli/install.sh", completed.stderr)
 
     def test_runner_snapshot_reuses_the_running_bash(self):
+        bootstraps = []
         for name in ("research_all.sh", "research_idea.sh"):
             with self.subTest(script=name):
                 source = (ROOT / name).read_text(encoding="utf-8")
                 self.assertIn('exec "$BASH" -c', source)
                 self.assertNotIn("exec /bin/bash", source)
+                bootstraps.append(next(
+                    line.strip() for line in source.splitlines()
+                    if "IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT=" in line and "exec" in line
+                ))
+        self.assertEqual(bootstraps[0], bootstraps[1])
 
     def test_runner_preflights_before_selection_and_claiming(self):
         batch_source = (ROOT / "research_all.sh").read_text(encoding="utf-8")
@@ -243,6 +303,31 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertIn('if [[ "$DRY_RUN" -eq 0 ]]', batch_source)
         self.assertIn('agent_preflight_identity "$AGENT" "$AGENT_BIN"', batch_source)
         self.assertIn('"${IDEAFLOW_AGENT_PREFLIGHTED:-}" != "$PREFLIGHT_IDENTITY"', child_source)
+
+    def test_dotenv_loader_includes_preflight_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, ".env").write_text(
+                "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS=7\n",
+                encoding="utf-8",
+            )
+            standards = ROOT / "tools" / "prompt_standards.sh"
+            env = os.environ.copy()
+            env.pop("IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS", None)
+
+            completed = subprocess.run(
+                [
+                    "bash", "-c",
+                    'source "$1"; prompt_load_ideaflow_env "$2"; '
+                    'printf "%s" "$IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS"',
+                    "test", str(standards), directory,
+                ],
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, "7")
 
     def test_parses_codex_jsonl_and_records_subscription_cost(self):
         path = self.write("\n".join((

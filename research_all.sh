@@ -28,9 +28,12 @@
 #   IDEAFLOW_AGENT_BIN  optional CLI name/path override
 #   IDEAFLOW_CODEX_MODEL optional model passed to `codex exec --model`
 #   IDEAFLOW_ANTIGRAVITY_MODEL model passed to `agy --model` (default: gemini-3.8-flash-high)
+#   IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS auth-status timeout (default: 5)
 
 # Bash reads script files incrementally. Execute an in-memory snapshot so a git
-# pull or deploy cannot splice a new file version into an active batch.
+# pull or deploy cannot splice a new file version into an active batch. This
+# bootstrap is intentionally duplicated in research_idea.sh: sourcing a shared
+# helper before snapshotting would recreate the live-update race.
 if [[ "${IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT:-}" != "$0" ]]; then
   IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT="$0" exec "$BASH" -c "$(<"$0")" "$0" "$@"
 fi

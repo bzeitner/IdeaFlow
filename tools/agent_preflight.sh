@@ -15,6 +15,8 @@ agent_auth_mode() {
     printf '%s' "anthropic-api-key"
   elif [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
     printf '%s' "anthropic-auth-token"
+  elif [[ -n "${ANTHROPIC_BASE_URL:-}" ]]; then
+    printf '%s' "anthropic-gateway"
   elif agent_flag_enabled "${CLAUDE_CODE_USE_BEDROCK:-}"; then
     printf '%s' "bedrock"
   elif agent_flag_enabled "${CLAUDE_CODE_USE_VERTEX:-}"; then
@@ -33,7 +35,9 @@ agent_auth_mode() {
 agent_preflight_identity() {
   local agent="$1" agent_bin="$2" resolved_bin
   resolved_bin="$(command -v "$agent_bin" 2>/dev/null || printf '%s' '<missing>')"
-  printf '%s|%s|%s' "$agent" "$resolved_bin" "$(agent_auth_mode)"
+  printf '%s|%s|%s|config=%s|base=%s' \
+    "$agent" "$resolved_bin" "$(agent_auth_mode)" \
+    "${CLAUDE_CONFIG_DIR:-default}" "${ANTHROPIC_BASE_URL:-default}"
 }
 
 agent_require_ready() {
@@ -57,12 +61,13 @@ agent_require_ready() {
 
   auth_state="$(python3 - "$agent_bin" "${IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS:-5}" <<'PY'
 import json
+import math
 import subprocess
 import sys
 
 try:
     timeout = float(sys.argv[2])
-    if timeout <= 0:
+    if timeout <= 0 or not math.isfinite(timeout):
         raise ValueError
 except ValueError:
     timeout = 5.0

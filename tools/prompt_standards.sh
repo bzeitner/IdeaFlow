@@ -15,7 +15,11 @@ import shlex
 from pathlib import Path
 
 path = Path(os.environ["IDEAFLOW_ENV_FILE"])
-wanted = {"IDEAFLOW_API_BASE", "IDEAFLOW_API_TOKEN"}
+wanted = {
+    "IDEAFLOW_API_BASE",
+    "IDEAFLOW_API_TOKEN",
+    "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS",
+}
 values = {}
 for raw in path.read_text(encoding="utf-8").splitlines():
     line = raw.strip()
