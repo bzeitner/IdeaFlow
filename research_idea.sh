@@ -27,6 +27,12 @@
 #                        unset to use the logged-in Codex CLI default
 #   IDEAFLOW_ANTIGRAVITY_MODEL model passed to `agy --model` (default: gemini-3.8-flash-high)
 
+# Bash reads script files incrementally. Execute an in-memory snapshot so a git
+# pull or deploy cannot splice a new file version into an active job.
+if [[ "${IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT:-}" != "$0" ]]; then
+  IDEAFLOW_RUNNING_SCRIPT_SNAPSHOT="$0" exec /bin/bash -c "$(<"$0")" "$0" "$@"
+fi
+
 set -euo pipefail
 
 ID="${1:-}"
