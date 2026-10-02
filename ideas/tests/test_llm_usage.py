@@ -10,6 +10,9 @@ from tools.llm_usage import parse_claude, parse_codex, parse_antigravity, parse_
 from tools.llm_pricing import estimate_openai_cost_micros
 
 
+ROOT = Path(__file__).resolve().parents[2]
+
+
 class LLMUsageParsingTests(SimpleTestCase):
     def write(self, value):
         handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
@@ -18,6 +21,18 @@ class LLMUsageParsingTests(SimpleTestCase):
         else:
             json.dump(value, handle)
         handle.close()
+        self.addCleanup(Path(handle.name).unlink, missing_ok=True)
+        return handle.name
+
+    def executable(self, body):
+        # Keep executable fixtures on the workspace filesystem; system temp
+        # directories may be mounted noexec in CI.
+        handle = tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", delete=False, dir=ROOT, prefix=".test-agent-"
+        )
+        handle.write("#!/bin/sh\n" + body)
+        handle.close()
+        os.chmod(handle.name, 0o700)
         self.addCleanup(Path(handle.name).unlink, missing_ok=True)
         return handle.name
 
@@ -66,19 +81,31 @@ class LLMUsageParsingTests(SimpleTestCase):
             "Not logged in · Please run /login",
         )
 
+    def test_extracts_codex_cli_error(self):
+        path = self.write(json.dumps({
+            "type": "turn.failed",
+            "error": {"message": "Authentication failed"},
+        }))
+
+        self.assertEqual(
+            parse_provider_error("codex", path),
+            "Authentication failed",
+        )
+
+    def test_provider_error_ignores_non_object_json(self):
+        path = self.write(["unexpected", "shape"])
+
+        self.assertEqual(parse_provider_error("claude", path), "")
+
     def test_claude_preflight_explains_profile_login(self):
-        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
-        fake.write('#!/bin/sh\nprintf \'{"loggedIn":false,"authMethod":"none"}\\n\'\nexit 1\n')
-        fake.close()
-        os.chmod(fake.name, 0o700)
-        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
-        preflight = Path(__file__).resolve().parents[2] / "tools" / "agent_preflight.sh"
+        fake = self.executable('printf \'{"loggedIn":false,"authMethod":"none"}\\n\'\nexit 1\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
 
         completed = subprocess.run(
             [
                 "bash", "-c",
                 'source "$1"; agent_require_ready claude "$2"',
-                "test", str(preflight), fake.name,
+                "test", str(preflight), fake,
             ],
             env={**os.environ, "CLAUDE_CONFIG_DIR": "/tmp/claude alt"},
             text=True,
@@ -91,24 +118,124 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertIn("auth login", completed.stderr)
 
     def test_claude_preflight_accepts_logged_in_profile(self):
-        fake = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
-        fake.write('#!/bin/sh\nprintf \'{"loggedIn":true,"authMethod":"oauthAccount"}\\n\'\n')
-        fake.close()
-        os.chmod(fake.name, 0o700)
-        self.addCleanup(Path(fake.name).unlink, missing_ok=True)
-        preflight = Path(__file__).resolve().parents[2] / "tools" / "agent_preflight.sh"
+        fake = self.executable('printf \'notice\\n{"loggedIn":true,"authMethod":"oauthAccount"}\\n\'\n')
+        preflight = ROOT / "tools" / "agent_preflight.sh"
 
         completed = subprocess.run(
             [
                 "bash", "-c",
                 'source "$1"; agent_require_ready claude "$2"',
-                "test", str(preflight), fake.name,
+                "test", str(preflight), fake,
             ],
             text=True,
             capture_output=True,
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_warns_and_continues_on_unknown_output(self):
+        fake = self.executable("printf 'legacy status output\\n'\nexit 2\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("status was not recognized", completed.stderr)
+
+    def test_claude_preflight_warns_and_continues_on_timeout(self):
+        fake = self.executable("sleep 2\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env={**os.environ, "IDEAFLOW_AGENT_PREFLIGHT_TIMEOUT_SECONDS": "0.05"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("timed out", completed.stderr)
+
+    def test_claude_preflight_accepts_api_key_auth_without_login_status(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+             "test", str(preflight), fake],
+            env={**os.environ, "ANTHROPIC_API_KEY": "test-only-not-a-real-key"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_claude_preflight_accepts_third_party_provider_credentials(self):
+        fake = self.executable("exit 99\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        for variable, value in (
+            ("CLAUDE_CODE_USE_BEDROCK", "TRUE"),
+            ("CLAUDE_CODE_USE_VERTEX", "true"),
+        ):
+            with self.subTest(variable=variable):
+                completed = subprocess.run(
+                    ["bash", "-c", 'source "$1"; agent_require_ready claude "$2"',
+                     "test", str(preflight), fake],
+                    env={**os.environ, variable: value},
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_preflight_identity_changes_with_profile(self):
+        fake = self.executable("exit 0\n")
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            [
+                "bash", "-c",
+                'source "$1"; CLAUDE_CONFIG_DIR=one agent_preflight_identity claude "$2"; '
+                'printf "\\n"; CLAUDE_CONFIG_DIR=two agent_preflight_identity claude "$2"',
+                "test", str(preflight), fake,
+            ],
+            text=True,
+            capture_output=True,
+        )
+
+        first, second = completed.stdout.splitlines()
+        self.assertNotEqual(first, second)
+
+    def test_antigravity_missing_binary_restores_install_hint(self):
+        preflight = ROOT / "tools" / "agent_preflight.sh"
+
+        completed = subprocess.run(
+            ["bash", "-c", 'source "$1"; agent_require_ready antigravity "$2"',
+             "test", str(preflight), "/missing/agy"],
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("https://antigravity.google/cli/install.sh", completed.stderr)
+
+    def test_runner_preflights_before_selection_and_claiming(self):
+        batch_source = (ROOT / "research_all.sh").read_text(encoding="utf-8")
+        child_source = (ROOT / "research_idea.sh").read_text(encoding="utf-8")
+
+        self.assertLess(batch_source.index('agent_require_ready "$AGENT" "$AGENT_BIN"'),
+                        batch_source.index('python3 "$SCRIPT_DIR/tools/select_tasks.py"'))
+        self.assertLess(batch_source.index('agent_require_ready "$AGENT" "$AGENT_BIN"'),
+                        batch_source.index('"$IFCLI" claim-job'))
+        self.assertIn('if [[ "$DRY_RUN" -eq 0 ]]', batch_source)
+        self.assertIn('agent_preflight_identity "$AGENT" "$AGENT_BIN"', batch_source)
+        self.assertIn('"${IDEAFLOW_AGENT_PREFLIGHTED:-}" != "$PREFLIGHT_IDENTITY"', child_source)
 
     def test_parses_codex_jsonl_and_records_subscription_cost(self):
         path = self.write("\n".join((

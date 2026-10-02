@@ -101,7 +101,7 @@ esac
 
 if [[ "$DRY_RUN" -eq 0 ]]; then
   agent_require_ready "$AGENT" "$AGENT_BIN"
-  export IDEAFLOW_AGENT_PREFLIGHTED=1
+  export IDEAFLOW_AGENT_PREFLIGHTED="$(agent_preflight_identity "$AGENT" "$AGENT_BIN")"
 fi
 
 STATE_FILE="$(mktemp -t ideaflow-selection.json.XXXXXX)"

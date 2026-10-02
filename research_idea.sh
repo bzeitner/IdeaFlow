@@ -95,8 +95,12 @@ EFFORT_QUALITY_STANDARD="$(managed_prompt effort-quality-standard "$EFFORT_QUALI
 CHILD_STANDARD="$(managed_prompt child-suggestion-standard "$CHILD_STANDARD")"
 NEXT_ACTION_STANDARD="$(managed_prompt next-action-standard "$NEXT_ACTION_STANDARD")"
 
-if [[ "$PRINT_PROMPT" -eq 0 && "${IDEAFLOW_AGENT_PREFLIGHTED:-0}" != "1" ]]; then
-  agent_require_ready "$AGENT" "$AGENT_BIN"
+if [[ "$PRINT_PROMPT" -eq 0 ]]; then
+  PREFLIGHT_IDENTITY="$(agent_preflight_identity "$AGENT" "$AGENT_BIN")"
+  if [[ "${IDEAFLOW_AGENT_PREFLIGHTED:-}" != "$PREFLIGHT_IDENTITY" ]]; then
+    agent_require_ready "$AGENT" "$AGENT_BIN"
+    export IDEAFLOW_AGENT_PREFLIGHTED="$PREFLIGHT_IDENTITY"
+  fi
 fi
 if [[ "$PRINT_PROMPT" -eq 0 && -z "${IDEAFLOW_API_TOKEN:-}" ]]; then
   echo "error: set IDEAFLOW_API_TOKEN (the IdeaFlow API bearer token)." >&2

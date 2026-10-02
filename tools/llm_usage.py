@@ -129,7 +129,7 @@ def parse_antigravity(path, allocated_cost_micros=None):
 
 
 def parse_provider_error(provider, path):
-    """Return the provider's human-readable failure without exposing raw output."""
+    """Return a short, terminal-only provider failure without dumping raw output."""
     try:
         if provider == "codex":
             messages = []
@@ -146,15 +146,20 @@ def parse_provider_error(provider, path):
             value = next((message for message in reversed(messages) if message), "")
         else:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return ""
             error = data.get("error")
             if isinstance(error, dict):
                 value = error.get("message") or error.get("type")
             else:
                 value = error
-            value = value or data.get("result") if data.get("is_error") or error else value
-    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            if not value and data.get("is_error") is True:
+                value = data.get("result")
+    except (AttributeError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return ""
-    return " ".join(str(value or "").split())
+    # This is printed only to the local terminal, never sent to telemetry. Keep
+    # it single-line and bounded so a provider cannot dump an entire response.
+    return " ".join(str(value or "").split())[:500]
 
 
 def main():
