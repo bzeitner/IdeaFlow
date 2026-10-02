@@ -54,6 +54,45 @@ class ReviewActiveActionPromptMigrationTests(TestCase):
             self.migration.upgrade_review_prompt(apps, None)
 
 
+class ReviewResearchScopeMigrationTests(TestCase):
+    def setUp(self):
+        PromptTemplate = apps.get_model("ideas", "PromptTemplate")
+        self.template = PromptTemplate.objects.get(key="agent-review")
+        self.migration = import_module(
+            "ideas.migrations.0069_review_active_action_research_scope"
+        )
+
+    def _seed(self, content):
+        PromptRevision = apps.get_model("ideas", "PromptRevision")
+        latest = self.template.revisions.order_by("-version").first()
+        return PromptRevision.objects.create(
+            template=self.template,
+            version=latest.version + 1,
+            content=content,
+            status="approved",
+            change_summary="Migration test seed.",
+        )
+
+    def test_upgrade_is_versioned_and_idempotent(self):
+        seed = self._seed("1a. Work.\n   arrived. Do not merely restate.\n2. Next")
+        before = self.template.revisions.count()
+
+        self.migration.upgrade_review_prompt(apps, None)
+        self.migration.upgrade_review_prompt(apps, None)
+
+        self.assertEqual(self.template.revisions.count(), before + 1)
+        seed.refresh_from_db()
+        self.assertEqual(seed.status, "superseded")
+        approved = self.template.revisions.filter(status="approved").order_by("-version").first()
+        self.assertIn(self.migration.DONE, approved.content)
+
+    def test_unexpected_content_fails_loudly(self):
+        self._seed("Review without the expected guidance.")
+
+        with self.assertRaisesMessage(RuntimeError, "expected active-action guidance"):
+            self.migration.upgrade_review_prompt(apps, None)
+
+
 class PerIdeaAssessmentMigrationTests(AuditTransactionTestCase):
     migrate_from = ("ideas", "0014_feeditem_content")
     migrate_to = ("ideas", "0015_per_idea_feed_item_assessments")

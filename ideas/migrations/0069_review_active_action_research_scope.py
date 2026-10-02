@@ -17,8 +17,12 @@ def upgrade_review_prompt(apps, schema_editor):
     approved = template.revisions.filter(status="approved").order_by("-version").first()
     # Databases that applied the earlier 0068 hold the guidance without the
     # research-scope exemption; fresh databases already include it.
-    if approved is None or DONE in approved.content or OLD not in approved.content:
+    if approved is None or DONE in approved.content:
         return
+    if OLD not in approved.content:
+        raise RuntimeError(
+            "Cannot upgrade agent-review prompt: expected active-action guidance is missing."
+        )
     content = approved.content.replace(OLD, NEW, 1)
     approved.status = "superseded"
     approved.save(update_fields=["status"])
