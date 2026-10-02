@@ -225,6 +225,13 @@ class LLMUsageParsingTests(SimpleTestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("https://antigravity.google/cli/install.sh", completed.stderr)
 
+    def test_runner_snapshot_reuses_the_running_bash(self):
+        for name in ("research_all.sh", "research_idea.sh"):
+            with self.subTest(script=name):
+                source = (ROOT / name).read_text(encoding="utf-8")
+                self.assertIn('exec "$BASH" -c', source)
+                self.assertNotIn("exec /bin/bash", source)
+
     def test_runner_preflights_before_selection_and_claiming(self):
         batch_source = (ROOT / "research_all.sh").read_text(encoding="utf-8")
         child_source = (ROOT / "research_idea.sh").read_text(encoding="utf-8")
