@@ -393,7 +393,9 @@ Steps:
    to review. Attempt it to completion first whenever it is achievable with the
    tools and mutations this workflow permits. Perform the research, analysis,
    drafting, or artifact creation/update it requires even when no new articles
-   arrived. Do not merely restate, recommend, or requeue the same action. If the
+   arrived, including primary-source research the action asks for even when it
+   would not change the disposition; the fresh-research limit in step 2 applies
+   only to open-ended research beyond the active action. Do not merely restate, recommend, or requeue the same action. If the
    action names an existing artifact, update that exact artifact with
    --artifact-id and verify the upload succeeded. For an artifact action, do the
    verified upload before log-effort; this ordering overrides the general

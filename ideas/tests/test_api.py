@@ -339,6 +339,35 @@ class ApiReadTests(TestCase):
         self.assertEqual(artifact.url, "https://example.com/research")
         self.assertEqual(artifact.versions.count(), 1)
 
+    def test_attributed_artifact_update_requires_run_provenance(self):
+        idea = make_idea()
+        run = self._artifact_run(
+            idea, make_workflow_version("research"), make_configuration(), "owner"
+        )
+        created = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Owned",
+                "kind": "report",
+                "url": "https://example.com/owned",
+                "execution_run_id": run.pk,
+            },
+            **AUTH,
+        )
+        artifact_id = created.json()["artifact"]["id"]
+
+        rejected = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact_id}/",
+            {"title": "Owned", "kind": "report", "url": "https://example.com/hijack"},
+            **AUTH,
+        )
+
+        self.assertEqual(rejected.status_code, 409)
+        self.assertIn("execution_run_id", rejected.json()["error"])
+        artifact = Artifact.objects.get(pk=artifact_id)
+        self.assertEqual(artifact.url, "https://example.com/owned")
+        self.assertEqual(artifact.versions.count(), 1)
+
     def test_legacy_artifact_update_stays_unattributed_and_preserves_url(self):
         idea = make_idea()
         artifact = Artifact.objects.create(

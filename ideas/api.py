@@ -137,10 +137,13 @@ def _artifact_workflow_can_update(artifact, produced_by_run):
     Research and review are one lifecycle: research creates durable findings
     and review advances them. Other workflows may revise their own artifacts,
     but cannot overwrite deliverables owned by a different workflow family.
-    Legacy unattributed artifacts remain updateable without inventing an owner.
+    Legacy unattributed artifacts remain updateable without inventing an owner,
+    but an attributed artifact cannot be updated without run provenance.
     """
-    if artifact is None or artifact.produced_by_run_id is None or produced_by_run is None:
+    if artifact is None or artifact.produced_by_run_id is None:
         return True
+    if produced_by_run is None:
+        return False  # caller reports missing provenance
     original = artifact.produced_by_run.trace.workflow_version.workflow.key
     incoming = produced_by_run.trace.workflow_version.workflow.key
     if original == incoming:
@@ -412,9 +415,12 @@ def idea_artifact(request, pk, artifact_pk=None):
         artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
         created = artifact is None
     if not created and not _artifact_workflow_can_update(artifact, produced_by_run):
-        return JsonResponse(
-            {"error": "Artifact belongs to a different workflow family."}, status=409
+        message = (
+            "Run provenance (execution_run_id) is required to update an attributed artifact."
+            if produced_by_run is None
+            else "Artifact belongs to a different workflow family."
         )
+        return JsonResponse({"error": message}, status=409)
     artifact = artifact or Artifact(idea=idea)
     artifact.title = title[:200]
     artifact.description = description
