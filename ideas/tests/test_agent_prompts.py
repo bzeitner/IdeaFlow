@@ -1,5 +1,6 @@
 import subprocess
 import os
+from importlib import import_module
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -197,6 +198,23 @@ class AgentPromptTests(SimpleTestCase):
         self.assertIn("graph-context 123", text)
         self.assertIn("resources and next action", text)
         self.assertIn("remove-resource <idea-id> <resource-id>", text)
+
+    def test_review_prompt_executes_active_action_and_verifies_artifact_first(self):
+        text = prompt("review")
+
+        self.assertIn("active next_action as work to execute", text)
+        self.assertIn("Do not merely restate, recommend, or requeue", text)
+        self.assertIn("update that exact artifact with", text)
+        self.assertIn("verified upload before log-effort", text)
+        self.assertIn("pass --next-action ''", text)
+
+    def test_managed_review_guidance_matches_shell_fallback(self):
+        text = prompt("review")
+        migration = import_module(
+            "ideas.migrations.0068_review_executes_active_action"
+        )
+
+        self.assertIn(migration.ACTIVE_ACTION_GUIDANCE.strip(), text)
 
     def test_execute_prompt_requires_verification_and_a_nonempty_report(self):
         text = prompt("execute")

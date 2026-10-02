@@ -2,11 +2,16 @@ import json
 import hashlib
 from datetime import timedelta
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from executions.models import ArtifactVersion, CutoverMode, DeterministicJob, OutcomeEvent, WorkflowCutover
+from executions.models import (
+    ArtifactVersion, CutoverMode, DeterministicJob, ExecutionTrace, LLMRun,
+    OutcomeEvent, TraceStatus, WorkflowCutover,
+)
+from executions.tests.helpers import make_configuration, make_workflow_version
 from ideas.models import Artifact, AIModel, Episode, EpisodeRun, EpisodeRunStatus, Idea, IdeaPersona, Persona, PersonaReview, RepeatResult, RepeatResultStatus, ResearchEntry, Status, VoiceProfile
 
 from .helpers import make_idea, make_podcast_show, make_stage, make_user
@@ -145,6 +150,29 @@ class ApiDisabledTests(TestCase):
 
 @override_settings(IDEAFLOW_API_TOKEN=TOKEN)
 class ApiReadTests(TestCase):
+    def _artifact_run(self, idea, workflow_version, configuration, suffix):
+        now = timezone.now()
+        trace = ExecutionTrace.objects.create(
+            workflow_version=workflow_version,
+            subject_content_type=ContentType.objects.get_for_model(Idea),
+            subject_object_id=idea.pk,
+            trigger="test",
+            status=TraceStatus.RUNNING,
+            queued_at=now,
+            started_at=now,
+            idempotency_key=f"artifact-trace-{suffix}",
+        )
+        return LLMRun.objects.create(
+            trace=trace,
+            purpose="generation",
+            model_configuration=configuration,
+            rendered_input_hash=f"input-{suffix}",
+            status=TraceStatus.RUNNING,
+            queued_at=now,
+            started_at=now,
+            idempotency_key=f"artifact-run-{suffix}",
+        )
+
     def test_list_returns_all_ideas(self):
         make_idea(title="One")
         make_idea(title="Two", status=Status.TRACKING)
@@ -187,6 +215,9 @@ class ApiReadTests(TestCase):
 
     def test_summary_upload_upserts_and_completes_request_even_when_archived(self):
         idea = make_idea(status=Status.ARCHIVED, summary_requested_at=timezone.now())
+        entry = ResearchEntry.objects.create(
+            idea=idea, topic="Source", model=AIModel.objects.get(slug="other")
+        )
         response = self.client.post(
             f"/api/ideas/{idea.pk}/artifacts/",
             {
@@ -194,6 +225,7 @@ class ApiReadTests(TestCase):
                 "kind": "summary",
                 "description": "High-level report",
                 "file": SimpleUploadedFile("summary.md", b"# Executive summary\nUseful."),
+                "research_entry_id": entry.pk,
             },
             **AUTH,
         )
@@ -215,7 +247,147 @@ class ApiReadTests(TestCase):
         self.assertEqual(replacement.status_code, 200)
         self.assertEqual(idea.artifacts.filter(kind=Artifact.Kind.SUMMARY).count(), 1)
         artifact.refresh_from_db()
+        self.assertEqual(artifact.research_entry, entry)
         self.addCleanup(artifact.file.delete, save=False)
+
+    def test_later_run_can_update_artifact_without_erasing_entry_provenance(self):
+        idea = make_idea()
+        model = AIModel.objects.get(slug="other")
+        entry = ResearchEntry.objects.create(idea=idea, topic="Original", model=model)
+        research_workflow = make_workflow_version("research")
+        review_workflow = make_workflow_version("review")
+        configuration = make_configuration()
+        first_run = self._artifact_run(idea, research_workflow, configuration, "one")
+        second_run = self._artifact_run(idea, review_workflow, configuration, "two")
+
+        created = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Working list",
+                "kind": "list",
+                "url": "https://example.com/v1",
+                "research_entry_id": entry.pk,
+                "execution_run_id": first_run.pk,
+            },
+            **AUTH,
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        artifact_id = created.json()["artifact"]["id"]
+
+        updated = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact_id}/",
+            {
+                "title": "Working list",
+                "kind": "list",
+                "file": SimpleUploadedFile("working-list.md", b"# Revised list"),
+                "execution_run_id": second_run.pk,
+            },
+            **AUTH,
+        )
+
+        self.assertEqual(updated.status_code, 200, updated.content)
+        artifact = Artifact.objects.get(pk=artifact_id)
+        self.assertEqual(artifact.research_entry, entry)
+        self.assertEqual(artifact.produced_by_run, first_run)
+        self.assertEqual(
+            list(
+                artifact.versions.order_by("created_at").values_list(
+                    "producing_run_id", flat=True
+                )
+            ),
+            [first_run.pk, second_run.pk],
+        )
+
+    def test_run_cannot_update_artifact_owned_by_an_unrelated_workflow(self):
+        idea = make_idea()
+        configuration = make_configuration()
+        research_run = self._artifact_run(
+            idea, make_workflow_version("research"), configuration, "research"
+        )
+        execute_run = self._artifact_run(
+            idea, make_workflow_version("execute"), configuration, "execute"
+        )
+        created = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Research report",
+                "kind": "report",
+                "url": "https://example.com/research",
+                "execution_run_id": research_run.pk,
+            },
+            **AUTH,
+        )
+        artifact_id = created.json()["artifact"]["id"]
+
+        rejected = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact_id}/",
+            {
+                "title": "Research report",
+                "kind": "report",
+                "url": "https://example.com/execute",
+                "execution_run_id": execute_run.pk,
+            },
+            **AUTH,
+        )
+
+        self.assertEqual(rejected.status_code, 409)
+        self.assertEqual(
+            rejected.json()["error"],
+            "Artifact belongs to a different workflow family.",
+        )
+        artifact = Artifact.objects.get(pk=artifact_id)
+        self.assertEqual(artifact.url, "https://example.com/research")
+        self.assertEqual(artifact.versions.count(), 1)
+
+    def test_attributed_artifact_update_requires_run_provenance(self):
+        idea = make_idea()
+        run = self._artifact_run(
+            idea, make_workflow_version("research"), make_configuration(), "owner"
+        )
+        created = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/",
+            {
+                "title": "Owned",
+                "kind": "report",
+                "url": "https://example.com/owned",
+                "execution_run_id": run.pk,
+            },
+            **AUTH,
+        )
+        artifact_id = created.json()["artifact"]["id"]
+
+        rejected = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact_id}/",
+            {"title": "Owned", "kind": "report", "url": "https://example.com/hijack"},
+            **AUTH,
+        )
+
+        self.assertEqual(rejected.status_code, 409)
+        self.assertIn("execution_run_id", rejected.json()["error"])
+        artifact = Artifact.objects.get(pk=artifact_id)
+        self.assertEqual(artifact.url, "https://example.com/owned")
+        self.assertEqual(artifact.versions.count(), 1)
+
+    def test_legacy_artifact_update_stays_unattributed_and_preserves_url(self):
+        idea = make_idea()
+        artifact = Artifact.objects.create(
+            idea=idea,
+            title="Legacy link",
+            kind=Artifact.Kind.REPORT,
+            url="https://example.com/original",
+        )
+
+        updated = self.client.post(
+            f"/api/ideas/{idea.pk}/artifacts/{artifact.pk}/",
+            {"title": "Renamed legacy link", "kind": "report"},
+            **AUTH,
+        )
+
+        self.assertEqual(updated.status_code, 200)
+        artifact.refresh_from_db()
+        self.assertEqual(artifact.url, "https://example.com/original")
+        self.assertIsNone(artifact.produced_by_run_id)
+        self.assertEqual(artifact.versions.count(), 0)
 
     def test_detail_404_for_unknown_idea(self):
         response = self.client.get("/api/ideas/999999/", **AUTH)
@@ -498,6 +670,26 @@ class ApiEffortTests(TestCase):
         self.assertEqual(idea.next_action, "Active")
         self.assertEqual(idea.next_actions, ["Active", "Second", "Third"])
         self.assertEqual(response.json()["idea"]["next_actions"], ["Active", "Second", "Third"])
+
+    def test_empty_next_action_advances_the_queue(self):
+        idea = make_idea(
+            next_action="Regenerate artifact",
+            next_actions=["Regenerate artifact", "Choose shortlist"],
+        )
+
+        response = self._post(
+            idea,
+            {
+                "topic": "Regenerated artifact",
+                "model": "other",
+                "next_action": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        idea.refresh_from_db()
+        self.assertEqual(idea.next_action, "Choose shortlist")
+        self.assertEqual(idea.next_actions, ["Choose shortlist"])
 
     def test_queued_next_actions_must_be_a_list(self):
         idea = make_idea()

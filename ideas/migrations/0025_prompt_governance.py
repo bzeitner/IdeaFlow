@@ -54,14 +54,19 @@ Return JSON with `entries`, an array of objects containing entry_id and question
         template, _created = PromptTemplate.objects.get_or_create(key=key, defaults={"name": name, "description": description, "variables": variables})
         PromptRevision.objects.get_or_create(template=template, version=1, defaults={"content": content, "status": "approved", "change_summary": "Initial prompt imported from source control."})
     root = Path(__file__).resolve().parents[2]
-    mode_bodies = re.findall(
-        r"read -r -d .+?<<PROMPT \|\| true\n(.*?)\nPROMPT",
-        (root / "research_idea.sh").read_text(encoding="utf-8"),
-        re.S,
-    )
+    runner_source = (root / "research_idea.sh").read_text(encoding="utf-8")
     mode_names = ["repeat", "execute", "critique", "review", "research"]
     mode_variables = ["ID", "IFCLI", "BASE", "REPORT", "MODEL", "SHARED_STANDARDS", "PR_RESOURCE_STANDARD", "HUMAN_SUMMARY_STANDARD", "EFFORT_QUALITY_STANDARD", "CHILD_STANDARD", "NEXT_ACTION_STANDARD"]
-    for mode, content in zip(mode_names, mode_bodies):
+    for mode in mode_names:
+        match = re.search(
+            rf'(?:if|elif) \[\[ "\$MODE" == "{re.escape(mode)}" \]\]; then\n'
+            r"\s*read -r -d '' PROMPT <<PROMPT \|\| true\n(.*?)\nPROMPT",
+            runner_source,
+            re.S,
+        )
+        if match is None:
+            raise RuntimeError(f"Could not locate the {mode} prompt in research_idea.sh")
+        content = match.group(1)
         template, _created = PromptTemplate.objects.get_or_create(
             key=f"agent-{mode}",
             defaults={"name": f"Agent workflow: {mode.title()}", "description": f"Complete executable prompt for the {mode} agent mode.", "variables": mode_variables},

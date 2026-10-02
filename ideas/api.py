@@ -131,6 +131,26 @@ def _execution_run(payload, *, idea=None, workflows=()):
     return run
 
 
+def _artifact_workflow_can_update(artifact, produced_by_run):
+    """Keep artifact revisions inside their owning workflow family.
+
+    Research and review are one lifecycle: research creates durable findings
+    and review advances them. Other workflows may revise their own artifacts,
+    but cannot overwrite deliverables owned by a different workflow family.
+    Legacy unattributed artifacts remain updateable without inventing an owner,
+    but an attributed artifact cannot be updated without run provenance.
+    """
+    if artifact is None or artifact.produced_by_run_id is None:
+        return True
+    if produced_by_run is None:
+        return False  # caller reports missing provenance
+    original = artifact.produced_by_run.trace.workflow_version.workflow.key
+    incoming = produced_by_run.trace.workflow_version.workflow.key
+    if original == incoming:
+        return True
+    return {original, incoming} <= {"research", "review"}
+
+
 def _provided_token(request):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -394,15 +414,29 @@ def idea_artifact(request, pk, artifact_pk=None):
     if artifact is None and kind == Artifact.Kind.SUMMARY:
         artifact = Artifact.objects.filter(idea=idea, kind=kind).first()
         created = artifact is None
+    if not created and not _artifact_workflow_can_update(artifact, produced_by_run):
+        message = (
+            "Run provenance (execution_run_id) is required to update an attributed artifact."
+            if produced_by_run is None
+            else "Artifact belongs to a different workflow family."
+        )
+        return JsonResponse({"error": message}, status=409)
     artifact = artifact or Artifact(idea=idea)
     artifact.title = title[:200]
     artifact.description = description
     artifact.kind = kind
-    artifact.url = external_url
-    artifact.research_entry = entry
-    if artifact.produced_by_run_id and produced_by_run and artifact.produced_by_run_id != produced_by_run.pk:
-        return JsonResponse({"error": "Artifact is already attributed to another run."}, status=409)
-    if artifact.produced_by_run_id is None:
+    if created or external_url or uploaded:
+        artifact.url = external_url
+    # An update without a new entry keeps the deliverable's existing research
+    # association. This lets a later run replace the file before it logs its own
+    # completion, rather than erasing useful provenance or claiming completion
+    # before the upload succeeds.
+    if created or entry is not None:
+        artifact.research_entry = entry
+    # produced_by_run identifies the run that first created this logical
+    # artifact. Later revisions carry their own producing run on the immutable
+    # ArtifactVersion chain below.
+    if created:
         artifact.produced_by_run = produced_by_run
     artifact.generated_at = generated_at
     if uploaded:
