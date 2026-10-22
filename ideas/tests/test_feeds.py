@@ -309,6 +309,64 @@ class UrlSafetyTests(TestCase):
         with self.assertRaises(ValueError):
             fetch_and_ingest(feed)
 
+    def test_connect_refuses_hostnames_resolving_to_internal_addresses(self):
+        # The redirect/DNS-rebinding case: a public-looking name that resolves
+        # (at connect time) to loopback, link-local, or a mix with a public IP.
+        from unittest import mock
+
+        from ideas import feeds
+
+        def infos(*ips):
+            return [(2, 1, 6, "", (ip, 80)) for ip in ips]
+
+        for ips in [("127.0.0.1",), ("169.254.169.254",), ("93.184.216.34", "10.0.0.5")]:
+            with mock.patch("ideas.feeds.socket.getaddrinfo", return_value=infos(*ips)):
+                with self.assertRaises(OSError, msg=ips):
+                    feeds._connect_public("feed.example", 80, 5)
+
+    def test_ipv4_mapped_ipv6_loopback_is_not_public(self):
+        import ipaddress
+
+        from ideas.feeds import _is_public_ip
+
+        self.assertFalse(_is_public_ip(ipaddress.ip_address("::ffff:127.0.0.1")))
+        self.assertFalse(_is_public_ip(ipaddress.ip_address("::ffff:169.254.169.254")))
+        self.assertTrue(_is_public_ip(ipaddress.ip_address("93.184.216.34")))
+
+    def test_redirect_to_non_web_scheme_is_refused(self):
+        import urllib.error
+        import urllib.request
+
+        from ideas.feeds import _LimitedRedirectHandler
+
+        req = urllib.request.Request("https://feed.example/rss")
+        with self.assertRaises(urllib.error.URLError):
+            _LimitedRedirectHandler().redirect_request(
+                req, None, 302, "Found", {}, "file:///etc/passwd"
+            )
+
+    def test_fetch_and_ingest_handles_304_and_new_content(self):
+        from email.message import Message
+        from unittest import mock
+
+        from ideas import feeds
+
+        feed = make_feed(url="https://93.184.216.34/feed.xml")
+        with mock.patch("ideas.feeds._http_get", return_value=(304, Message(), b"")):
+            self.assertEqual(feeds.fetch_and_ingest(feed), (304, []))
+
+        headers = Message()
+        headers["ETag"] = '"abc"'
+        body = (
+            b'<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>'
+            b"<item><guid>g1</guid><title>One</title><link>https://x.example/1</link>"
+            b"<description>hi</description></item></channel></rss>"
+        )
+        with mock.patch("ideas.feeds._http_get", return_value=(200, headers, body)):
+            status, items = feeds.fetch_and_ingest(feed)
+        feed.refresh_from_db()
+        self.assertEqual((status, len(items), feed.etag), (200, 1, '"abc"'))
+
 
 class AddFeedSafetyTests(TestCase):
     def test_add_feed_command_rejects_unsafe_url(self):

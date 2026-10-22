@@ -7,8 +7,11 @@ pointing several ideas at the same feed never re-does that work.
 """
 
 import hashlib
+import http.client
 import ipaddress
 import socket
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone as dt_timezone
 from urllib.parse import urlsplit
 
@@ -26,6 +29,11 @@ ALLOWED_SCHEMES = {"http", "https"}
 # Feed bodies are stored so a scoring agent doesn't have to re-download the
 # page; 20k characters is well past where a summary stops improving.
 CONTENT_MAX_CHARS = 20_000
+
+FETCH_TIMEOUT_SECONDS = 30
+FETCH_MAX_BYTES = 10 * 1024 * 1024
+FETCH_MAX_REDIRECTS = 5
+FETCH_USER_AGENT = "IdeaFlow-FeedFetcher/1.0"
 
 
 def refreshable_feeds():
@@ -49,6 +57,8 @@ def _ip_or_none(host):
 
 
 def _is_public_ip(ip):
+    # ::ffff:127.0.0.1 and friends must be judged by the IPv4 address they wrap.
+    ip = getattr(ip, "ipv4_mapped", None) or ip
     return not (
         ip.is_private
         or ip.is_loopback
@@ -57,6 +67,18 @@ def _is_public_ip(ip):
         or ip.is_multicast
         or ip.is_unspecified
     )
+
+
+def _public_addresses(host, port=None):
+    """The single SSRF address policy: resolve host and return its getaddrinfo
+    results only if every address is public. Raises OSError otherwise. Both the
+    pre-fetch check and the connector use this, so the rule lives in one place."""
+    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    if not infos or not all(
+        _is_public_ip(ipaddress.ip_address(info[4][0])) for info in infos
+    ):
+        raise OSError(f"Refusing to connect to non-public address for {host}")
+    return infos
 
 
 def is_http_url(url):
@@ -83,15 +105,11 @@ def is_fetchable_url(url):
     parts = urlsplit(url or "")
     if parts.scheme not in ALLOWED_SCHEMES or not parts.hostname:
         return False
-    ip = _ip_or_none(parts.hostname)
-    if ip is not None:
-        return _is_public_ip(ip)
     try:
-        infos = socket.getaddrinfo(parts.hostname, None, proto=socket.IPPROTO_TCP)
-    except (socket.gaierror, UnicodeError, ValueError):
+        _public_addresses(parts.hostname)
+    except (OSError, UnicodeError, ValueError):
         return False
-    ips = [ipaddress.ip_address(info[4][0]) for info in infos]
-    return bool(ips) and all(_is_public_ip(ip) for ip in ips)
+    return True
 
 
 def _guid(entry):
@@ -165,31 +183,120 @@ def ingest_entries(feed, entries, *, limit=None):
     return created
 
 
+def _connect_public(host, port, timeout):
+    """Connect to a validated public address.
+
+    Validation and connection use the same getaddrinfo result, so DNS
+    rebinding between a check and the connect cannot redirect the socket to an
+    internal address. Called for every redirect hop as well.
+    """
+    last_error = None
+    for family, socktype, proto, _canon, sockaddr in _public_addresses(host, port):
+        sock = socket.socket(family, socktype, proto)
+        sock.settimeout(timeout)
+        try:
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            sock.close()
+            last_error = exc
+    raise last_error or OSError(f"Could not connect to {host}")
+
+
+class _PublicHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = _connect_public(self.host, self.port, self.timeout)
+
+
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        sock = _connect_public(self.host, self.port, self.timeout)
+        # Certificate and SNI are still verified against the hostname.
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PublicHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_PublicHTTPConnection, req)
+
+
+class _PublicHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PublicHTTPSConnection, req)
+
+
+class _LimitedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    max_redirections = FETCH_MAX_REDIRECTS
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urlsplit(newurl).scheme not in ALLOWED_SCHEMES:
+            raise urllib.error.URLError(f"Refusing redirect to {newurl!r}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _build_public_opener():
+    # No ProxyHandler/FTP/file handlers: only http(s) to validated public IPs.
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.UnknownHandler(),
+        _LimitedRedirectHandler(),
+        urllib.request.HTTPDefaultErrorHandler(),
+        urllib.request.HTTPErrorProcessor(),
+        _PublicHTTPHandler(),
+        _PublicHTTPSHandler(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+def _http_get(url, *, etag="", modified=""):
+    """GET url through the public-only opener. Returns (status, headers, body)."""
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": FETCH_USER_AGENT,
+            "Accept": "application/atom+xml, application/rss+xml, application/xml, text/xml, */*",
+        },
+    )
+    if etag:
+        request.add_header("If-None-Match", etag)
+    if modified:
+        request.add_header("If-Modified-Since", modified)
+    try:
+        with _build_public_opener().open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            body = response.read(FETCH_MAX_BYTES + 1)
+            if len(body) > FETCH_MAX_BYTES:
+                raise ValueError(f"Feed response exceeds {FETCH_MAX_BYTES} bytes: {url}")
+            return response.status, response.headers, body
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304:
+            return 304, exc.headers, b""
+        raise
+
+
 def fetch_and_ingest(feed):
     """Conditional-GET a feed and ingest new entries. Returns
-    (status, new_items). feedparser handles ETag/Last-Modified, so an unchanged
-    feed comes back 304 with nothing to do."""
-    # SSRF guard: never let a stored URL point the server at an internal address
-    # (metadata endpoints, localhost services) or a non-web scheme.
+    (status, new_items). An unchanged feed comes back 304 with nothing to do."""
+    # SSRF guard, layer 1: fail fast on an obviously unsafe stored URL.
     if not is_fetchable_url(feed.url):
         raise ValueError(f"Refusing to fetch unsafe or non-public feed URL: {feed.url}")
 
     import feedparser  # lazy: keeps ingest_entries importable/testable without it
 
-    parsed = feedparser.parse(
-        feed.url,
-        etag=feed.etag or None,
-        modified=feed.last_modified or None,
+    # Layer 2: the fetch itself only connects to validated public addresses on
+    # every hop, so redirects and DNS rebinding cannot reach internal hosts.
+    status, headers, body = _http_get(
+        feed.url, etag=feed.etag or "", modified=feed.last_modified or ""
     )
-    status = getattr(parsed, "status", None)
     feed.last_fetched_at = timezone.now()
 
     if status == 304:
         feed.save(update_fields=["last_fetched_at"])
         return status, []
 
-    etag = getattr(parsed, "etag", "") or ""
-    modified = getattr(parsed, "modified", "") or ""
+    parsed = feedparser.parse(body, response_headers=dict(headers.items()))
+    etag = headers.get("ETag", "") or ""
+    modified = headers.get("Last-Modified", "") or ""
     if etag:
         feed.etag = etag[:300]
     if modified:
