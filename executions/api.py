@@ -49,9 +49,7 @@ def require_execution_scope(scope):
             principal = ServicePrincipal.objects.filter(
                 token_hash=token_hash, is_active=True, revoked_at=None
             ).first()
-            if principal is None or not constant_time_compare(
-                token_hash, principal.token_hash
-            ):
+            if principal is None:
                 return JsonResponse({"error": "Invalid execution token."}, status=401)
             # Raw content access is an explicit operator grant; older broad
             # execution principals must not gain it merely by upgrading code.
