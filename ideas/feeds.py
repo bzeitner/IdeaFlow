@@ -69,6 +69,18 @@ def _is_public_ip(ip):
     )
 
 
+def _public_addresses(host, port=None):
+    """The single SSRF address policy: resolve host and return its getaddrinfo
+    results only if every address is public. Raises OSError otherwise. Both the
+    pre-fetch check and the connector use this, so the rule lives in one place."""
+    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    if not infos or not all(
+        _is_public_ip(ipaddress.ip_address(info[4][0])) for info in infos
+    ):
+        raise OSError(f"Refusing to connect to non-public address for {host}")
+    return infos
+
+
 def is_http_url(url):
     """True for an http/https URL — used to keep rendered links from carrying a
     javascript:/data: scheme (stored-XSS guard)."""
@@ -93,15 +105,11 @@ def is_fetchable_url(url):
     parts = urlsplit(url or "")
     if parts.scheme not in ALLOWED_SCHEMES or not parts.hostname:
         return False
-    ip = _ip_or_none(parts.hostname)
-    if ip is not None:
-        return _is_public_ip(ip)
     try:
-        infos = socket.getaddrinfo(parts.hostname, None, proto=socket.IPPROTO_TCP)
-    except (socket.gaierror, UnicodeError, ValueError):
+        _public_addresses(parts.hostname)
+    except (OSError, UnicodeError, ValueError):
         return False
-    ips = [ipaddress.ip_address(info[4][0]) for info in infos]
-    return bool(ips) and all(_is_public_ip(ip) for ip in ips)
+    return True
 
 
 def _guid(entry):
@@ -173,17 +181,6 @@ def ingest_entries(feed, entries, *, limit=None):
                 sync_new_feed_item(item)
             created.append(item)
     return created
-
-
-def _public_addresses(host, port):
-    """Resolve host and return its addresses only if every one is public."""
-    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    addresses = [info[4] for info in infos]
-    if not addresses or not all(
-        _is_public_ip(ipaddress.ip_address(address[0])) for address in addresses
-    ):
-        raise OSError(f"Refusing to connect to non-public address for {host}")
-    return infos
 
 
 def _connect_public(host, port, timeout):
